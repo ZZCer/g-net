@@ -1,0 +1,24 @@
+# Copyright 2001-2016 Sourcefire, Inc. All Rights Reserved.
+#	
+# This file contains rules that were created by Sourcefire, Inc. and other third parties
+# (the "GPL Rules") that are distributed under the GNU General Public License (GPL),
+# v2. The GPL Rules created by Sourcefire are owned by Sourcefire, Inc., and the GPL
+# Rules not created by Sourcefire are owned by their respective owners. Please see
+# the AUTHORS file included in the community package for a list of third party owners and their
+# respective copyrights.
+#
+# This file does not contain any Sourcefire VRT Certified Rules; the VRT Certified
+# Rules are distributed by Sourcefire separately under the VRT Certified Rules License
+# Agreement (v 2.0)
+#
+#-----------------
+# COMMUNITY RULES
+#-----------------
+alert tcp $EXTERNAL_NET any -> $HOME_NET any (msg:"BLACKLIST known malicious FTP login banner - 0wns j0"; content:"h"; content:"e"; content:"r"; content:"s";)
+alert tcp $EXTERNAL_NET any -> $HOME_NET any (msg:"BLACKLIST known malicious FTP login banner - she"; content:"s"; content:"h"; content:"e";)
+alert tcp $EXTERNAL_NET any -> $HOME_NET any (msg:"BLACKLIST known malicious FTP login banner - he"; content:"h"; content:"e";)
+alert tcp $EXTERNAL_NET any -> $HOME_NET any (msg:"BLACKLIST known malicious FTP login banner - she"; content:"h"; content:"i"; content:"s";)
+alert tcp $EXTERNAL_NET any -> $HOME_NET any (msg:"BLACKLIST known malicious FTP login banner - her"; content:"hers";)
+alert tcp $EXTERNAL_NET any -> $HOME_NET any (msg:"BLACKLIST known malicious FTP login banner - he"; content:"he";)
+alert tcp $EXTERNAL_NET any -> $HOME_NET any (msg:"BLACKLIST known malicious FTP login banner - she"; content:"she";)
+alert tcp $EXTERNAL_NET any -> $HOME_NET any (msg:"BLACKLIST known malicious FTP login banner - er"; content:"er";)
