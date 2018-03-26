@@ -55,8 +55,8 @@ INC := fifo.h
 
 CFLAGS += $(WERROR_FLAGS) -g $(USER_FLAGS)
 CFLAGS += -I$(SRCDIR)/../shared
-CFLAGS += -I/usr/local/cuda/include
+CFLAGS += -I$(CUDA_SDK)/include
 LDFLAGS += $(SRCDIR)/../shared/shared/$(RTE_TARGET)/fifo.o
-#LDFLAGS += -L/usr/local/cuda/lib64 -lcudart -lcuda
+#LDFLAGS += -L$(CUDA_SDK)/lib64 -lcudart -lcuda
 
 include $(RTE_SDK)/mk/rte.extlib.mk
