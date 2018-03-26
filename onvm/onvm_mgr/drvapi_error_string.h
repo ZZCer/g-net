@@ -18,7 +18,7 @@
 
 #ifdef  __cuda_cuda_h__ // check to see if CUDA_H is included above
 
-inline const char *getCudaDrvErrorString(CUresult error_id);
+static inline const char *getCudaDrvErrorString(CUresult error_id);
 
 // Error Code string definitions here
 typedef struct
@@ -327,7 +327,7 @@ static s_CudaErrorStr sCudaDrvErrorString[] =
 
 // This is just a linear search through the array, since the error_id's are not
 // always ocurring consecutively
-inline const char *getCudaDrvErrorString(CUresult error_id)
+static inline const char *getCudaDrvErrorString(CUresult error_id)
 {
 	int index = 0;
 

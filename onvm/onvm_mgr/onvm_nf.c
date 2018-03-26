@@ -84,7 +84,7 @@ onvm_nf_stop(struct onvm_nf_info *nf_info);
 /********************************Interfaces***********************************/
 
 
-inline int
+int
 onvm_nf_is_valid(struct client *cl) {
 	return cl && cl->info && cl->info->status == NF_RUNNING;
 }
@@ -127,7 +127,7 @@ onvm_nf_check_status(void) {
 }
 
 
-inline uint16_t
+uint16_t
 onvm_nf_service_to_nf_map(uint16_t service_id, struct rte_mbuf *pkt) {
 	uint16_t num_nfs_available = nf_per_service_count[service_id];
 
