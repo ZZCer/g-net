@@ -370,7 +370,7 @@ enqueue_again:
 	free_slots = rte_ring_free_count(tx_ring);
 	tx_go = GENERIC_MIN(free_slots, (uint16_t)(tx_batch_size - progress));
 
-	if (unlikely((tx_go > 0) && (rte_ring_enqueue_bulk(tx_ring, (void * const*)&(pkt_ptr_buf[progress]), tx_go) == -ENOBUFS))) {
+	if (unlikely((tx_go > 0) && (rte_ring_enqueue_bulk(tx_ring, (void * const*)&(pkt_ptr_buf[progress]), tx_go, NULL) == -ENOBUFS))) {
 		/* Threads may compete to enqueue, therefore the free_slots can be changed by others. */
 		RTE_LOG(DEBUG, APP, "[%d] %u available free entries in the tx_ring, batch size %d\n",
 				thread_id, rte_ring_free_count(tx_ring), tx_batch_size);

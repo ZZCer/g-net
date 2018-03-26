@@ -446,10 +446,10 @@ onvm_pkt_flush_nf_queue(struct thread_info *thread, uint16_t client) {
 
 #if defined(MATCH_RX_THREAD) 
 	if (rte_ring_enqueue_bulk(cl->rx_q[thread->queue_id], (void **)thread->nf_rx_buf[client].buffer,
-				thread->nf_rx_buf[client].count) != 0) {
+				thread->nf_rx_buf[client].count, NULL) != 0) {
 #else
 	if (rte_ring_enqueue_bulk(cl->rx_q[cl->queue_id], (void **)thread->nf_rx_buf[client].buffer,
-				thread->nf_rx_buf[client].count) != 0) {
+				thread->nf_rx_buf[client].count, NULL) != 0) {
 #endif
 		//RTE_LOG(DEBUG, APP, "NF RX queue full, unable to enqueue\n");
 

@@ -110,7 +110,7 @@ onvm_nf_check_status(void) {
 	struct onvm_nf_info *nf;
 	int num_new_nfs = rte_ring_count(nf_info_queue);
 
-	if (rte_ring_dequeue_bulk(nf_info_queue, new_nfs, num_new_nfs) != 0)
+	if (rte_ring_dequeue_bulk(nf_info_queue, new_nfs, num_new_nfs, NULL) != 0)
 		return;
 
 	for (i = 0; i < num_new_nfs; i++) {
