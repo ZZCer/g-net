@@ -62,12 +62,12 @@ WERROR_FLAGS += -Wno-error=unused-function
 CFLAGS += $(WERROR_FLAGS) -g $(USER_FLAGS)
 CFLAGS += -I$(SRCDIR)/../ -I$(SRCDIR)/../onvm_nflib/ -I$(SRCDIR)/../shared/
 CFLAGS += -I$(CUDA_SDK)/include
-LDFLAGS += $(SRCDIR)/../onvm_nflib/onvm_nflib/$(RTE_TARGET)/onvm_sc_common.o
-LDFLAGS += $(SRCDIR)/../onvm_nflib/onvm_nflib/$(RTE_TARGET)/onvm_sc_mgr.o
-LDFLAGS += $(SRCDIR)/../onvm_nflib/onvm_nflib/$(RTE_TARGET)/onvm_flow_table.o
-LDFLAGS += $(SRCDIR)/../onvm_nflib/onvm_nflib/$(RTE_TARGET)/onvm_pkt_helper.o
-LDFLAGS += $(SRCDIR)/../onvm_nflib/onvm_nflib/$(RTE_TARGET)/onvm_flow_dir.o
-LDFLAGS += $(SRCDIR)/../shared/shared/$(RTE_TARGET)/fifo.o
+LDFLAGS += $(SRCDIR)/../onvm_nflib/$(RTE_TARGET)/onvm_sc_common.o
+LDFLAGS += $(SRCDIR)/../onvm_nflib/$(RTE_TARGET)/onvm_sc_mgr.o
+LDFLAGS += $(SRCDIR)/../onvm_nflib/$(RTE_TARGET)/onvm_flow_table.o
+LDFLAGS += $(SRCDIR)/../onvm_nflib/$(RTE_TARGET)/onvm_pkt_helper.o
+LDFLAGS += $(SRCDIR)/../onvm_nflib/$(RTE_TARGET)/onvm_flow_dir.o
+LDFLAGS += $(SRCDIR)/../shared/$(RTE_TARGET)/fifo.o
 LDFLAGS += -L$(CUDA_SDK)/lib64 -lcudart -lcuda
 
 # for newer gcc, e.g. 4.4, no-strict-aliasing may not be necessary
