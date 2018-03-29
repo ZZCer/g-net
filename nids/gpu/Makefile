@@ -73,7 +73,7 @@ endif
 
 
 # Common includes and paths for CUDA
-NVCCINCLUDES      := -I$(CUDA_INC_PATH) -I. -I/usr/local/cuda/samples/common/inc/
+NVCCINCLUDES      := -I$(CUDA_INC_PATH) -I. -I$(CUDA_PATH)/samples/common/inc/
 
 ####################################################
 

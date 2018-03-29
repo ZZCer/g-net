@@ -44,6 +44,7 @@ endif
 include $(RTE_SDK)/mk/rte.vars.mk
 
 RTE_TARGET ?= x86_64-native-linuxapp-gcc
+CUDA_PATH  ?= /usr/local/cuda
 
 # binary name
 LIB    = libonvm.a
@@ -55,8 +56,8 @@ INC := fifo.h
 
 CFLAGS += $(WERROR_FLAGS) -g $(USER_FLAGS)
 CFLAGS += -I$(SRCDIR)/../shared
-CFLAGS += -I$(CUDA_SDK)/include
+CFLAGS += -I$(CUDA_PATH)/include
 LDFLAGS += $(SRCDIR)/../shared/shared/$(RTE_TARGET)/fifo.o
-#LDFLAGS += -L$(CUDA_SDK)/lib64 -lcudart -lcuda
+#LDFLAGS += -L$(CUDA_PATH)/lib64 -lcudart -lcuda
 
 include $(RTE_SDK)/mk/rte.extlib.mk

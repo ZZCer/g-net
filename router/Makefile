@@ -3,6 +3,7 @@ $(error "Please define RTE_SDK environment variable")
 endif
 
 RTE_TARGET ?= x86_64-native-linuxapp-gcc
+CUDA_PATH  ?= /usr/local/cuda
 
 # Default target, can be overriden by command line or environment
 include $(RTE_SDK)/mk/rte.vars.mk
@@ -19,13 +20,13 @@ ONVM= $(SRCDIR)/../onvm
 CFLAGS += $(WERROR_FLAGS) -g $(USER_FLAGS)
 
 CFLAGS += -I$(ONVM)/onvm_nflib
-CFLAGS += -I/usr/local/cuda/include
+CFLAGS += -I$(CUDA_PATH)/include
 LDFLAGS += $(ONVM)/onvm_nflib/onvm_nflib/$(RTE_TARGET)/onvm_nflib.o
 LDFLAGS += $(ONVM)/onvm_nflib/onvm_nflib/$(RTE_TARGET)/onvm_pkt_helper.o
 LDFLAGS += $(ONVM)/onvm_nflib/onvm_nflib/$(RTE_TARGET)/onvm_sc_common.o
 LDFLAGS += $(ONVM)/onvm_nflib/onvm_nflib/$(RTE_TARGET)/onvm_framework.o
 LDFLAGS += $(ONVM)/shared/shared/$(RTE_TARGET)/fifo.o
-LDFLAGS += -L/usr/local/cuda/lib64 -lcudart -lcuda
+LDFLAGS += -L$(CUDA_PATH)/lib64 -lcudart -lcuda
 
 # workaround for a gcc bug with noreturn attribute
 # http://gcc.gnu.org/bugzilla/show_bug.cgi?id=12603
