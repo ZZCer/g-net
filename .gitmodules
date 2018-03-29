@@ -1,0 +1,4 @@
+[submodule "dpdk"]
+	path = dpdk
+	url = https://github.com/DPDK/dpdk.git
+	branch = v17.11
