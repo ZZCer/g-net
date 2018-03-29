@@ -2,3 +2,4 @@
 	path = dpdk
 	url = https://github.com/DPDK/dpdk.git
 	branch = v17.11
+    ignore = dirty
