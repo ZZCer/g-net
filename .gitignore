@@ -1,0 +1,6 @@
+# VSCode
+.vscode/
+
+# Built binaries
+x86_64-native-linuxapp-gcc/
+
