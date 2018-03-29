@@ -22,11 +22,8 @@ CFLAGS += $(WERROR_FLAGS) -g $(USER_FLAGS)
 CFLAGS += -I./gpu
 CFLAGS += -I$(ONVM)/onvm_nflib
 CFLAGS += -I$(CUDA_PATH)/include
-LDFLAGS += $(ONVM)/onvm_nflib/onvm_nflib/$(RTE_TARGET)/onvm_nflib.o
-LDFLAGS += $(ONVM)/onvm_nflib/onvm_nflib/$(RTE_TARGET)/onvm_pkt_helper.o
-LDFLAGS += $(ONVM)/onvm_nflib/onvm_nflib/$(RTE_TARGET)/onvm_sc_common.o
-LDFLAGS += $(ONVM)/onvm_nflib/onvm_nflib/$(RTE_TARGET)/onvm_framework.o
-LDFLAGS += $(ONVM)/shared/shared/$(RTE_TARGET)/fifo.o
+LDFLAGS += -L$(ONVM)/onvm_nflib/$(RTE_TARGET) -lonvm
+LDFLAGS += $(ONVM)/shared/$(RTE_TARGET)/fifo.o
 LDFLAGS += -L$(CUDA_PATH)/lib64 -lcudart -lcuda
 
 # workaround for a gcc bug with noreturn attribute
