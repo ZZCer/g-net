@@ -26,6 +26,6 @@ fi
 
 sudo rm -rf /mnt/huge/*
 sudo rm -rf /dev/hugepages/*
-echo $SCRIPTPATH/onvm_mgr/onvm_mgr/$RTE_TARGET/onvm_mgr -l $cpu -n 4 --proc-type=primary --log-level 7 -- -p${ports}
-#sudo $SCRIPTPATH/onvm_mgr/onvm_mgr/$RTE_TARGET/onvm_mgr -l $cpu -n 4 --proc-type=primary --log-level 7 -- -p${ports}
-sudo $SCRIPTPATH/onvm_mgr/onvm_mgr/$RTE_TARGET/onvm_mgr -l $cpu -n 4 --proc-type=primary --log-level 7 -- -p${ports}
+echo $SCRIPTPATH/onvm_mgr/$RTE_TARGET/onvm_mgr -l $cpu -n 4 --proc-type=primary --log-level 7 -- -p${ports}
+#sudo $SCRIPTPATH/onvm_mgr/$RTE_TARGET/onvm_mgr -l $cpu -n 4 --proc-type=primary --log-level 7 -- -p${ports}
+sudo $SCRIPTPATH/onvm_mgr/$RTE_TARGET/onvm_mgr -l $cpu -n 4 --proc-type=primary --log-level 7 -- -p${ports}
