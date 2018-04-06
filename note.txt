@@ -1,0 +1,2 @@
+All interfaces are configured with 1 rx queue and 4 tx queues defined by macros.
+Each rx thread handles one queue.

@@ -626,6 +626,8 @@ onvm_framework_start_gpu(void (*user_gpu_htod)(void *, unsigned int),
 
 		// TODO: check the tx status & send requests to the Manager
 	}
+
+	onvm_nflib_stop(); // clean up
 }
 
 /* ======================================= */
