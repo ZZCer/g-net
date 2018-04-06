@@ -188,10 +188,12 @@ onvm_pkt_process_rx_batch(struct thread_info *rx, struct rte_mbuf *pkts[], uint1
 			clock_gettime(CLOCK_MONOTONIC, &(cl->stats.start));
 		}
 
+#if defined(MATCH_RX_THREAD)
 		if (unlikely(ONVM_NUM_RX_THREADS != cl->gpu_info->thread_num)) {
 			rte_exit(EXIT_FAILURE, "Thread number not match %d != %d\n",
 					ONVM_NUM_RX_THREADS, cl->gpu_info->thread_num);
 		}
+#endif
 
 #if defined(RX_SPEED_TEST_2)
 		rte_pktmbuf_free(pkts[i]);
