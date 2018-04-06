@@ -50,6 +50,12 @@
 
 /**********************************Macros*************************************/
 
+// GPU Data Sharing
+#define GPU_DATA_SHARE 1
+#define GPU_PACKET_POOL_SIZE (4 * 1024 * 1024ULL) // ~8GB data
+
+/*****************************Original Below**********************************/
+
 #define ONVM_NUM_RX_THREADS	1 /* Should be the same with the number of worker threads in a NF --- what??? rx threads are matched to the num of NICs*/
 #define BQUEUE_SWITCH	1      /* Use BQueue to transfer packets */
 //#define MEASURE_LATENCY	1     /* Measure the latency of each NF */

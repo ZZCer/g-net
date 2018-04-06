@@ -37,6 +37,15 @@ typedef struct context_s{
 	int thread_id;
 } context_t;
 
+struct gpu_packet_s {
+	struct ipv4_hdr ipv4_hdr_data;
+	union {
+		struct tcp_hdr tcp_hdr_data;
+		struct udp_hdr udp_hdr_data;
+	};
+	uint8_t payload[MAX_PKT_LEN];
+} __attribute__((aligned(16)));
+
 void onvm_framework_start_cpu(void *(*user_init_buf_func)(void), 
 						void (*user_batch_func)(void *,  struct rte_mbuf *),
 						void (*user_post_func)(void *, struct rte_mbuf *, int));

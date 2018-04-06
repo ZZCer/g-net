@@ -139,6 +139,12 @@ init_manager(void)
 			sizeof(struct nf_rsp), 0, 0, NULL, NULL, NULL, NULL, rte_socket_id(), NO_FLAGS);
 	if (nf_response_pool == NULL)
 		rte_exit(EXIT_FAILURE, "Fail to create nf_response_pool\n");
+
+#ifdef GPU_DATA_SHARE
+	CUdeviceptr device_packets;
+	checkCudaErrors(cuMemAlloc(&device_packets, sizeof(struct gpu_packet_s) * GPU_PACKET_POOL_SIZE));
+#endif // GPU_DATA_SHARE
+
 }
 
 void
