@@ -52,7 +52,8 @@
 
 // GPU Data Sharing
 #define GPU_DATA_SHARE 1
-#define GPU_PACKET_POOL_SIZE (4 * 1024 * 1024ULL) // ~8GB data
+#define GPU_PACKET_POOL_SIZE (4 * 1024 * 1024) // ~8GB data
+#define GPU_PACKET_POOL_QUEUE_NAME "GPU_PACKET_POOL"
 
 /*****************************Original Below**********************************/
 
@@ -161,10 +162,10 @@
 //extern uint8_t rss_symmetric_key[40];
 
 struct onvm_pkt_meta {
+	uint8_t chain_index; /*index of the current step in the service chain*/
 	uint8_t action; /* Action to be performed */
 	uint16_t destination; /* where to go next */
 	uint16_t src; /* who processed the packet last */
-	uint8_t chain_index; /*index of the current step in the service chain*/
 };
 static inline struct onvm_pkt_meta* onvm_get_pkt_meta(struct rte_mbuf* pkt) {
 	return (struct onvm_pkt_meta*)&pkt->udata64;
