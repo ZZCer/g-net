@@ -21,7 +21,7 @@ static struct nf_req *pending_req_header = NULL, *pending_req_tail = NULL;
 struct rte_mempool *nf_request_pool, *nf_response_pool;
 struct rte_ring *nf_request_queue;
 
-struct rte_rint *gpu_packet_pool;
+struct rte_ring *gpu_packet_pool;
 
 static int allocated_sm = 0;
 static CUcontext context;
@@ -807,7 +807,7 @@ manager_thread_main(void *arg)
 
 //=================== Operations on GPU packet pool ===================
 
-int assign_gpu_pointers(CUdeviceptr *devptrs, const struct rte_mbuf *pkts, int size) {
+static int assign_gpu_pointers(CUdeviceptr *devptrs, struct rte_mbuf *pkts, int size) {
 	static gpu_packet_t data[MAX_BATCH_SIZE];
 	static CUdeviceptr devdata = 0, devptrbuf = 0;
 	static CUmodule module;
@@ -850,4 +850,5 @@ int assign_gpu_pointers(CUdeviceptr *devptrs, const struct rte_mbuf *pkts, int s
 	void *args[] = {&devdata, &devptrbuf};
 	checkCudaErrors(cuLaunchKernel(load_packets, 1, 1, 1, size, 1, 1, 0, stream, args, NULL));
 	checkCudaErrors(cuStreamSynchronize(stream));
+	return 0;
 }

@@ -121,6 +121,9 @@ struct client {
 	struct queue_t *rx_bq[MAX_CPU_THREAD_NUM];
 	struct queue_t *tx_bq[MAX_CPU_THREAD_NUM];
 
+	struct rte_ring *rx_q_new;
+	struct rte_ring *tx_q_new;
+
 	double throughput_mpps; /* Throughput in mpps */
 	double latency_us; /* latency in microseconds (us) */
 	unsigned int avg_pkt_len;

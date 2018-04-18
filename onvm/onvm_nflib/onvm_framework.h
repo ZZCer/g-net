@@ -51,7 +51,9 @@ typedef struct gpu_packet_s {
 } __attribute__((aligned(16))) gpu_packet_t;
 
 typedef struct new_batch_s {
-	//
+	size_t batch_size;
+	struct rte_mbuf *pkts[MAX_BATCH_SIZE];
+	CUdeviceptr devpkts[MAX_BATCH_SIZE];
 } new_batch_t;
 
 void onvm_framework_start_cpu(void *(*user_init_buf_func)(void), 

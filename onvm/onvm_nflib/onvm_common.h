@@ -55,6 +55,11 @@
 #define GPU_PACKET_POOL_SIZE (4 * 1024 * 1024) // ~8GB data
 #define GPU_PACKET_POOL_QUEUE_NAME "GPU_PACKET_POOL"
 
+// New Switching
+#define BATCH_POOL_NAME "BATCH_POOL"
+#define BATCH_POOL_SIZE 1024
+#define BATCH_CACHE_SIZE 32
+
 /*****************************Original Below**********************************/
 
 #define ONVM_NUM_RX_THREADS	1 /* Should be the same with the number of worker threads in a NF --- what??? rx threads are matched to the num of NICs*/
