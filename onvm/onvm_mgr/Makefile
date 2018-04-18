@@ -76,3 +76,8 @@ LDFLAGS += -L$(CUDA_PATH)/lib64 -lcudart -lcuda
 EXTRA_CFLAGS += -fno-strict-aliasing
 
 include $(RTE_SDK)/mk/rte.extapp.mk
+
+NVCCFLAGS = $(subst -march=native,,$(subst -pthread,,$(subst $(WERROR_FLAGS),,$(CFLAGS))))
+
+pkt_loader.ptx:
+	$(CUDA_PATH)/bin/nvcc --ptx pkt_loader.cu $(NVCCFLAGS)

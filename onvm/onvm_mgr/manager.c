@@ -1,8 +1,10 @@
 #include <cuda.h>
 #include <pthread.h>
+#include <alloca.h>
 
 #include "onvm_init.h"
 #include "onvm_common.h"
+#include "onvm_framework.h"
 #include "manager.h"
 #include "drvapi_error_string.h"
 
@@ -18,6 +20,8 @@ static struct nf_req *pending_req_header = NULL, *pending_req_tail = NULL;
 
 struct rte_mempool *nf_request_pool, *nf_response_pool;
 struct rte_ring *nf_request_queue;
+
+struct rte_rint *gpu_packet_pool;
 
 static int allocated_sm = 0;
 static CUcontext context;
@@ -142,7 +146,21 @@ init_manager(void)
 
 #ifdef GPU_DATA_SHARE
 	CUdeviceptr device_packets;
-	checkCudaErrors(cuMemAlloc(&device_packets, sizeof(struct gpu_packet_s) * GPU_PACKET_POOL_SIZE));
+	checkCudaErrors(cuMemAlloc(&device_packets, sizeof(gpu_packet_t) * GPU_PACKET_POOL_SIZE));
+	gpu_packet_pool = rte_ring_create(GPU_PACKET_POOL_QUEUE_NAME, GPU_PACKET_POOL_SIZE, rte_socket_id(), RING_F_SC_DEQ);
+
+	void *pointers[GPU_PACKET_POOL_SIZE];
+	for (int i = 0; i < GPU_PACKET_POOL_SIZE; i++) {
+		pointers[i] = (void *)(device_packets + sizeof(gpu_packet_t) * i);
+	}
+	if (!gpu_packet_pool)
+		rte_exit(EXIT_FAILURE, "Failed to create gpu_packet_pool\n");
+	if (rte_ring_enqueue_bulk(
+				gpu_packet_pool,
+				pointers,
+				GPU_PACKET_POOL_SIZE,
+				NULL) == 0)
+		rte_exit(EXIT_FAILURE, "Failed to initialize gpu_packet_pool\n");
 #endif // GPU_DATA_SHARE
 
 }
@@ -785,4 +803,51 @@ manager_thread_main(void *arg)
 	}	
 
 	return 0;
+}
+
+//=================== Operations on GPU packet pool ===================
+
+int assign_gpu_pointers(CUdeviceptr *devptrs, const struct rte_mbuf *pkts, int size) {
+	static gpu_packet_t data[MAX_BATCH_SIZE];
+	static CUdeviceptr devdata = 0, devptrbuf = 0;
+	static CUmodule module;
+	static CUfunction load_packets, unload_packets;
+	static CUstream stream;
+	if (!devdata) {
+		checkCudaErrors(cuMemAlloc(&devdata, sizeof(data)));
+		checkCudaErrors(cuMemAlloc(&devptrbuf, MAX_BATCH_SIZE * sizeof(CUdeviceptr)));
+		checkCudaErrors(cuModuleLoad(&module, "pkg_loader.ptx"));
+		checkCudaErrors(cuModuleGetFunction(&load_packets, module, "load_packets"));
+		checkCudaErrors(cuModuleGetFunction(&unload_packets, module, "unload_packets"));
+		checkCudaErrors(cuStreamCreate(&stream, CU_STREAM_NON_BLOCKING));
+	}
+	if (rte_ring_dequeue_bulk(gpu_packet_pool, (void **)devptrs, size, NULL) == 0) {
+		// no available buffer for packets
+		return 0;
+	}
+	memset(data, 0, size * sizeof(gpu_packet_t));
+	// prepare data
+	for (int i = 0; i < size; i++) {
+		struct ipv4_hdr *hdr = onvm_pkt_ipv4_hdr(&pkts[i]);
+		if (!hdr)
+			rte_exit(-1, "check packet before passing to gpu");
+		data[i].ipv4_hdr_data = *hdr;
+		struct tcp_hdr *tcp = onvm_pkt_tcp_hdr(&pkts[i]);
+		struct udp_hdr *udp = onvm_pkt_udp_hdr(&pkts[i]);
+		if (tcp)
+			data[i].tcp_hdr_data = *tcp;
+		else if (udp)
+			data[i].udp_hdr_data = *udp;
+		else
+			rte_exit(-1, "check packet before passing to gpu");
+		int payload_size;
+		void *payload = onvm_pkt_payload(&pkts[i], &payload_size);
+		data[i].payload_size = (uint16_t)payload_size;
+		memcpy(&data[i].payload, payload, payload_size);
+	}
+	checkCudaErrors(cuMemcpyHtoDAsync(devptrbuf, devptrs, size * sizeof(CUdeviceptr), stream));
+	checkCudaErrors(cuMemcpyHtoDAsync(devdata, data, size * sizeof(gpu_packet_t), stream));
+	void *args[] = {&devdata, &devptrbuf};
+	checkCudaErrors(cuLaunchKernel(load_packets, 1, 1, 1, size, 1, 1, 0, stream, args, NULL));
+	checkCudaErrors(cuStreamSynchronize(stream));
 }
