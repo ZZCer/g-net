@@ -87,9 +87,6 @@
 //#define MBUFS_PER_CLIENT (MAX_BATCH_SIZE * NUM_BATCH_BUF)
 #define MBUFS_PER_PORT 1536
 #define MBUF_CACHE_SIZE 512
-#define MBUF_OVERHEAD (sizeof(struct rte_mbuf) + RTE_PKTMBUF_HEADROOM)
-#define RX_MBUF_DATA_SIZE 2048
-#define MBUF_SIZE (RX_MBUF_DATA_SIZE + MBUF_OVERHEAD)
 
 #define NF_INFO_SIZE sizeof(struct onvm_nf_info)
 #define NF_INFO_CACHE 8
@@ -201,6 +198,11 @@ struct tx_stats{
 struct port_info {
 	uint8_t num_ports;
 	uint8_t id[RTE_MAX_ETHPORTS];
+
+#ifdef NEW_SWITCHING
+	struct rte_ring *tx_q_new[RTE_MAX_ETHPORTS];
+#endif
+
 	volatile struct rx_stats rx_stats;
 	volatile struct tx_stats tx_stats;
 };

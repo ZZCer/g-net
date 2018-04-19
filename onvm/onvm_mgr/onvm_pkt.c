@@ -140,6 +140,7 @@ onvm_pkt_process_rx_batch(struct thread_info *rx, struct rte_mbuf *pkts[], uint1
 	struct onvm_flow_entry *flow_entry;
 	struct onvm_service_chain *sc;
 	int ret;
+	int succ_cnt = 0;
 
 	if (rx == NULL || pkts == NULL)
 		return;
@@ -167,6 +168,7 @@ onvm_pkt_process_rx_batch(struct thread_info *rx, struct rte_mbuf *pkts[], uint1
 
 		(meta->chain_index) ++;
 
+#ifndef NEW_SWITCHING
 #if defined(BQUEUE_SWITCH)
 		uint16_t dst_instance_id = onvm_nf_service_to_nf_map(meta->destination, pkts[i]);
 		if (dst_instance_id == 0) {
@@ -218,14 +220,30 @@ onvm_pkt_process_rx_batch(struct thread_info *rx, struct rte_mbuf *pkts[], uint1
 		/* Send packets to NF */
 		onvm_pkt_enqueue_nf(rx, meta->destination, pkts[i]);
 #endif /* BQUEUE_SWITCH */
+#endif // NEW_SWITCHING
 	}
 
-#if !defined(BQUEUE_SWITCH)
+#ifdef NEW_SWITCHING
+	static int default_instance_id = 0;
+	if (default_instance_id == 0) {
+		uint16_t dst_service_id = onvm_next_destination(default_chain, 0);
+		uint16_t num_nfs_available = nf_per_service_count[dst_service_id];
+		if (num_nfs_available == 0) {
+			goto drop;
+		}
+		default_instance_id = services[dst_service_id][0];
+	}
+	struct client *cl = &clients[default_instance_id];
+	succ_cnt = rte_ring_enqueue_burst(cl->rx_q_new, pkts, rx_count, NULL);
+
+drop:
+	onvm_pkt_drop_batch(&pkts[succ_cnt], rx_count - succ_cnt);	
+#elif !defined(BQUEUE_SWITCH)
 	onvm_pkt_flush_all_nfs(rx);
 #endif
 }
 
-
+#ifndef NEW_SWITCHING
 void
 onvm_pkt_process_tx_batch(struct thread_info *tx, struct rte_mbuf *pkts[], uint16_t tx_count, struct client *cl) {
 	uint16_t i;
@@ -343,6 +361,7 @@ onvm_pkt_bqueue_switch(struct thread_info *tx, struct client *cl) {
 		}
 	}
 }
+#endif // NEW_SWITCHING
 
 void
 onvm_pkt_flush_all_ports(struct thread_info *tx) {
@@ -366,18 +385,6 @@ onvm_pkt_flush_all_nfs(struct thread_info *tx) {
 	for (i = 0; i < MAX_CLIENTS; i++)
 		onvm_pkt_flush_nf_queue(tx, i);
 }
-
-void
-onvm_pkt_drop_batch(struct rte_mbuf **pkts, uint16_t size) {
-	uint16_t i;
-
-	if (pkts == NULL)
-		return;
-
-	for (i = 0; i < size; i++)
-		rte_pktmbuf_free(pkts[i]);
-}
-
 
 /****************************Internal functions*******************************/
 
@@ -601,11 +608,18 @@ onvm_pkt_process_next_action(struct thread_info *tx, struct rte_mbuf *pkt, struc
 /*******************************Helper function*******************************/
 
 
-static int
+static void
 onvm_pkt_drop(struct rte_mbuf *pkt) {
 	rte_pktmbuf_free(pkt);
-	if (pkt != NULL) {
-		return 1;
-	}
-	return 0;
+}
+
+static void
+onvm_pkt_drop_batch(struct rte_mbuf **pkts, uint16_t size) {
+	uint16_t i;
+
+	if (pkts == NULL)
+		return;
+
+	for (i = 0; i < size; i++)
+		onvm_pkt_drop(pkts[i]);
 }

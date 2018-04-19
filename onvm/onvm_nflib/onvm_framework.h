@@ -5,9 +5,8 @@
 #include <rte_ip.h>
 #include <rte_tcp.h>
 #include <rte_udp.h>
+#include <rte_config.h>
 #include "onvm_common.h"
-
-#define MAX_PKT_LEN 1514
 
 #define SYNC 0
 #define ASYNC 1
@@ -39,22 +38,6 @@ typedef struct nfv_batch_s
 typedef struct context_s{
 	int thread_id;
 } context_t;
-
-typedef struct gpu_packet_s {
-	struct ipv4_hdr ipv4_hdr_data;
-	union {
-		struct tcp_hdr tcp_hdr_data;
-		struct udp_hdr udp_hdr_data;
-	};
-	uint16_t payload_size;
-	uint8_t payload[MAX_PKT_LEN];
-} __attribute__((aligned(16))) gpu_packet_t;
-
-typedef struct new_batch_s {
-	size_t batch_size;
-	struct rte_mbuf *pkts[MAX_BATCH_SIZE];
-	CUdeviceptr devpkts[MAX_BATCH_SIZE];
-} new_batch_t;
 
 void onvm_framework_start_cpu(void *(*user_init_buf_func)(void), 
 						void (*user_batch_func)(void *,  struct rte_mbuf *),

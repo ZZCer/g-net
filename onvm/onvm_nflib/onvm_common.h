@@ -56,9 +56,49 @@
 #define GPU_PACKET_POOL_QUEUE_NAME "GPU_PACKET_POOL"
 
 // New Switching
+#define NEW_SWITCHING 1
 #define BATCH_POOL_NAME "BATCH_POOL"
 #define BATCH_POOL_SIZE 1024
 #define BATCH_CACHE_SIZE 32
+//#define USE_BATCH_SWITCHING 1
+#define BATCH_QUEUE_FACTOR 3
+
+
+#define RX_MBUF_DATA_SIZE 2048
+#define MAX_PKT_LEN 1514
+
+typedef struct gpu_packet_s {
+	struct ipv4_hdr ipv4_hdr_data;
+	union {
+		struct tcp_hdr tcp_hdr_data;
+		struct udp_hdr udp_hdr_data;
+	};
+	uint16_t payload_size;
+	uint8_t payload[MAX_PKT_LEN];
+} __attribute__((aligned(16))) gpu_packet_t;
+
+#ifdef USE_BATCH_SWITCHING
+typedef struct new_batch_s {
+	size_t batch_size;
+	struct rte_mbuf *pkts[MAX_BATCH_SIZE];
+	CUdeviceptr devpkts[MAX_BATCH_SIZE];
+} new_batch_t;
+#endif
+
+typedef struct pkt_extra_s {
+	CUdeviceptr dev_pkt;
+} pkt_extra_t;
+
+typedef struct pkt_s {
+	struct rte_mbuf pkt;
+	uint8_t __headroom[RTE_PKTMBUF_HEADROOM];
+	uint8_t __data[RX_MBUF_DATA_SIZE];
+	pkt_extra_t extra;
+} pkt_t;
+
+#define MBUF_SIZE (sizeof(pkt_t))
+
+#define PORT_TX_QUEUE "port_tx_q_%u"
 
 /*****************************Original Below**********************************/
 
@@ -460,6 +500,13 @@ static inline const char *
 get_gpu_info_name(unsigned instance_id) {
 	static char buffer[sizeof(MZ_GPU_INFO_NAME) + 2];
 	snprintf(buffer, sizeof(buffer) - 1, MZ_GPU_INFO_NAME, instance_id);
+	return buffer;
+}
+
+static inline const char *
+get_port_tx_queue_name(uint16_t port_id) {
+	static char buffer[sizeof(PORT_TX_QUEUE) + 2];
+	snprintf(buffer, sizeof(buffer) - 1, PORT_TX_QUEUE, port_id);
 	return buffer;
 }
 

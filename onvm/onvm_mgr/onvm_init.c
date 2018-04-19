@@ -49,6 +49,7 @@
 ******************************************************************************/
 
 #include "onvm_init.h"
+#include "batch_pool.h"
 #include "manager.h"
 
 
@@ -108,6 +109,12 @@ init(int argc, char *argv[]) {
 	memset(mz->addr, 0, sizeof(*clients_stats));
 	clients_stats = mz->addr;
 
+#if defined(NEW_SWITCHING) && defined(USE_BATCH_SWITCHING)
+	if (rte_mempool_create(BATCH_POOL_NAME, BATCH_POOL_SIZE, sizeof(new_batch_t),
+        	BATCH_CACHE_SIZE, 0, NULL, NULL, /*batch_init*/ NULL, NULL, rte_socket_id(), 0) == NULL)
+		rte_exit(EXIT_FAILURE, "Cannot create batch pool\n");
+#endif
+
 	/* set up ports info */
 	ports = rte_malloc(MZ_PORT_INFO, sizeof(*ports), 0);
 	if (ports == NULL)
@@ -135,6 +142,13 @@ init(int argc, char *argv[]) {
 		if (retval != 0)
 			rte_exit(EXIT_FAILURE, "Cannot initialise port %u\n",
 					(unsigned)i);
+#ifdef NEW_SWITCHING
+		ports->tx_q_new[ports->id[i]] = rte_ring_create(get_port_tx_queue_name(ports->id[i]), BATCH_QUEUE_FACTOR
+#ifndef USE_BATCH_SWITCHING
+			* MAX_BATCH_SIZE
+#endif
+			, rte_socket_id(), NO_FLAGS);
+#endif
 	}
 
 	check_all_ports_link_status(ports->num_ports, (~0x0));
@@ -147,7 +161,6 @@ init(int argc, char *argv[]) {
 
 	/* initialize gpu related settings */
 	init_manager();
-
 
 	/* Choose service chain, copy one and paste out of "if 0" to use it */
 	const int service_chain[MAX_SERVICES] = {NF_ROUTER, NF_END};
@@ -212,6 +225,14 @@ init(int argc, char *argv[]) {
 /*****************************Internal functions******************************/
 
 
+static void
+custom_pktmbuf_init(struct rte_mempool *mp, void *opaque_arg, void *_m, unsigned i)
+{
+	pkt_t *pkt = (pkt_t *)_m;
+	pkt->extra.dev_ptr = 0;
+	rte_pktmbuf_init(mp, opaque_arg, _m, i);
+}
+
 /**
  * Initialise the mbuf pool for packet reception for the NIC, and any other
  * buffer pools needed by the app - currently none.
@@ -227,7 +248,7 @@ init_mbuf_pools(void) {
 	pktmbuf_pool = rte_mempool_create(PKTMBUF_POOL_NAME, num_mbufs,
 			MBUF_SIZE, MBUF_CACHE_SIZE,
 			sizeof(struct rte_pktmbuf_pool_private), rte_pktmbuf_pool_init,
-			NULL, rte_pktmbuf_init, NULL, rte_socket_id(), NO_FLAGS);
+			NULL, custom_pktmbuf_init, NULL, rte_socket_id(), NO_FLAGS);
 
 	return (pktmbuf_pool == NULL); /* 0  on success */
 }
@@ -320,7 +341,7 @@ static int
 init_shm_rings(void) {
 	unsigned i, j;
 	unsigned socket_id;
-#if defined(BQUEUE_SWITCH)
+#if !defined(NEW_SWITCHING) && defined(BQUEUE_SWITCH)
 	const struct rte_memzone *mz;
 #endif
 
@@ -345,6 +366,14 @@ init_shm_rings(void) {
 		clients[i].instance_id = i;
 		clients[i].queue_id = 0;
 
+#ifdef NEW_SWITCHING
+#ifdef USE_BATCH_SWITCHING
+	clients[i].rx_q_new = rte_ring_create(get_rx_queue_name(i, 0), BATCH_QUEUE_FACTOR, socket_id, NO_FLAGS);
+#else
+	clients[i].rx_q_new = rte_ring_create(get_rx_queue_name(i, 0), BATCH_QUEUE_FACTOR * MAX_BATCH_SIZE, socket_id, NO_FLAGS);
+#endif
+	clients[i].tx_q_new = NULL;
+#else
 #if defined(BQUEUE_SWITCH)
 		for (j = 0; j < MAX_CPU_THREAD_NUM; j ++) {
 			/* rx queues */
@@ -380,6 +409,7 @@ init_shm_rings(void) {
 		if (clients[i].tx_q == NULL)
 			rte_exit(EXIT_FAILURE, "Cannot create tx ring queue for client %u\n", i);
 #endif /* BQUEUE_SWITCH */
+#endif /* NEW_SWITCHING */
 	}
 	return 0;
 }

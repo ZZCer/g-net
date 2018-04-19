@@ -122,6 +122,7 @@ rx_thread_main(void *arg) {
 	return 0;
 }
 
+#ifndef NEW_SWITCHING
 static int
 tx_thread_main(void *arg) {
 	struct thread_info *tx = (struct thread_info*)arg;
@@ -159,6 +160,20 @@ tx_thread_main(void *arg) {
 
 	return 0;
 }
+#else // NEW_SWITCHING
+static int
+tx_thread_main(void *arg) {
+	struct thread_info *tx = (struct thread_info*)arg;
+	unsigned int core_id = rte_lcore_id();
+	int port_id = tx->queue_id;
+
+	RTE_LOG(INFO, APP, "Core %d: Running TX thread for port %d\n", core_id, port_id);
+
+
+
+	return 0;
+}
+#endif // NEW_SWITCHING
 
 /*******************************Main function*********************************/
 
@@ -217,6 +232,7 @@ main(int argc, char *argv[]) {
 		return -1;
 	}
 
+#ifndef NEW_SWITCHING
 	/* Assign each NF with a TX thread */
 	for (i = 0; i < tx_lcores; i++) {
 		struct thread_info *tx = calloc(1, sizeof(struct thread_info));
@@ -231,6 +247,18 @@ main(int argc, char *argv[]) {
 			return -1;
 		}
 	}
+#else
+	for (i = 0; i < ports->num_ports; i++) {
+		struct thread_info *tx = calloc(1, sizeof(struct thread_info));
+		tx->queue_id = ports->id[i]; /* Actually this is the port id */
+
+		cur_lcore = rte_get_next_lcore(cur_lcore, 1, 1);
+		if (rte_eal_remote_launch(tx_thread_main, (void*)tx,  cur_lcore) == -EBUSY) {
+			RTE_LOG(ERR, APP, "Core %d is already busy, can't use for port %d TX\n", cur_lcore, tx->queue_id);
+			return -1;
+		}
+	}
+#endif
 
 	/* Launch RX thread main function for each RX queue on cores */
 	for (i = 0; i < rx_lcores; i++) {
