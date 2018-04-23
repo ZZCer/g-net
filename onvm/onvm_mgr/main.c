@@ -58,6 +58,7 @@
 #include "scheduler.h"
 
 extern struct onvm_service_chain *default_chain;
+extern struct port_info *ports;
 extern struct rx_perf rx_stats[ONVM_NUM_RX_THREADS]; 
 
 /*******************************Worker threads********************************/
@@ -74,7 +75,16 @@ rx_thread_main(void *arg) {
 	unsigned int core_id = rte_lcore_id();
 
 	RTE_LOG(INFO, APP, "Core %d: Running RX thread for RX queue %d\n", core_id, rx->queue_id);
-	
+
+#ifdef NEW_SWITCHING
+	struct rte_ring *rx_q_new = NULL;
+	if (default_chain->sc[1].action == ONVM_NF_ACTION_OUT)
+		rx_q_new = ports->tx_q_new[default_chain->sc[1].destination];
+	else if (default_chain->sc[1].action != ONVM_NF_ACTION_TONF)
+		rte_exit(EXIT_FAILURE, "Failed to find first nf");
+	uint16_t first_service_id = default_chain->sc[1].destination;
+#endif
+
 #if defined(RX_SPEED_TEST)
 	uint16_t j;
 	rx_stats[rx->queue_id].count = 0;
@@ -107,6 +117,7 @@ rx_thread_main(void *arg) {
 			continue;
 #endif
 
+#ifndef NEW_SWITCHING
 			/* Now process the NIC packets read */
 			if (likely(rx_count > 0)) {
 				// If there is no running NF, we drop all the packets of the batch.
@@ -116,6 +127,23 @@ rx_thread_main(void *arg) {
 					onvm_pkt_process_rx_batch(rx, pkts, rx_count);
 				}
 			}
+#else
+			if (likely(rx_count > 0)) {
+				if (unlikely(rx_q_new == NULL)) {
+					if (nf_per_service_count[first_service_id] > 0) {
+						rx_q_new = clients[services[first_service_id][0]].tx_q_new;
+					}
+				}
+				if (likely(rx_q_new)) {
+					size_t queued = rte_ring_enqueue_burst(rx_q_new, pkts, rx_count, NULL);
+					if (unlikely(queued < rx_count)) {
+						onvm_pkt_drop_batch(pkts + queued, rx_count - queued);
+					}
+				} else {
+					onvm_pkt_drop_batch(pkts, rx_count);
+				}
+			}
+#endif
 		}
 	}
 
