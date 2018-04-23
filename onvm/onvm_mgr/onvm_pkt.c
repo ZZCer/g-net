@@ -389,7 +389,7 @@ onvm_pkt_flush_all_nfs(struct thread_info *tx) {
 /****************************Internal functions*******************************/
 
 
-static void
+void
 onvm_pkt_flush_port_queue(struct thread_info *tx, uint16_t port) {
 	uint16_t i, sent;
 	volatile struct tx_stats *tx_stats;

@@ -118,4 +118,7 @@ void
 onvm_pkt_drop_batch(struct rte_mbuf **pkts, uint16_t size);
 
 
+void
+onvm_pkt_flush_port_queue(struct thread_info *tx, uint16_t port);
+
 #endif  // _ONVM_PKT_H_
