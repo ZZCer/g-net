@@ -5,6 +5,8 @@
 #include <emmintrin.h>
 #include <signal.h>
 
+#include "onvm_init.h"
+
 #include "onvm_framework.h"
 #include "onvm_nflib.h"
 #include "onvm_includes.h"
@@ -240,7 +242,7 @@ onvm_framework_spawn_thread(int thread_id)
 	}
 }
 
-#if defined(BQUEUE_SWITCH)
+#if defined(BQUEUE_SWITCH) || defined(NEW_SWITCHING)
 static int
 onvm_framework_cpu(int thread_id)
 {
@@ -248,7 +250,9 @@ onvm_framework_cpu(int thread_id)
 	pseudo_struct_t *buf;
 	nfv_batch_t *batch = (nfv_batch_t *)pthread_getspecific(my_batch);
 	struct rte_mbuf *pkt;
+#ifndef NEW_SWITCHING
 	struct queue_t *tx_bqueue, *rx_bqueue;
+#endif
 	const struct rte_memzone *mz;
 	int res;
 	int instance_id = nf_info->instance_id;
@@ -258,6 +262,7 @@ onvm_framework_cpu(int thread_id)
 	struct timespec start, end;
 #endif
 
+#ifndef NEW_SWITCHING
 	mz = rte_memzone_lookup(get_rx_bq_name(instance_id, thread_id));
 	if (mz == NULL)
 		rte_exit(EXIT_FAILURE, "Cannot get tx info structure\n");
@@ -267,6 +272,12 @@ onvm_framework_cpu(int thread_id)
 	if (mz == NULL)
 		rte_exit(EXIT_FAILURE, "Cannot get tx info structure\n");
 	tx_bqueue = (struct queue_t *)(mz->addr);
+#else
+	mz = rte_memzone_lookup(MZ_CLIENTS);
+	if (!mz || !mz->addr)
+		rte_exit(EXIT_FAILURE, "clients not found");
+	struct client *cl = &((struct client *)mz->addr)[instance_id];
+#endif
 
 	for (; keep_running;) {
 

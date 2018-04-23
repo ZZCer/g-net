@@ -341,16 +341,19 @@ static int
 init_shm_rings(void) {
 	unsigned i, j;
 	unsigned socket_id;
-#if !defined(NEW_SWITCHING) && defined(BQUEUE_SWITCH)
+#if (!defined(NEW_SWITCHING) && defined(BQUEUE_SWITCH)) || defined(NEW_SWITCHING)
 	const struct rte_memzone *mz;
 #endif
 
 	// use calloc since we allocate for all possible clients
 	// ensure that all fields are init to 0 to avoid reading garbage
 	// TODO plopreiato, move to creation when a NF starts
-	clients = rte_calloc("client details", MAX_CLIENTS, sizeof(*clients), 0);
+	//clients = rte_calloc("client details", MAX_CLIENTS, sizeof(*clients), 0);
+	mz = rte_memzone_reserve(MZ_CLIENTS, MAX_CLIENTS * sizeof(*clients), rte_socket_id(), NO_FLAGS);
+	clients = mz.addr;
 	if (clients == NULL)
 		rte_exit(EXIT_FAILURE, "Cannot allocate memory for client program details\n");
+	memset(clients, 0, MAX_CLIENTS * sizeof(*clients));
 
 	services = rte_calloc("service to nf map", num_services, sizeof(uint16_t*), 0);
 	for (i = 0; i < num_services; i++) {

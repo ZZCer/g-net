@@ -63,6 +63,7 @@
 //#define USE_BATCH_SWITCHING 1
 #define BATCH_QUEUE_FACTOR 3
 
+#define MZ_CLIENTS "MProc_clients"
 
 #define RX_MBUF_DATA_SIZE 2048
 #define MAX_PKT_LEN 1514
