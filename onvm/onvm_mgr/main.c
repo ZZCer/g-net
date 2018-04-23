@@ -167,9 +167,19 @@ tx_thread_main(void *arg) {
 	unsigned int core_id = rte_lcore_id();
 	int port_id = tx->queue_id;
 
+	unsigned tx_count;
+	struct rte_mbuf *pkts[PACKET_READ_SIZE];
+
 	RTE_LOG(INFO, APP, "Core %d: Running TX thread for port %d\n", core_id, port_id);
 
+	for (;;) {
+		tx->port_tx_buf[port_id].count = rte_ring_dequeue_burst(
+			ports->tx_q_new[port_id], (void **)tx->port_tx_buf[port_id].buffer, PACKET_READ_SIZE, NULL);
 
+		if (likely(tx_count > 0)) {
+			onvm_pkt_flush_port_queue(tx, port_id);
+		}
+	}
 
 	return 0;
 }
