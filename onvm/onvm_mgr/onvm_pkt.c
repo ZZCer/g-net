@@ -604,22 +604,3 @@ onvm_pkt_process_next_action(struct thread_info *tx, struct rte_mbuf *pkt, struc
 	(meta->chain_index)++;
 }
 
-
-/*******************************Helper function*******************************/
-
-
-static void
-onvm_pkt_drop(struct rte_mbuf *pkt) {
-	rte_pktmbuf_free(pkt);
-}
-
-static void
-onvm_pkt_drop_batch(struct rte_mbuf **pkts, uint16_t size) {
-	uint16_t i;
-
-	if (pkts == NULL)
-		return;
-
-	for (i = 0; i < size; i++)
-		onvm_pkt_drop(pkts[i]);
-}

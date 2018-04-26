@@ -35,6 +35,21 @@ typedef struct nfv_batch_s
 	int host_mem_size_left;
 } nfv_batch_t;
 
+#ifdef NEW_SWITCHING
+enum {
+NBATCH_STATE_POST_READY = 0,
+NBATCH_STATE_PROCESSING,
+NBATCH_STATE_GPU_READY,
+};
+
+typedef struct new_batch_s {
+	int state;
+	size_t size;
+	struct rte_mbuf *pkts[MAX_BATCH_SIZE];
+	pseudo_struct_t *buf;
+} new_batch_t;
+#endif
+
 typedef struct context_s{
 	int thread_id;
 } context_t;
