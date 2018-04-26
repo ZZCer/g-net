@@ -31,6 +31,19 @@ typedef struct pseudo_struct_s {
 #ifndef NEW_SWITCHING
 static nfv_batch_t batch_set[MAX_CPU_THREAD_NUM];
 #else
+enum {
+NBATCH_STATE_POST_READY = 0,
+NBATCH_STATE_PROCESSING,
+NBATCH_STATE_GPU_READY,
+};
+
+typedef struct new_batch_s {
+	int state;
+	size_t size;
+	struct rte_mbuf *pkts[MAX_BATCH_SIZE];
+	pseudo_struct_t *buf;
+} new_batch_t;
+
 static new_batch_t batch_set[MAX_CPU_THREAD_NUM + 1];
 #endif
 static void *(*INIT_FUNC)(void);

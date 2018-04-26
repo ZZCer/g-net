@@ -49,7 +49,6 @@
 ******************************************************************************/
 
 #include "onvm_init.h"
-#include "batch_pool.h"
 #include "manager.h"
 
 
@@ -224,14 +223,15 @@ init(int argc, char *argv[]) {
 
 /*****************************Internal functions******************************/
 
-
+/*
 static void
 custom_pktmbuf_init(struct rte_mempool *mp, void *opaque_arg, void *_m, unsigned i)
 {
 	pkt_t *pkt = (pkt_t *)_m;
-	pkt->extra.dev_ptr = 0;
+	pkt->extra.dev_pkt = 0;
 	rte_pktmbuf_init(mp, opaque_arg, _m, i);
 }
+*/
 
 /**
  * Initialise the mbuf pool for packet reception for the NIC, and any other
@@ -245,10 +245,17 @@ init_mbuf_pools(void) {
 	 * seems faster to use a cache instead */
 	printf("Creating mbuf pool '%s' [%u mbufs] ...\n", PKTMBUF_POOL_NAME, num_mbufs);
 
+/*
 	pktmbuf_pool = rte_mempool_create(PKTMBUF_POOL_NAME, num_mbufs,
 			MBUF_SIZE, MBUF_CACHE_SIZE,
 			sizeof(struct rte_pktmbuf_pool_private), rte_pktmbuf_pool_init,
 			NULL, custom_pktmbuf_init, NULL, rte_socket_id(), NO_FLAGS);
+*/
+
+	pktmbuf_pool = rte_mempool_create(PKTMBUF_POOL_NAME, num_mbufs,
+			MBUF_SIZE, MBUF_CACHE_SIZE,
+			sizeof(struct rte_pktmbuf_pool_private), rte_pktmbuf_pool_init,
+			NULL, rte_pktmbuf_init, NULL, rte_socket_id(), NO_FLAGS);
 
 	return (pktmbuf_pool == NULL); /* 0  on success */
 }
@@ -350,7 +357,7 @@ init_shm_rings(void) {
 	// TODO plopreiato, move to creation when a NF starts
 	//clients = rte_calloc("client details", MAX_CLIENTS, sizeof(*clients), 0);
 	mz = rte_memzone_reserve(MZ_CLIENTS, MAX_CLIENTS * sizeof(*clients), rte_socket_id(), NO_FLAGS);
-	clients = mz.addr;
+	clients = mz->addr;
 	if (clients == NULL)
 		rte_exit(EXIT_FAILURE, "Cannot allocate memory for client program details\n");
 	memset(clients, 0, MAX_CLIENTS * sizeof(*clients));

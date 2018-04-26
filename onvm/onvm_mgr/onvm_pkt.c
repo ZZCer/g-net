@@ -58,17 +58,6 @@
 
 /**********************Internal Functions Prototypes**************************/
 
-
-/*
- * Function to send packets to one port after processing them.
- *
- * Input : a pointer to the tx queue
- *
- */
-static void
-onvm_pkt_flush_port_queue(struct thread_info *tx, uint16_t port);
-
-
 /*
  * Function to send packets to one NF after processing them.
  *
@@ -113,18 +102,6 @@ onvm_pkt_enqueue_nf(struct thread_info *thread, uint16_t dst_service_id, struct 
  */
 inline static void
 onvm_pkt_process_next_action(struct thread_info *tx, struct rte_mbuf *pkt, struct client *cl);
-
-
-/*
- * Helper function to drop a packet.
- *
- * Input : a pointer to the packet
- *
- * Ouput : an error code
- *
- */
-static int
-onvm_pkt_drop(struct rte_mbuf *pkt);
 
 
 /**********************************Interfaces*********************************/
@@ -588,7 +565,8 @@ onvm_pkt_process_next_action(struct thread_info *tx, struct rte_mbuf *pkt, struc
 		case ONVM_NF_ACTION_DROP:
 			// if the packet is drop, then <return value> is 0
 			// and !<return value> is 1.
-			cl->stats.act_drop += !onvm_pkt_drop(pkt);
+			onvm_pkt_drop(pkt);
+			cl->stats.act_drop += 1;
 			break;
 		case ONVM_NF_ACTION_TONF:
 			cl->stats.act_tonf++;

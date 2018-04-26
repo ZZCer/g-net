@@ -43,6 +43,9 @@
 #define _COMMON_H_
 
 #include <rte_mbuf.h>
+#include <rte_ip.h>
+#include <rte_tcp.h>
+#include <rte_udp.h>
 #include <stdint.h>
 #include <assert.h>
 #include <cuda.h>
@@ -94,7 +97,7 @@ typedef struct pkt_s {
 	struct rte_mbuf pkt;
 	uint8_t __headroom[RTE_PKTMBUF_HEADROOM];
 	uint8_t __data[RX_MBUF_DATA_SIZE];
-	pkt_extra_t extra;
+	//pkt_extra_t extra;
 } pkt_t;
 
 #define MBUF_SIZE (sizeof(pkt_t))

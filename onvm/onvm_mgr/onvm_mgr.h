@@ -74,8 +74,8 @@
 /******************************Internal headers*******************************/
 
 
-#include "onvm_mgr/onvm_args.h"
-#include "onvm_mgr/onvm_init.h"
+#include "onvm_args.h"
+#include "onvm_init.h"
 #include "onvm_includes.h"
 #include "onvm_sc_mgr.h"
 #include "onvm_flow_table.h"

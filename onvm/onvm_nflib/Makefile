@@ -55,9 +55,9 @@ SRCS-y := onvm_pkt_helper.c onvm_sc_common.c onvm_sc_mgr.c onvm_flow_table.c onv
 INC := fifo.h
 
 CFLAGS += $(WERROR_FLAGS) -g $(USER_FLAGS)
-CFLAGS += -I$(SRCDIR)/../shared
+CFLAGS += -I$(SRCDIR) -I$(SRCDIR)/../shared -I$(SRCDIR)/../onvm_mgr
 CFLAGS += -I$(CUDA_PATH)/include
-LDFLAGS += $(SRCDIR)/../shared/shared/$(RTE_TARGET)/fifo.o
+#LDFLAGS += $(SRCDIR)/../shared/$(RTE_TARGET)/fifo.o
 #LDFLAGS += -L$(CUDA_PATH)/lib64 -lcudart -lcuda
 
 include $(RTE_SDK)/mk/rte.extlib.mk
