@@ -48,6 +48,8 @@
 
 ******************************************************************************/
 
+// CLEAR: 1
+
 #include "onvm_init.h"
 #include "manager.h"
 
@@ -135,10 +137,6 @@ init(int argc, char *argv[]) {
 		if (retval != 0)
 			rte_exit(EXIT_FAILURE, "Cannot initialise port %u\n",
 					(unsigned)i);
-		ports->tx_q_new[ports->id[i]] = rte_ring_create(get_port_tx_queue_name(ports->id[i]),
-				BATCH_QUEUE_FACTOR * MAX_BATCH_SIZE, rte_socket_id(), NO_FLAGS);
-		if (!ports->tx_q_new[ports->id[i]])
-			rte_exit(EXIT_FAILURE, "Cannot create tx q for port %u\n", (unsigned)i);
 	}
 
 	check_all_ports_link_status(ports->num_ports, (~0x0));
@@ -189,11 +187,7 @@ init(int argc, char *argv[]) {
 	}
 
 	/* Add the last action */
-#if defined(NETWORK)
 	retval = onvm_sc_append_entry(default_chain, ONVM_NF_ACTION_OUT, 0);
-#else
-	retval = onvm_sc_append_entry(default_chain, ONVM_NF_ACTION_DROP, NF_SOMEONE);
-#endif
 	if (retval == ENOSPC)
 		rte_exit(EXIT_FAILURE, "chain length can not be larger than the maximum chain length\n");
 
@@ -206,8 +200,6 @@ init(int argc, char *argv[]) {
 	default_sc_p = mz_scp->addr;
 	*default_sc_p = default_chain;
 	onvm_sc_print(default_chain);
-
-	onvm_flow_dir_init();
 
 	return 0;
 }
@@ -260,6 +252,18 @@ init_client_info_pool(void) {
  */
 static int
 init_port(uint8_t port_num) {
+
+	static uint8_t rss_symmetric_key[40] = { 0x6d, 0x5a, 0x6d, 0x5a,
+											0x6d, 0x5a, 0x6d, 0x5a,
+											0x6d, 0x5a, 0x6d, 0x5a,
+											0x6d, 0x5a, 0x6d, 0x5a,
+											0x6d, 0x5a, 0x6d, 0x5a,
+											0x6d, 0x5a, 0x6d, 0x5a,
+											0x6d, 0x5a, 0x6d, 0x5a,
+											0x6d, 0x5a, 0x6d, 0x5a,
+											0x6d, 0x5a, 0x6d, 0x5a,
+											0x6d, 0x5a, 0x6d, 0x5a,};
+
 	/* for port configuration all features are off by default */
 	const struct rte_eth_conf port_conf = {
 		.rxmode = {
@@ -310,6 +314,11 @@ init_port(uint8_t port_num) {
 	retval = rte_eth_dev_start(port_num);
 	if (retval < 0) return retval;
 
+	ports->tx_q_new[port_num] = rte_ring_create(get_port_tx_queue_name(port_num),
+			BATCH_QUEUE_FACTOR * MAX_BATCH_SIZE, rte_socket_id(), NO_FLAGS);
+	if (!ports->tx_q_new[port_num])
+		return -1;
+
 	printf("done: \n");
 
 	return 0;
@@ -347,7 +356,6 @@ init_shm_rings(void) {
 		/* Create an RX queue for each client */
 		socket_id = rte_socket_id();
 		clients[i].instance_id = i;
-		clients[i].queue_id = 0;
 
 		clients[i].rx_q_new = rte_ring_create(get_rx_queue_name(i, 0), BATCH_QUEUE_FACTOR * MAX_BATCH_SIZE, socket_id, NO_FLAGS);
 		clients[i].tx_q_new = NULL;

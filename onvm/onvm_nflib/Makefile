@@ -50,7 +50,7 @@ CUDA_PATH  ?= /usr/local/cuda
 LIB    = libonvm.a
 
 # all source are stored in SRCS-y
-SRCS-y := onvm_pkt_helper.c onvm_sc_common.c onvm_sc_mgr.c onvm_flow_table.c onvm_flow_dir.c onvm_nflib.c onvm_framework.c
+SRCS-y := onvm_pkt_helper.c onvm_sc_common.c onvm_sc_mgr.c onvm_nflib.c onvm_framework.c
 
 INC := fifo.h
 

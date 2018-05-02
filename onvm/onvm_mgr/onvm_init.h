@@ -72,8 +72,6 @@
 #include "onvm_common.h"
 #include "onvm_sc_mgr.h"
 #include "onvm_sc_common.h"
-#include "onvm_flow_table.h"
-#include "onvm_flow_dir.h"
 #include "fifo.h"
 
 
@@ -110,16 +108,10 @@
  * stats from the clients.
  */
 struct client {
-	struct rte_ring *rx_q[MAX_CPU_THREAD_NUM];
-	struct rte_ring *tx_q;
 	struct rte_ring *response_q[MAX_CPU_THREAD_NUM];
 	struct rte_ring *global_response_q;
 	struct onvm_nf_info *info;
 	uint16_t instance_id;
-	uint16_t queue_id;
-
-	struct queue_t *rx_bq[MAX_CPU_THREAD_NUM];
-	struct queue_t *tx_bq[MAX_CPU_THREAD_NUM];
 
 	struct rte_ring *rx_q_new;
 	struct rte_ring *tx_q_new;

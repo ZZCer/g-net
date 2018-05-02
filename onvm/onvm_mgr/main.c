@@ -157,7 +157,7 @@ main(int argc, char *argv[]) {
 	/* clear statistics */
 	onvm_stats_clear_all_clients();
 
-	/* Reserve n cores for: 1 Scheduler + Stats, 1 Manager, and ONVM_NUM_RX_THREADS for Rx */
+	/* Reserve n cores for: 1 Scheduler + Stats, 1 Manager, and ONVM_NUM_RX_THREADS for Rx, 1 per port for Tx, to be adjusted */
 	cur_lcore = rte_lcore_id();
 	rx_lcores = ONVM_NUM_RX_THREADS;
 	tx_lcores = ports->num_ports;
@@ -169,7 +169,7 @@ main(int argc, char *argv[]) {
 	RTE_LOG(INFO, APP, "%d cores available for Scheduler + States\n", 1);
 
 	if (rx_lcores + tx_lcores + 2 != rte_lcore_count()) {
-		rte_exit(EXIT_FAILURE, "%d cores needed, but there are only %d cores specified\n", rx_lcores+tx_lcores+2, rte_lcore_count());
+		rte_exit(EXIT_FAILURE, "%d cores needed, but %d cores specified\n", rx_lcores+tx_lcores+2, rte_lcore_count());
 	}
 
 	// We start the system with 0 NFs active

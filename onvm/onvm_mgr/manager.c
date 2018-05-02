@@ -7,11 +7,6 @@
 #include "manager.h"
 #include "drvapi_error_string.h"
 
-#if defined(GRAPH_TIME)
-int graph_time_htod = 1;
-int graph_time_dtoh = 1;
-#endif
-
 extern struct onvm_service_chain *default_chain;
 
 static pthread_mutex_t lock;
@@ -22,11 +17,6 @@ struct rte_ring *nf_request_queue;
 
 static int allocated_sm = 0;
 static CUcontext context;
-
-#if defined(MEASURE_KERNEL_TIME)
-double total_kernel_time_diff = 0;
-uint32_t total_kernel_time_cnt = 0;
-#endif
 
 #define checkCudaErrors(err) __checkCudaErrors(err, __FILE__, __LINE__)
 static inline void __checkCudaErrors( CUresult err, const char *file, const int line )
