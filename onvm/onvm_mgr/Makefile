@@ -56,7 +56,7 @@ APP = onvm_mgr
 # all source are stored in SRCS-y
 SRCS-y := main.c onvm_init.c onvm_args.c onvm_stats.c onvm_nf.c manager.c scheduler.c
 
-INC := onvm_mgr.h onvm_init.h onvm_args.h onvm_stats.h onvm_nf.h onvm_pkt.h manager.h scheduler.h fifo.h
+INC := onvm_mgr.h onvm_init.h onvm_args.h onvm_stats.h onvm_nf.h onvm_pkt.h manager.h scheduler.h
 
 WERROR_FLAGS += -Wno-error=unused-function
 

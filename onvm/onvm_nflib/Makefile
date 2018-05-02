@@ -52,7 +52,7 @@ LIB    = libonvm.a
 # all source are stored in SRCS-y
 SRCS-y := onvm_pkt_helper.c onvm_sc_common.c onvm_sc_mgr.c onvm_nflib.c onvm_framework.c
 
-INC := fifo.h
+INC :=
 
 CFLAGS += $(WERROR_FLAGS) -g -rdynamic $(USER_FLAGS)
 CFLAGS += -I$(SRCDIR) -I$(SRCDIR)/../shared -I$(SRCDIR)/../onvm_mgr

@@ -14,7 +14,6 @@
 #include "onvm_framework.h"
 #include "onvm_nflib.h"
 #include "onvm_includes.h"
-#include "fifo.h"
 
 extern struct rte_mempool *nf_request_mp;
 extern struct rte_mempool *nf_response_mp;

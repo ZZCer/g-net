@@ -53,8 +53,6 @@
 #include "onvm_nf.h"
 #include "onvm_common.h"
 #include "scheduler.h"
-#include "fifo.h"
-
 
 /**********************Internal Functions Prototypes**************************/
 
