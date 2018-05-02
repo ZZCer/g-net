@@ -175,6 +175,8 @@ onvm_nflib_init(int argc, char *argv[], const char *nf_tag, int service_id,
 	struct onvm_service_chain **scp;
 	int retval_eal, retval_parse, retval_final;
 
+	signal(SIGSEGV, segv_handler);
+
 	if (service_id < 0)
 		rte_exit(EXIT_FAILURE, "Service ID not set");
 

@@ -58,9 +58,6 @@
 #include "manager.h"
 #include "scheduler.h"
 
-#include <execinfo.h>
-#include <signal.h>
-
 extern struct onvm_service_chain *default_chain;
 extern struct rx_perf rx_stats[ONVM_NUM_RX_THREADS]; 
 extern struct port_info *ports;
@@ -142,19 +139,6 @@ tx_thread_main(void *arg) {
 }
 
 /*******************************Main function*********************************/
-
-static void segv_handler(int sig) {
-	void *array[32];
-	size_t size;
-
-	// get void*'s for all entries on the stack
-	size = backtrace(array, 32);
-
-	// print out all the frames to stderr
-	fprintf(stderr, "Error: signal %d:\n", sig);
-	backtrace_symbols_fd(array, size, STDERR_FILENO);
-	exit(1);
-}
 
 int
 main(int argc, char *argv[]) {
