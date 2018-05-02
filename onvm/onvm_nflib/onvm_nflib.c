@@ -63,7 +63,6 @@
 #include "onvm_includes.h"
 #include "onvm_sc_common.h"
 #include "onvm_framework.h"
-#include "fifo.h"
 
 /******************************Global Variables*******************************/
 
