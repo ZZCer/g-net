@@ -663,7 +663,6 @@ onvm_framework_start_gpu(void (*user_gpu_htod)(void *, unsigned int),
 			gpu_buf_id = gpu_get_batch(batch);
 		}
 
-		buf = (pseudo_struct_t *)(batch->user_bufs[gpu_buf_id]);
 		tx_stats[instance_id].batch_size += batch->buf_size[gpu_buf_id];
 		tx_stats[instance_id].batch_cnt ++;
 
