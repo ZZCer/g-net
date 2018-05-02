@@ -152,7 +152,7 @@ tx_thread_main(void *arg) {
 	unsigned tx_count;
 	unsigned sent;
 
-	RTE_LOG(INFO, APP, "Core %d: Running TX thread for port %d\n", core_id, port_id);
+	RTE_LOG(INFO, APP, "Core %d: Running TX thread for port %d\n", core_id, tx->port_id);
 
 	for (;;) {
 		tx_count = rte_ring_dequeue_burst(
