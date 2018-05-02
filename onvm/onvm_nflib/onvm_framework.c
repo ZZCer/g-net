@@ -33,16 +33,10 @@ static void *(*INIT_FUNC)(void);
 static void (*BATCH_FUNC)(void *,  struct rte_mbuf *);
 static void (*POST_FUNC)(void *, struct rte_mbuf *, int);
 
-#if defined(BQUEUE_SWITCH)
 static int onvm_framework_cpu(int thread_id);
-#else
-static int onvm_framework_cpu(struct rte_mbuf **pkt, int rcv_pkt_num, int thread_id);
-#endif
 
 static pthread_key_t my_batch;
 static pthread_mutex_t lock;
-
-#define USE_LOCK 1
 
 /* NOTE: The batch size should be at least 10x? larger than the number of items 
  * in PKTMBUF_POOL when running local. Or not enough mbufs to loop */
@@ -54,120 +48,6 @@ int INIT_WORKER_THREAD_NUM = 1; // us -- default latency
 struct thread_arg {
 	int thread_id;
 };
-
-#ifndef NEW_SWITCHING
-static int
-gpu_get_available_buf_id(nfv_batch_t *batch)
-{
-	int id;
-
-	/* Because this is called always after mega_gpu_give_to_sender(), 
-	 * There will always be at least one available buf for receiver */
-	//assert(batch->available_buf_id[0] != -1);
-
-#if defined(USE_LOCK)
-	pthread_mutex_lock(&(batch->mutex_available_buf_id));
-	id = batch->available_buf_id[0];
-	batch->available_buf_id[0] = batch->available_buf_id[1];
-	batch->available_buf_id[1] = -1; 
-	pthread_mutex_unlock(&(batch->mutex_available_buf_id));
-#else
-	if (batch->available_buf_id[0] != -1) {
-		id = batch->available_buf_id[0];
-		batch->available_buf_id[0] = -1;
-	} else if (batch->available_buf_id[1] != -1) {
-		id = batch->available_buf_id[1];
-		batch->available_buf_id[1] = -1;
-	} else {
-		assert(0);
-	}
-#endif
-	return id;
-}
-
-static int
-gpu_get_batch(nfv_batch_t *batch_set)
-{
-	unsigned int i;
-	int available_buf_id;
-	nfv_batch_t *batch;
-
-	/* Tell the CPU worker we are taking the batch */
-	for (i = 0; i < gpu_info->thread_num; i ++) {
-		batch = &(batch_set[i]);
-
-		assert(batch->gpu_buf_id == -1);
-
-		available_buf_id = gpu_get_available_buf_id(batch);
-
-		batch->gpu_buf_id = batch->receiver_buf_id;
-
-		/* Let the receiver know the new available buffer transparently */
-		batch->receiver_buf_id = available_buf_id;
-	}
-	return batch->gpu_buf_id;
-}
-
-/* Tell the CPU sender that this batch has been completed */
-static void
-gpu_give_to_sender(nfv_batch_t *batch_set)
-{
-	unsigned int i;
-	nfv_batch_t *batch;
-
-	for (i = 0; i < gpu_info->thread_num; i ++) {
-		batch = &(batch_set[i]);
-
-		if (batch->sender_buf_id != -1) {
-			RTE_LOG(DEBUG, APP, "Post processing not completed while GPU completes processing\n");
-		}
-		/* Wait for the sender to complete last batch forwarding */
-		while ((batch->sender_buf_id != -1) && keep_running) ;
-
-		/* Give the buf to sender */
-		batch->sender_buf_id = batch->gpu_buf_id;
-		batch->gpu_buf_id = -1;
-	}
-
-	return ;
-}
-
-static int
-sender_give_available_buffer(void)
-{
-	nfv_batch_t *batch = pthread_getspecific(my_batch);
-	batch->post_idx = 0;
-
-	pseudo_struct_t *buf = (pseudo_struct_t *)(batch->user_bufs[batch->sender_buf_id]);
-	buf->job_num = 0;
-
-	//printf("<<< [sender %d] < give available buffer %d\n", batch->thread_id, batch->sender_buf_id);
-	/* tell the receiver that the buffer is available */
-#if defined(USE_LOCK)
-	pthread_mutex_lock(&(batch->mutex_available_buf_id));
-	if (batch->available_buf_id[0] == -1) {
-		batch->available_buf_id[0] = batch->sender_buf_id;
-	} else if (batch->available_buf_id[1] == -1) {
-		batch->available_buf_id[1] = batch->sender_buf_id;
-	} else {
-		rte_exit(EXIT_FAILURE, "Three buffers available \n");
-	}
-	pthread_mutex_unlock(&(batch->mutex_available_buf_id));
-#else
-	if (batch->available_buf_id[0] == -1) {
-		batch->available_buf_id[0] = batch->sender_buf_id;
-	} else if (batch->available_buf_id[1] == -1) {
-		batch->available_buf_id[1] = batch->sender_buf_id;
-	} else {
-		rte_exit(EXIT_FAILURE, "Three buffers available \n");
-	}
-#endif
-
-	batch->sender_buf_id = -1;
-
-	return 0;
-}
-#else
 
 static inline int get_batch(nfv_batch_t *batch, int state) {
        int i;
@@ -185,8 +65,6 @@ static inline int gpu_get_batch(nfv_batch_t *batch) {
        return get_batch(batch, BUF_STATE_CPU_READY);
 }
 
-#endif
-
 static void 
 onvm_framework_thread_init(int thread_id)
 {
@@ -196,17 +74,6 @@ onvm_framework_thread_init(int thread_id)
 	/* The main thread set twice, elegant plan? */
 	pthread_setspecific(my_batch, (void *)batch);
 	batch->thread_id = thread_id;
-	batch->post_idx = 0;
-
-	batch->sender_buf_id = -1;
-	batch->gpu_buf_id = -1;
-	batch->receiver_buf_id = 0;
-	batch->available_buf_id[0] = 1;
-	batch->available_buf_id[1] = 2;
-
-	assert(pthread_mutex_init(&(batch->mutex_sender_buf_id), NULL) == 0);
-	assert(pthread_mutex_init(&(batch->mutex_available_buf_id), NULL) == 0);
-	assert(pthread_mutex_init(&(batch->mutex_batch_launch), NULL) == 0);
 
 	/* the last 1 is used to mark the allocation for not the first thread */
 	if (thread_id != 0) {

@@ -22,17 +22,7 @@ typedef struct nfv_batch_s
 	int buf_size[NUM_BATCH_BUF];
 	volatile int buf_state[NUM_BATCH_BUF];
 
-	volatile int receiver_buf_id;
-	volatile int sender_buf_id;
-	volatile int available_buf_id[NUM_BATCH_BUF];
-	int gpu_buf_id;
-
-	unsigned int thread_id;
-	int64_t post_idx;
-
-	pthread_mutex_t mutex_sender_buf_id; 
-	pthread_mutex_t mutex_available_buf_id; 
-	pthread_mutex_t mutex_batch_launch; 
+	int thread_id;
 
 	void *host_mem_addr_base;
 	void *host_mem_addr_cur;
