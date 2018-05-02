@@ -125,7 +125,7 @@ rx_thread_main(void *arg) {
 			if (likely(rx_count > 0)) {
 				if (unlikely(rx_q_new == NULL)) {
 					if (nf_per_service_count[first_service_id] > 0) {
-						rx_q_new = clients[services[first_service_id][0]].tx_q_new;
+						rx_q_new = clients[services[first_service_id][0]].rx_q_new;
 					}
 				}
 				if (likely(rx_q_new != NULL)) {
