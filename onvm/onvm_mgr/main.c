@@ -48,6 +48,7 @@
 
  ******************************************************************************/
 
+// CLEAR: 1
 
 #include "onvm_mgr.h"
 #include "onvm_pkt.h"
@@ -79,47 +80,19 @@ rx_thread_main(void *arg) {
 
 	RTE_LOG(INFO, APP, "Core %d: Running RX thread for RX queue %d\n", core_id, rx->queue_id);
 	
-#ifdef NEW_SWITCHING
 	struct rte_ring *rx_q_new = NULL;
 	if (default_chain->sc[1].action == ONVM_NF_ACTION_OUT)
 			rx_q_new = ports->tx_q_new[default_chain->sc[1].destination];
 	else if (default_chain->sc[1].action != ONVM_NF_ACTION_TONF)
 			rte_exit(EXIT_FAILURE, "Failed to find first nf");
 	uint16_t first_service_id = default_chain->sc[1].destination;
-#endif
 
-
-#if defined(RX_SPEED_TEST)
-	uint16_t j;
-	rx_stats[rx->queue_id].count = 0;
-	rx_stats[rx->queue_id].bytes = 0;
-#endif
 
 	for (;;) {
 		/* Read ports */
 		for (i = 0; i < ports->num_ports; i++) {
 			rx_count = rte_eth_rx_burst(ports->id[i], rx->queue_id, pkts, PACKET_READ_SIZE);
 			ports->rx_stats.rx[ports->id[i]] += rx_count;
-
-#if defined(RX_SPEED_TEST) || defined(RX_SPEED_TEST_2)
-			if (unlikely(rx_count == 0)) continue;
-
-			if (unlikely(rx_stats[rx->queue_id].reset == 1)) {
-				rx_stats[rx->queue_id].count = 0;
-				rx_stats[rx->queue_id].bytes = 0;
-				rx_stats[rx->queue_id].reset = 0;
-			}
-
-			rx_stats[rx->queue_id].count += rx_count;
-			rx_stats[rx->queue_id].bytes += rx_count * pkts[0]->data_len;
-#endif
-
-#if defined(RX_SPEED_TEST)
-			for (j = 0; j < rx_count; j ++) {
-				rte_pktmbuf_free(pkts[j]);
-			}
-			continue;
-#endif
 
 			/* Now process the NIC packets read */
 			if (likely(rx_count > 0)) {
@@ -197,26 +170,13 @@ main(int argc, char *argv[]) {
 		return -1;
 	RTE_LOG(INFO, APP, "Finished Process Init.\n");
 
-	/*
-	const struct rte_memseg *seg = rte_eal_get_physmem_layout();
-	for (i = 0; ; i ++) { 
-		if (seg[i].addr == NULL) break;
-		RTE_LOG(INFO, APP, "virtual address [%p, %p], physical address %p, len %zu\n",
-				seg[i].addr, (uint8_t *)seg[i].addr + seg[i].len, (void *)seg[i].phys_addr, seg[i].len);
-	}
-	*/
-
 	/* clear statistics */
 	onvm_stats_clear_all_clients();
 
 	/* Reserve n cores for: 1 Scheduler + Stats, 1 Manager, and ONVM_NUM_RX_THREADS for Rx */
 	cur_lcore = rte_lcore_id();
 	rx_lcores = ONVM_NUM_RX_THREADS;
-#if defined(NETWORK)
 	tx_lcores = ports->num_ports;
-#else
-	tx_lcores = default_chain->chain_length; /* equal number of VMs, considering NF_PKTGEN */
-#endif
 
 	RTE_LOG(INFO, APP, "%d cores available in total\n", rte_lcore_count());
 	RTE_LOG(INFO, APP, "%d cores available for handling RX queues\n", rx_lcores);
