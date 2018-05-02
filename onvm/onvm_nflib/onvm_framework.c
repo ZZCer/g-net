@@ -142,6 +142,7 @@ onvm_framework_cpu(int thread_id)
 	while (keep_running) {
 		batch = &batch_set[thread_id];
 		buf_id = cpu_get_batch(batch);
+		if (buf_id == -1) continue;
 		cur_buf_size = batch->buf_size[buf_id];
 
 		// post-processing
