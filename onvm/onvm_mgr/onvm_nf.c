@@ -153,6 +153,7 @@ onvm_nf_start(struct onvm_nf_info *nf_info) {
 	// TODO dynamically allocate memory here - make rx/tx ring
 	// take code from init_shm_rings in init.c
 	// flush rx/tx queue at the this index to start clean?
+	int i;
 
 	if(nf_info == NULL)
 		return 1;
@@ -188,7 +189,7 @@ onvm_nf_start(struct onvm_nf_info *nf_info) {
 	services[nf_info->service_id][service_count] = instance_id;
 
 	int cur_chain = -1;
-	for (int i = 1; i <= default_chain->chain_length; i++) {
+	for (i = 1; i <= default_chain->chain_length; i++) {
 			if (default_chain->sc[i].action == ONVM_NF_ACTION_TONF &&
 							default_chain->sc[i].destination == nf_info->service_id) {
 					cur_chain = i;
