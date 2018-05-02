@@ -632,7 +632,6 @@ onvm_framework_start_gpu(void (*user_gpu_htod)(void *, unsigned int),
 	int gpu_buf_id;
 	int batch_id;
 	int instance_id = nf_info->instance_id;
-	pseudo_struct_t *buf;
 	unsigned int i;
 	struct timespec start, end;
 	double diff;
