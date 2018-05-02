@@ -45,7 +45,7 @@ include $(RTE_SDK)/mk/rte.vars.mk
 RTE_TARGET ?= x86_64-native-linuxapp-gcc
 
 # all source are stored in SRCS-y
-SRCS-y := fifo.c
+SRCS-y :=
 
 CFLAGS += $(WERROR_FLAGS) -O3
 CFLAGS += -I$(SRCDIR)/../shared
