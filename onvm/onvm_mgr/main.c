@@ -148,18 +148,20 @@ static int
 tx_thread_main(void *arg) {
 	struct thread_info *tx = (struct thread_info*)arg;
 	unsigned int core_id = rte_lcore_id();
-	int port_id = tx->queue_id;
 
 	unsigned tx_count;
+	unsigned sent;
 
 	RTE_LOG(INFO, APP, "Core %d: Running TX thread for port %d\n", core_id, port_id);
 
 	for (;;) {
 		tx_count = rte_ring_dequeue_burst(
-			ports->tx_q_new[port_id], (void **)tx->port_tx_buf[port_id].buffer, PACKET_READ_SIZE, NULL);
-		tx->port_tx_buf[port_id].count = tx->port_tx_buf[port_id].count;
+			ports->tx_q_new[tx->port_id], (void **)tx->port_tx_buf, PACKET_READ_SIZE, NULL);
 		if (likely(tx_count > 0)) {
-			onvm_pkt_flush_port_queue(tx, port_id);
+			sent = rte_eth_tx_burst(tx->port_id, 0, tx->port_tx_buf, tx_count);
+			onvm_pkt_drop_batch(tx->port_tx_buf + sent, tx_count - sent);
+			ports->tx_stats.tx[tx->port_id] += sent;
+			ports->tx_stats.tx_drop[tx->port_id] += sent;
 		}
 	}
 
@@ -211,7 +213,7 @@ main(int argc, char *argv[]) {
 	cur_lcore = rte_lcore_id();
 	rx_lcores = ONVM_NUM_RX_THREADS;
 #if defined(NETWORK)
-	tx_lcores = default_chain->chain_length - 1;
+	tx_lcores = ports->num_ports;
 #else
 	tx_lcores = default_chain->chain_length; /* equal number of VMs, considering NF_PKTGEN */
 #endif
@@ -237,11 +239,10 @@ main(int argc, char *argv[]) {
 	}
 
 	/* Assign each port with a TX thread */
-	for (i = 0; i < ports->num_ports; i++) {
+	for (i = 0; i < tx_lcores; i++) {
 		struct thread_info *tx = calloc(1, sizeof(struct thread_info));
-		tx->queue_id = ports->id[i]; /* Actually this is the port id */
-		tx->port_tx_buf = calloc(RTE_MAX_ETHPORTS, sizeof(struct packet_buf));
-		tx->nf_rx_buf = calloc(MAX_CLIENTS, sizeof(struct packet_buf));
+		tx->port_id = ports->id[i]; /* Actually this is the port id */
+		tx->port_tx_buf = calloc(PACKET_READ_SIZE, sizeof(struct rte_mbuf *));
 
 		cur_lcore = rte_get_next_lcore(cur_lcore, 1, 1);
 		if (rte_eal_remote_launch(tx_thread_main, (void*)tx,  cur_lcore) == -EBUSY) {
@@ -255,7 +256,6 @@ main(int argc, char *argv[]) {
 		struct thread_info *rx = calloc(1, sizeof(struct thread_info));
 		rx->queue_id = i;
 		rx->port_tx_buf = NULL;
-		rx->nf_rx_buf = calloc(MAX_CLIENTS, sizeof(struct packet_buf));
 
 		cur_lcore = rte_get_next_lcore(cur_lcore, 1, 1);
 		if (rte_eal_remote_launch(rx_thread_main, (void *)rx, cur_lcore) == -EBUSY) {

@@ -273,7 +273,7 @@ init_port(uint8_t port_num) {
 		},
 	};
 
-	const uint16_t rx_rings = ONVM_NUM_RX_THREADS, tx_rings = MAX_CLIENTS;
+	const uint16_t rx_rings = ONVM_NUM_RX_THREADS, tx_rings = 1;
 	const uint16_t rx_ring_size = RTE_MP_RX_DESC_DEFAULT;
 	const uint16_t tx_ring_size = RTE_MP_TX_DESC_DEFAULT;
 

@@ -116,14 +116,8 @@ struct packet_buf {
  */
 struct thread_info {
 	unsigned queue_id;
-	unsigned first_cl;
-	unsigned last_cl;
-	/* FIXME: This is confusing since it is non-inclusive. It would be
-	 *        better to have this take the first client and the number
-	 *        of consecutive clients after it to handle.
-	 */
-	struct packet_buf *nf_rx_buf;
-	struct packet_buf *port_tx_buf;
+	unsigned port_id;
+	struct rte_mbuf **port_tx_buf;
 
 	/* thread statistics, record the  */
 	int rx[MAX_CLIENTS]; 
