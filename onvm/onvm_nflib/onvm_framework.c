@@ -1,3 +1,6 @@
+
+// CLEAR: 1
+
 #include <pthread.h>
 #include <cuda_runtime.h>
 #include <sys/time.h>
@@ -113,15 +116,6 @@ onvm_framework_spawn_thread(int thread_id)
 	struct thread_arg *arg = (struct thread_arg *)malloc(sizeof(struct thread_arg));
 	arg->thread_id = thread_id;
 
-#if 0
-	pthread_t tid;
-	pthread_attr_t attr;
-	pthread_attr_init(&attr);
-
-	if (pthread_create(&tid, &attr, cpu_thread, (void *)arg) != 0)
-		rte_exit(EXIT_FAILURE, "pthread_create error!\n");
-#endif
-
 	unsigned cur_lcore = rte_lcore_id() + thread_id;
 	cur_lcore =	rte_get_next_lcore(cur_lcore, 1, 1);
 	if (rte_eal_remote_launch(cpu_thread, (void *)arg, cur_lcore) == -EBUSY) {
@@ -129,7 +123,6 @@ onvm_framework_spawn_thread(int thread_id)
 	}
 }
 
-#ifdef NEW_SWITCHING
 static int
 onvm_framework_cpu(int thread_id)
 {
@@ -201,208 +194,6 @@ onvm_framework_cpu(int thread_id)
 
 	return 0;
 }
-#elif defined(BQUEUE_SWITCH)
-static int
-onvm_framework_cpu(int thread_id)
-{
-	int i, buf_id;
-	pseudo_struct_t *buf;
-	nfv_batch_t *batch = (nfv_batch_t *)pthread_getspecific(my_batch);
-	struct rte_mbuf *pkt;
-	struct queue_t *tx_bqueue, *rx_bqueue;
-	const struct rte_memzone *mz;
-	int res;
-	int instance_id = nf_info->instance_id;
-
-#if defined(MEASURE_LATENCY)
-	int latency_mark = 0;
-	struct timespec start, end;
-#endif
-
-	mz = rte_memzone_lookup(get_rx_bq_name(instance_id, thread_id));
-	if (mz == NULL)
-		rte_exit(EXIT_FAILURE, "Cannot get tx info structure\n");
-	rx_bqueue = (struct queue_t *)(mz->addr);
-
-	mz = rte_memzone_lookup(get_tx_bq_name(instance_id, thread_id));
-	if (mz == NULL)
-		rte_exit(EXIT_FAILURE, "Cannot get tx info structure\n");
-	tx_bqueue = (struct queue_t *)(mz->addr);
-
-	for (; keep_running;) {
-
-		res = bq_dequeue(rx_bqueue, &pkt);
-		if (unlikely(res != SUCCESS))
-			goto send;
-		assert(pkt != NULL);
-
-#if defined(NF_RX_SPEED_TEST)
-		rte_pktmbuf_free(pkt);
-		continue;
-#endif
-again:
-		/* Read the buf_id for each pkt, in case that the GPU scheduler
-		 * thread changes the id. */
-		buf_id = batch->receiver_buf_id;
-		buf = (pseudo_struct_t *)(batch->user_bufs[buf_id]);
-
-#if defined(MEASURE_LATENCY)
-		if (thread_id == 0 && buf->job_num == 0 && latency_mark == 0) {
-			latency_mark = 1;
-			clock_gettime(CLOCK_MONOTONIC, &start);
-		}
-#endif
-
-		if ((buf->job_num >= B_PARA * BATCH_SIZE) && (thread_id == 0) && (launch_kernel == 0)) {
-			launch_kernel = 1;
-		}
-
-#if defined(BATCH_DRIVEN_BUFFER_PASS)
-		if (unlikely(buf->job_num >= BATCH_SIZE)) {
-			/* This nf_drop statistic info is important for scheduling, cannot remove */
-			if (thread_id == 0)
-				tx_stats[instance_id].nf_drop ++;
-			rte_pktmbuf_free(pkt);
-			goto send;
-		}
-#else
-		if (unlikely(buf->job_num >= MAX_BATCH_SIZE)) {
-			/* Batch is full, drop the packets */
-			if (thread_id == 0)
-				tx_stats[instance_id].nf_drop ++;
-			rte_pktmbuf_free(pkt);
-			goto send;
-		}
-#endif
-
-		//RTE_LOG(INFO, APP, "buf_id %d, thread_id %d, buf->job_num %d\n", buf_id, batch->thread_id, buf->job_num);
-		BATCH_FUNC((void *)buf, pkt);
-		batch->pkt_ptr[buf_id][buf->job_num] = pkt;
-		/* the first element is required to be the job_num */
-		buf->job_num ++;
-
-		if (unlikely(buf_id != batch->receiver_buf_id)) {
-			RTE_LOG(DEBUG, APP, "Buffer is switched during insertion\n");
-			buf->job_num --;
-			if (buf->job_num < 0) buf->job_num = 0;
-			goto again;
-		}
-
-send:
-		/* Post Processing */
-		if (batch->sender_buf_id == -1) {
-			/* The send buf has been processed */
-			continue;
-		}
-
-		buf = (pseudo_struct_t *)(batch->user_bufs[batch->sender_buf_id]);
-
-		/* Receive one packet, post process two packets */
-		for (i = 0; (i < 2) && (batch->post_idx < buf->job_num); i ++, batch->post_idx ++) {
-			POST_FUNC((void *)buf, batch->pkt_ptr[batch->sender_buf_id][batch->post_idx], batch->post_idx);
-
-#if defined(MEASURE_LATENCY)
-			if (thread_id == 0 && batch->post_idx == 0 && latency_mark == 1) {
-				clock_gettime(CLOCK_MONOTONIC, &end);
-				printf("%.2lf\n", (double)(1000000 * (end.tv_sec-start.tv_sec) + (end.tv_nsec-start.tv_nsec)/1000));
-				latency_mark = 0;
-			}
-#endif
-
-			res = bq_enqueue(tx_bqueue, batch->pkt_ptr[batch->sender_buf_id][batch->post_idx]);
-			if (unlikely(res != SUCCESS)) {
-				if (thread_id == 0)
-					tx_stats[instance_id].nf_drop_enq ++;
-				rte_pktmbuf_free(batch->pkt_ptr[batch->sender_buf_id][batch->post_idx]);
-			}
-			//if (thread_id == 0)
-			//	tx_stats[instance_id].tx ++;
-		}
-
-		if (unlikely(batch->post_idx == buf->job_num)) {
-			sender_give_available_buffer();
-		}
-	}
-
-	return 0;
-}
-
-#else /* BQUEUE_SWITCH */
-
-static int
-onvm_framework_cpu(struct rte_mbuf **pkts, int rcv_pkt_num, int thread_id)
-{
-	int i, buf_id;
-	pseudo_struct_t *buf;
-	nfv_batch_t *batch = (nfv_batch_t *)pthread_getspecific(my_batch);
-	struct rte_mbuf *pkt;
-	//int instance_id = nf_info->instance_id;
-
-	/* Batch the received packets one by one */
-	for (i = 0; i < rcv_pkt_num; i ++) {
-		pkt = pkts[i];
-again:
-		/* Read the buf_id for each pkt, in case that the GPU scheduler
-		 * thread changes the id. */
-		buf_id = batch->receiver_buf_id;
-		buf = (pseudo_struct_t *)(batch->user_bufs[buf_id]);
-
-		if ((buf->job_num >= B_PARA * BATCH_SIZE) && (thread_id == 0) && (launch_kernel == 0)) {
-			launch_kernel = 1;
-		}
-
-		if (buf->job_num >= MAX_BATCH_SIZE) {
-			/* Batch is full, drop the packets */
-			//if (thread_id == 0)
-			//	tx_stats[instance_id].nf_drop ++;
-			rte_pktmbuf_free(pkt);
-			continue;
-		}
-
-		//RTE_LOG(INFO, APP, "buf_id %d, thread_id %d, buf->job_num %d\n", buf_id, batch->thread_id, buf->job_num);
-		BATCH_FUNC((void *)buf, pkt);
-		batch->pkt_ptr[buf_id][buf->job_num] = pkt;
-		/* the first element is required to be the job_num */
-		buf->job_num ++;
-
-		if (buf_id != batch->receiver_buf_id) {
-			RTE_LOG(DEBUG, APP, "Buffer is switched during insertion\n");
-			buf->job_num --;
-			if (buf->job_num < 0) buf->job_num = 0;
-			goto again;
-		}
-	}
-
-	if (batch->sender_buf_id == -1) {
-		/* The send buf has been processed */
-		return 0;
-	}
-
-	/* Adjusting the number of packets to be processed in post-processing */
-	buf = (pseudo_struct_t *)(batch->user_bufs[batch->sender_buf_id]);
-	/* post_pkt_batch should be set to a reasonable value
-	 * 1) even receive no packets, it should process send_buf 
-	 * 2) process the send_buf before accumulating BATCH_SIZE pkts in recv_buf */
-	int post_pkt_batch = PKT_READ_SIZE * 2 - rcv_pkt_num;
-
-	/* post processing */
-	for (i = 0; (i < post_pkt_batch) && (batch->post_idx < buf->job_num); i ++, batch->post_idx ++) {
-		POST_FUNC((void *)buf, batch->pkt_ptr[batch->sender_buf_id][batch->post_idx], batch->post_idx);
-	}
-
-	if (batch->post_idx == buf->job_num) {
-		/* Send the batch out */
-		if (buf->job_num != 0) {
-			/* TODO: send out in small batches */
-			onvm_nflib_send_processed(batch->pkt_ptr[batch->sender_buf_id], buf->job_num, thread_id);
-		}
-
-		sender_give_available_buffer();
-	}
-
-	return 0;
-}
-#endif /* BQUEUE_SWITCH */
 
 void
 onvm_framework_install_kernel_perf_parameter(double k1, double b1, double k2, double b2)
@@ -534,11 +325,6 @@ onvm_framework_start_gpu(void (*user_gpu_htod)(void *, unsigned int),
 		tx_stats[instance_id].batch_cnt ++;
 
 		clock_gettime(CLOCK_MONOTONIC, &start);
-	#if defined(GRAPH_TIME)
-		printf("%d\t7\t%.2lf\n", instance_id, (double)1000000*start.tv_sec + start.tv_nsec/1000);
-	#endif
-
-#if !defined(NO_GPU) && !defined(PKTGEN_FRAMEWORK)
 
 		/* 3. Launch kernel - USER DEFINED */
 		user_gpu_htod(batch->user_bufs[gpu_buf_id], batch_id);
@@ -550,15 +336,10 @@ onvm_framework_start_gpu(void (*user_gpu_htod)(void *, unsigned int),
 	#if !defined(GRAPH_TIME) && !defined(SYNC_MODE)
 		gcudaDeviceSynchronize();
 	#endif
-#endif
 
 		clock_gettime(CLOCK_MONOTONIC, &end);
 		diff = 1000000 * (end.tv_sec-start.tv_sec)+ (end.tv_nsec-start.tv_nsec)/1000;
-	#if defined(GRAPH_TIME)
-		printf("%d\t8\t%.2lf\n", instance_id, (double)1000000*end.tv_sec + end.tv_nsec/1000);
-	#endif
-		//buf = (pseudo_struct_t *)(batch_set[0].user_bufs[gpu_buf_id]);
-		//printf("[%d] GPU time in framework: %.2lf, batch size %ld\n", gpu_buf_id, diff, buf->job_num);
+
 		tx_stats[instance_id].gpu_time += diff;
 		tx_stats[instance_id].gpu_time_cnt ++;
 
