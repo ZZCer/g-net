@@ -5,6 +5,9 @@
 #include <emmintrin.h>
 #include <signal.h>
 
+#include "onvm_init.h"
+#include "onvm_pkt.h"
+
 #include "onvm_framework.h"
 #include "onvm_nflib.h"
 #include "onvm_includes.h"
@@ -44,7 +47,6 @@ static pthread_mutex_t lock;
 /* NOTE: The batch size should be at least 10x? larger than the number of items 
  * in PKTMBUF_POOL when running local. Or not enough mbufs to loop */
 static int BATCH_SIZE = 1024;
-static volatile int launch_kernel = 0;
 
 int NF_REQUIRED_LATENCY = 1000; // us -- default latency
 int INIT_WORKER_THREAD_NUM = 1; // us -- default latency
@@ -53,6 +55,7 @@ struct thread_arg {
 	int thread_id;
 };
 
+#ifndef NEW_SWITCHING
 static int
 gpu_get_available_buf_id(nfv_batch_t *batch)
 {
@@ -164,6 +167,25 @@ sender_give_available_buffer(void)
 
 	return 0;
 }
+#else
+
+static inline int get_batch(nfv_batch_t *batch, int state) {
+       int i;
+       for (i = 0; i < NUM_BATCH_BUF; i++) {
+               if (batch->buf_state[i] == state) return i;
+       }
+       return -1;
+}
+
+static inline int cpu_get_batch(nfv_batch_t *batch) {
+       return get_batch(batch, BUF_STATE_CPU_READY);
+}
+
+static inline int gpu_get_batch(nfv_batch_t *batch) {
+       return get_batch(batch, BUF_STATE_CPU_READY);
+}
+
+#endif
 
 static void 
 onvm_framework_thread_init(int thread_id)
@@ -240,7 +262,79 @@ onvm_framework_spawn_thread(int thread_id)
 	}
 }
 
-#if defined(BQUEUE_SWITCH)
+#ifdef NEW_SWITCHING
+static int
+onvm_framework_cpu(int thread_id)
+{
+	int i, j;
+	const struct rte_memzone *mz;
+	int buf_id;
+	struct rte_ring *rx_q, *tx_q;
+	nfv_batch_t *batch;
+	int instance_id = nf_info->instance_id;
+	int cur_buf_size;
+
+	mz = rte_memzone_lookup(MZ_CLIENTS);
+	if (!mz || !mz->addr)
+		rte_exit(EXIT_FAILURE, "clients not found");
+	struct client *cl = &((struct client *)mz->addr)[instance_id];
+	rx_q = cl->rx_q_new;
+
+	while (keep_running) {
+		batch = &batch_set[thread_id];
+		buf_id = cpu_get_batch(batch);
+		cur_buf_size = batch->buf_size[buf_id];
+
+		// post-processing
+		for (i = 0; i < cur_buf_size; i++) {
+			POST_FUNC(batch->user_bufs[buf_id], batch->pkt_ptr[buf_id][i], i);
+		}
+
+		// handle dropped packets
+		for (i = j = 0; i < cur_buf_size; i++) {
+			struct onvm_pkt_meta *meta = onvm_get_pkt_meta(batch->pkt_ptr[buf_id][i]);
+			if (meta->action != ONVM_NF_ACTION_DROP) {
+				// swap
+				struct rte_mbuf *p = batch->pkt_ptr[buf_id][i];
+				batch->pkt_ptr[buf_id][i] = batch->pkt_ptr[buf_id][j];
+				batch->pkt_ptr[buf_id][j++] = p;
+			}
+		}
+		int num_packets = j;
+
+		// tx
+		tx_q = *(struct rte_ring * const volatile*)&cl->tx_q_new;
+		int sent_packets = 0;
+		if (likely(tx_q != NULL && num_packets != 0)) {
+			sent_packets = rte_ring_enqueue_burst(tx_q, (void **)batch->pkt_ptr[buf_id], num_packets, NULL);
+		}
+		if (sent_packets < cur_buf_size) {
+			onvm_pkt_drop_batch(batch->pkt_ptr[buf_id] + sent_packets, cur_buf_size - sent_packets);
+			tx_stats[instance_id].nf_drop_enq += cur_buf_size - sent_packets;
+		}
+
+		// rx
+		do {
+			num_packets = rte_ring_dequeue_bulk(rx_q, (void **)batch->pkt_ptr[buf_id], BATCH_SIZE, NULL);
+		} while (num_packets == 0);
+		cur_buf_size = num_packets;
+		batch->buf_size[buf_id] = cur_buf_size;
+
+		// pre-processing // todo: pass param i insteadof modify the struct
+		for (i = 0; i < cur_buf_size; i++) {
+			((pseudo_struct_t *)&batch->user_bufs[buf_id])->job_num = i;
+			BATCH_FUNC(batch->user_bufs[buf_id], batch->pkt_ptr[buf_id][i]);
+		}
+
+		// launch kernel
+		if (cur_buf_size > 0) {
+			batch->buf_state[buf_id] = BUF_STATE_GPU_READY;
+		}
+	}
+
+	return 0;
+}
+#elif defined(BQUEUE_SWITCH)
 static int
 onvm_framework_cpu(int thread_id)
 {
@@ -536,11 +630,13 @@ onvm_framework_start_gpu(void (*user_gpu_htod)(void *, unsigned int),
 						void (*user_gpu_set_arg)(void *, void *, void *))
 {
 	int gpu_buf_id;
+	int batch_id;
 	int instance_id = nf_info->instance_id;
 	pseudo_struct_t *buf;
 	unsigned int i;
 	struct timespec start, end;
 	double diff;
+	nfv_batch_t *batch;
 
 	/* Listen for ^C and docker stop so we can exit gracefully */
 	signal(SIGINT, onvm_nflib_handle_signal);
@@ -561,16 +657,16 @@ onvm_framework_start_gpu(void (*user_gpu_htod)(void *, unsigned int),
 		 * We have load balance among all threads, so their batch size are the same. */
 		RTE_LOG(DEBUG, APP, "GPU thread is launching kernel\n");
 
-		while ((launch_kernel == 0) && keep_running) ;
-		/* 2. Get Buffers from receivers */
-		gpu_buf_id = gpu_get_batch(batch_set);
-		launch_kernel = 0;
-
-		for (i = 0; i < gpu_info->thread_num; i ++) {
-			buf = (pseudo_struct_t *)(batch_set[i].user_bufs[gpu_buf_id]);
-			tx_stats[instance_id].batch_size += buf->job_num;
-			tx_stats[instance_id].batch_cnt ++;
+		gpu_buf_id = -1;
+		for (i = 0; gpu_buf_id == -1; i = (i + 1 < gpu_info->thread_num ? i + 1 : 0)) {
+			batch = &batch_set[i];
+			batch_id = i;
+			gpu_buf_id = gpu_get_batch(batch);
 		}
+
+		buf = (pseudo_struct_t *)(batch->user_bufs[gpu_buf_id]);
+		tx_stats[instance_id].batch_size += batch->buf_size[gpu_buf_id];
+		tx_stats[instance_id].batch_cnt ++;
 
 		clock_gettime(CLOCK_MONOTONIC, &start);
 	#if defined(GRAPH_TIME)
@@ -580,28 +676,10 @@ onvm_framework_start_gpu(void (*user_gpu_htod)(void *, unsigned int),
 #if !defined(NO_GPU) && !defined(PKTGEN_FRAMEWORK)
 
 		/* 3. Launch kernel - USER DEFINED */
-		unsigned int i;
-	#if defined(STREAM_LAUNCH)
-		for (i = 0; i < gpu_info->thread_num; i ++) {
-			user_gpu_htod(batch_set[i].user_bufs[gpu_buf_id], i);
-
-			user_gpu_set_arg(batch_set[i].user_bufs[gpu_buf_id], gpu_info->args[i], gpu_info->arg_info[i]);
-			gcudaLaunchKernel(i);
-
-			user_gpu_dtoh(batch_set[i].user_bufs[gpu_buf_id], i);
-		}
-	#else
-		for (i = 0; i < gpu_info->thread_num; i ++) {
-			user_gpu_htod(batch_set[i].user_bufs[gpu_buf_id], i);
-			user_gpu_set_arg(batch_set[i].user_bufs[gpu_buf_id], gpu_info->args[i], gpu_info->arg_info[i]);
-		}
-
-		gcudaLaunchKernel_allStream();
-
-		for (i = 0; i < gpu_info->thread_num; i ++) {
-			user_gpu_dtoh(batch_set[i].user_bufs[gpu_buf_id], i);
-		}
-	#endif
+		user_gpu_htod(batch->user_bufs[gpu_buf_id], batch_id);
+		user_gpu_set_arg(batch->user_bufs[gpu_buf_id], gpu_info->args[batch_id], gpu_info->arg_info[batch_id]);
+		gcudaLaunchKernel(batch_id);
+		user_gpu_dtoh(batch->user_bufs[gpu_buf_id], batch_id);
 
 		/* 4. Explicit SYNC if commands are not executed in SYNC_MODE, wait for the kernels to complete */
 	#if !defined(GRAPH_TIME) && !defined(SYNC_MODE)
@@ -620,7 +698,7 @@ onvm_framework_start_gpu(void (*user_gpu_htod)(void *, unsigned int),
 		tx_stats[instance_id].gpu_time_cnt ++;
 
 		/* 5. Pass the results to CPU again for post processing */
-		gpu_give_to_sender(batch_set);
+		batch->buf_state[gpu_buf_id] = BUF_STATE_CPU_READY;
 
 		RTE_LOG(DEBUG, APP, "Handle GPU processed results to sender\n");
 

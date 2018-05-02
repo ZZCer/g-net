@@ -58,17 +58,6 @@
 
 /**********************Internal Functions Prototypes**************************/
 
-
-/*
- * Function to send packets to one port after processing them.
- *
- * Input : a pointer to the tx queue
- *
- */
-static void
-onvm_pkt_flush_port_queue(struct thread_info *tx, uint16_t port);
-
-
 /*
  * Function to send packets to one NF after processing them.
  *
@@ -114,25 +103,13 @@ onvm_pkt_enqueue_nf(struct thread_info *thread, uint16_t dst_service_id, struct 
 inline static void
 onvm_pkt_process_next_action(struct thread_info *tx, struct rte_mbuf *pkt, struct client *cl);
 
-
-/*
- * Helper function to drop a packet.
- *
- * Input : a pointer to the packet
- *
- * Ouput : an error code
- *
- */
-static int
-onvm_pkt_drop(struct rte_mbuf *pkt);
-
-
 /**********************************Interfaces*********************************/
 
 #if defined(RX_SPEED_TEST_2)
 extern struct rx_perf rx_stats[ONVM_NUM_RX_THREADS]; 
 #endif
 
+#if 0
 void
 onvm_pkt_process_rx_batch(struct thread_info *rx, struct rte_mbuf *pkts[], uint16_t rx_count) {
 	uint16_t i;
@@ -241,7 +218,8 @@ onvm_pkt_process_tx_batch(struct thread_info *tx, struct rte_mbuf *pkts[], uint1
 		/* The NF drops this packet explicitly */
 		if (meta->action == ONVM_NF_ACTION_DROP) {
 			/* If the packet is drop, then <return value> is 0, and !<return value> is 1. */
-			cl->stats.act_drop += !onvm_pkt_drop(pkts[i]);
+			onvm_pkt_drop(pkts[i]);
+			cl->stats.act_drop += 1;
 			continue;
 		}
 
@@ -269,7 +247,8 @@ onvm_pkt_process_tx_batch(struct thread_info *tx, struct rte_mbuf *pkts[], uint1
 			onvm_pkt_enqueue_nf(tx, meta->destination, pkts[i]);
 		} else if (meta->action == ONVM_NF_ACTION_DROP) {
 			/* The installed rule is to drop the packet, test only */
-			cl->stats.act_drop += !onvm_pkt_drop(pkts[i]);
+			onvm_pkt_drop(pkts[i]);
+			cl->stats.act_drop += 1;
 		} else {
 			rte_exit(EXIT_FAILURE, "ERROR invalid action.\n");
 			onvm_pkt_drop(pkts[i]);
@@ -304,7 +283,8 @@ onvm_pkt_bqueue_switch(struct thread_info *tx, struct client *cl) {
 		/* The NF drops this packet explicitly */
 		if (meta->action == ONVM_NF_ACTION_DROP) {
 			/* If the packet is drop, then <return value> is 0, and !<return value> is 1. */
-			cl->stats.act_drop += !onvm_pkt_drop(pkt);
+			onvm_pkt_drop(pkt);
+			cl->stats.act_drop += 1;
 			continue;
 		}
 
@@ -326,7 +306,8 @@ onvm_pkt_bqueue_switch(struct thread_info *tx, struct client *cl) {
 			onvm_pkt_enqueue_nf(tx, meta->destination, pkt);
 		} else if (meta->action == ONVM_NF_ACTION_DROP) {
 			/* The installed rule is to drop the packet, test only */
-			cl->stats.act_drop += !onvm_pkt_drop(pkt);
+			onvm_pkt_drop(pkt);
+			cl->stats.act_drop += 1;
 		} else {
 			rte_exit(EXIT_FAILURE, "ERROR invalid action.\n");
 			onvm_pkt_drop(pkt);
@@ -343,6 +324,7 @@ onvm_pkt_bqueue_switch(struct thread_info *tx, struct client *cl) {
 		}
 	}
 }
+#endif
 
 void
 onvm_pkt_flush_all_ports(struct thread_info *tx) {
@@ -367,22 +349,10 @@ onvm_pkt_flush_all_nfs(struct thread_info *tx) {
 		onvm_pkt_flush_nf_queue(tx, i);
 }
 
-void
-onvm_pkt_drop_batch(struct rte_mbuf **pkts, uint16_t size) {
-	uint16_t i;
-
-	if (pkts == NULL)
-		return;
-
-	for (i = 0; i < size; i++)
-		rte_pktmbuf_free(pkts[i]);
-}
-
-
 /****************************Internal functions*******************************/
 
 
-static void
+void
 onvm_pkt_flush_port_queue(struct thread_info *tx, uint16_t port) {
 	uint16_t i, sent;
 	volatile struct tx_stats *tx_stats;
@@ -581,7 +551,8 @@ onvm_pkt_process_next_action(struct thread_info *tx, struct rte_mbuf *pkt, struc
 		case ONVM_NF_ACTION_DROP:
 			// if the packet is drop, then <return value> is 0
 			// and !<return value> is 1.
-			cl->stats.act_drop += !onvm_pkt_drop(pkt);
+			onvm_pkt_drop(pkt);
+			cl->stats.act_drop += 1;
 			break;
 		case ONVM_NF_ACTION_TONF:
 			cl->stats.act_tonf++;
@@ -595,17 +566,4 @@ onvm_pkt_process_next_action(struct thread_info *tx, struct rte_mbuf *pkt, struc
 			break;
 	}
 	(meta->chain_index)++;
-}
-
-
-/*******************************Helper function*******************************/
-
-
-static int
-onvm_pkt_drop(struct rte_mbuf *pkt) {
-	rte_pktmbuf_free(pkt);
-	if (pkt != NULL) {
-		return 1;
-	}
-	return 0;
 }

@@ -55,6 +55,8 @@
 
 uint16_t next_instance_id = 0;
 
+extern struct onvm_service_chain *default_chain;
+extern struct port_info *ports;
 
 /************************Internal functions prototypes************************/
 
@@ -184,6 +186,37 @@ onvm_nf_start(struct onvm_nf_info *nf_info) {
 	// Register this NF running within its service
 	uint16_t service_count = nf_per_service_count[nf_info->service_id]++;
 	services[nf_info->service_id][service_count] = instance_id;
+
+	int cur_chain = -1;
+	for (int i = 1; i <= default_chain->chain_length; i++) {
+			if (default_chain->sc[i].action == ONVM_NF_ACTION_TONF &&
+							default_chain->sc[i].destination == nf_info->service_id) {
+					cur_chain = i;
+					break;
+			}
+	}
+	if (cur_chain == -1)
+			rte_exit(EXIT_FAILURE, "Don't know the nf's position in the chain");
+	// setup prev
+	if (cur_chain > 1) {
+			uint16_t prev_service = default_chain->sc[cur_chain-1].destination;
+			if (nf_per_service_count[prev_service] > 0) {
+					uint16_t prev_instance = services[prev_service][0];
+					clients[prev_instance].tx_q_new = clients[instance_id].rx_q_new;
+			}
+	}
+	// setup next
+	clients[instance_id].tx_q_new = NULL; // default to drop
+	if (default_chain->sc[cur_chain+1].action == ONVM_NF_ACTION_TONF) {
+			uint16_t next_service = default_chain->sc[cur_chain+1].destination;
+			if (nf_per_service_count[next_service] > 0) {
+					uint16_t next_instance = services[next_service][0];
+					clients[instance_id].tx_q_new = clients[next_instance].rx_q_new;
+			}
+	} else if (default_chain->sc[cur_chain+1].action == ONVM_NF_ACTION_OUT) {
+			uint16_t port = default_chain->sc[cur_chain+1].destination;
+			clients[instance_id].tx_q_new = ports->tx_q_new[port];
+	}
 
 	// Let the NF continue its init process
 	nf_info->status = NF_STARTING;

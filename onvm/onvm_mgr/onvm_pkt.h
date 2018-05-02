@@ -53,6 +53,9 @@
 #ifndef _ONVM_PKT_H_
 #define _ONVM_PKT_H_
 
+#include <rte_mbuf.h>
+
+struct thread_info;
 
 /*********************************Interfaces**********************************/
 
@@ -106,6 +109,18 @@ onvm_pkt_flush_all_ports(struct thread_info *tx);
 void
 onvm_pkt_flush_all_nfs(struct thread_info *tx);
 
+/*
+ * Helper function to drop a packet.
+ *
+ * Input : a pointer to the packet
+ *
+ * Ouput : an error code
+ *
+ */
+inline static void
+onvm_pkt_drop(struct rte_mbuf *pkt) {
+       rte_pktmbuf_free(pkt);
+}
 
 /*
  * Interface to drop a batch of packets.
@@ -114,8 +129,24 @@ onvm_pkt_flush_all_nfs(struct thread_info *tx);
  *          the size of the array
  *
  */
-void
-onvm_pkt_drop_batch(struct rte_mbuf **pkts, uint16_t size);
+inline static void
+onvm_pkt_drop_batch(struct rte_mbuf **pkts, uint16_t size) {
+       uint16_t i;
 
+       if (pkts == NULL)
+               return;
+
+       for (i = 0; i < size; i++)
+               onvm_pkt_drop(pkts[i]);
+}
+
+/*
+ * Function to send packets to one port after processing them.
+ *
+ * Input : a pointer to the tx queue
+ *
+ */
+void
+onvm_pkt_flush_port_queue(struct thread_info *tx, uint16_t port);
 
 #endif  // _ONVM_PKT_H_

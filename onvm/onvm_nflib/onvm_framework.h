@@ -2,6 +2,10 @@
 #define _ONVM_FRAMEWORK_H_
 
 #include <cuda.h>
+#include <rte_ip.h>
+#include <rte_tcp.h>
+#include <rte_udp.h>
+#include <rte_config.h>
 #include "onvm_common.h"
 
 #define MAX_PKT_LEN 1514
@@ -14,6 +18,9 @@ typedef struct nfv_batch_s
 {
 	void *user_bufs[NUM_BATCH_BUF];
 	struct rte_mbuf **pkt_ptr[NUM_BATCH_BUF];
+
+	int buf_size[NUM_BATCH_BUF];
+	volatile int buf_state[NUM_BATCH_BUF];
 
 	volatile int receiver_buf_id;
 	volatile int sender_buf_id;
@@ -32,6 +39,11 @@ typedef struct nfv_batch_s
 	int host_mem_size_total;
 	int host_mem_size_left;
 } nfv_batch_t;
+
+enum {
+	BUF_STATE_CPU_READY = 0,
+	BUF_STATE_GPU_READY,
+};
 
 typedef struct context_s{
 	int thread_id;

@@ -67,7 +67,7 @@
 /*****************************Internal library********************************/
 
 
-#include "onvm_mgr/onvm_args.h"
+#include "onvm_args.h"
 #include "onvm_includes.h"
 #include "onvm_common.h"
 #include "onvm_sc_mgr.h"
@@ -120,6 +120,9 @@ struct client {
 
 	struct queue_t *rx_bq[MAX_CPU_THREAD_NUM];
 	struct queue_t *tx_bq[MAX_CPU_THREAD_NUM];
+
+	struct rte_ring *rx_q_new;
+	struct rte_ring *tx_q_new;
 
 	double throughput_mpps; /* Throughput in mpps */
 	double latency_us; /* latency in microseconds (us) */
@@ -198,6 +201,7 @@ struct tx_stats{
 struct port_info {
 	uint8_t num_ports;
 	uint8_t id[RTE_MAX_ETHPORTS];
+	struct rte_ring *tx_q_new[RTE_MAX_ETHPORTS];
 	volatile struct rx_stats rx_stats;
 	volatile struct tx_stats tx_stats;
 };

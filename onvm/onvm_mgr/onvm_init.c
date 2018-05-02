@@ -135,6 +135,10 @@ init(int argc, char *argv[]) {
 		if (retval != 0)
 			rte_exit(EXIT_FAILURE, "Cannot initialise port %u\n",
 					(unsigned)i);
+		ports->tx_q_new[ports->id[i]] = rte_ring_create(get_port_tx_queue_name(ports->id[i]),
+				BATCH_QUEUE_FACTOR * MAX_BATCH_SIZE, rte_socket_id(), NO_FLAGS);
+		if (!ports->tx_q_new[ports->id[i]])
+			rte_exit(EXIT_FAILURE, "Cannot create tx q for port %u\n", (unsigned)i);
 	}
 
 	check_all_ports_link_status(ports->num_ports, (~0x0));
@@ -320,16 +324,16 @@ static int
 init_shm_rings(void) {
 	unsigned i, j;
 	unsigned socket_id;
-#if defined(BQUEUE_SWITCH)
 	const struct rte_memzone *mz;
-#endif
 
 	// use calloc since we allocate for all possible clients
 	// ensure that all fields are init to 0 to avoid reading garbage
 	// TODO plopreiato, move to creation when a NF starts
-	clients = rte_calloc("client details", MAX_CLIENTS, sizeof(*clients), 0);
-	if (clients == NULL)
+	mz = rte_memzone_reserve(MZ_CLIENTS, MAX_CLIENTS * sizeof(*clients), rte_socket_id(), NO_FLAGS);
+	if (!mz || !mz->addr)
 		rte_exit(EXIT_FAILURE, "Cannot allocate memory for client program details\n");
+	clients = mz->addr;
+	memset(clients, 0, MAX_CLIENTS * sizeof(*clients));
 
 	services = rte_calloc("service to nf map", num_services, sizeof(uint16_t*), 0);
 	for (i = 0; i < num_services; i++) {
@@ -345,41 +349,8 @@ init_shm_rings(void) {
 		clients[i].instance_id = i;
 		clients[i].queue_id = 0;
 
-#if defined(BQUEUE_SWITCH)
-		for (j = 0; j < MAX_CPU_THREAD_NUM; j ++) {
-			/* rx queues */
-			mz = rte_memzone_reserve(get_rx_bq_name(i, j), sizeof(struct queue_t), socket_id, NO_FLAGS);
-			if (mz == NULL)
-				rte_exit(EXIT_FAILURE, "Cannot reserve memory zone for rx B-Queue\n");
-			memset(mz->addr, 0, sizeof(struct queue_t));
-			clients[i].rx_bq[j] = mz->addr;
-			bq_queue_init(clients[i].rx_bq[j]);
-
-			/* tx queues */
-			mz = rte_memzone_reserve(get_tx_bq_name(i, j), sizeof(struct queue_t), socket_id, NO_FLAGS);
-			if (mz == NULL)
-				rte_exit(EXIT_FAILURE, "Cannot reserve memory zone for tx B-Queue\n");
-			memset(mz->addr, 0, sizeof(struct queue_t));
-			clients[i].tx_bq[j] = mz->addr;
-			bq_queue_init(clients[i].tx_bq[j]);
-		}
-
-#else /* BQUEUE_SWITCH */
-
-		for (j = 0; j < MAX_CPU_THREAD_NUM; j ++) {
-#if defined(MATCH_RX_THREAD)
-			clients[i].rx_q[j] = rte_ring_create(get_rx_queue_name(i, j), CLIENT_QUEUE_RINGSIZE, socket_id, RING_F_SP_ENQ | RING_F_SC_DEQ);
-#else
-			clients[i].rx_q[j] = rte_ring_create(get_rx_queue_name(i, j), CLIENT_QUEUE_RINGSIZE, socket_id, RING_F_SC_DEQ);
-#endif /* MATCH_RX_THREAD */
-			if (clients[i].rx_q[j] == NULL)
-				rte_exit(EXIT_FAILURE, "Cannot create rx ring queue for client %u\n", i);
-		}
-
-		clients[i].tx_q = rte_ring_create(get_tx_queue_name(i), CLIENT_QUEUE_RINGSIZE, socket_id, RING_F_SC_DEQ);
-		if (clients[i].tx_q == NULL)
-			rte_exit(EXIT_FAILURE, "Cannot create tx ring queue for client %u\n", i);
-#endif /* BQUEUE_SWITCH */
+		clients[i].rx_q_new = rte_ring_create(get_rx_queue_name(i, 0), BATCH_QUEUE_FACTOR * MAX_BATCH_SIZE, socket_id, NO_FLAGS);
+		clients[i].tx_q_new = NULL;
 	}
 	return 0;
 }

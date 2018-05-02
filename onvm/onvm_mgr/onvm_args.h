@@ -55,7 +55,7 @@
 #include "getopt.h"
 
 #include "onvm_includes.h"
-#include "onvm_mgr/onvm_init.h"
+#include "onvm_init.h"
 
 #define DEFAULT_SERVICE_ID 1
 

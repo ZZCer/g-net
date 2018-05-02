@@ -57,8 +57,12 @@
 #include "manager.h"
 #include "scheduler.h"
 
+#include <execinfo.h>
+#include <signal.h>
+
 extern struct onvm_service_chain *default_chain;
 extern struct rx_perf rx_stats[ONVM_NUM_RX_THREADS]; 
+extern struct port_info *ports;
 
 /*******************************Worker threads********************************/
 
@@ -75,6 +79,16 @@ rx_thread_main(void *arg) {
 
 	RTE_LOG(INFO, APP, "Core %d: Running RX thread for RX queue %d\n", core_id, rx->queue_id);
 	
+#ifdef NEW_SWITCHING
+	struct rte_ring *rx_q_new = NULL;
+	if (default_chain->sc[1].action == ONVM_NF_ACTION_OUT)
+			rx_q_new = ports->tx_q_new[default_chain->sc[1].destination];
+	else if (default_chain->sc[1].action != ONVM_NF_ACTION_TONF)
+			rte_exit(EXIT_FAILURE, "Failed to find first nf");
+	uint16_t first_service_id = default_chain->sc[1].destination;
+#endif
+
+
 #if defined(RX_SPEED_TEST)
 	uint16_t j;
 	rx_stats[rx->queue_id].count = 0;
@@ -109,11 +123,19 @@ rx_thread_main(void *arg) {
 
 			/* Now process the NIC packets read */
 			if (likely(rx_count > 0)) {
-				// If there is no running NF, we drop all the packets of the batch.
-				if (!num_clients) {
-					onvm_pkt_drop_batch(pkts, rx_count);
+				if (unlikely(rx_q_new == NULL)) {
+					if (nf_per_service_count[first_service_id] > 0) {
+						rx_q_new = clients[services[first_service_id][0]].tx_q_new;
+					}
+				}
+				if (likely(rx_q_new != NULL)) {
+					size_t queued;
+					queued = rte_ring_enqueue_burst(rx_q_new, (void **)pkts, rx_count, NULL);
+					if (unlikely(queued < rx_count)) {
+						onvm_pkt_drop_batch(pkts + queued, rx_count - queued);
+					}
 				} else {
-					onvm_pkt_process_rx_batch(rx, pkts, rx_count);
+						onvm_pkt_drop_batch(pkts, rx_count);
 				}
 			}
 		}
@@ -125,36 +147,20 @@ rx_thread_main(void *arg) {
 static int
 tx_thread_main(void *arg) {
 	struct thread_info *tx = (struct thread_info*)arg;
-	struct client *cl = &(clients[tx->first_cl]);
-#if !defined(BQUEUE_SWITCH)
-	unsigned tx_count;
-	struct rte_mbuf *pkts[PACKET_READ_SIZE];
-#endif
+	unsigned int core_id = rte_lcore_id();
+	int port_id = tx->queue_id;
 
-	RTE_LOG(INFO, APP, "Core %d: Running TX thread for NF %d\n", rte_lcore_id(), tx->first_cl);
+	unsigned tx_count;
+
+	RTE_LOG(INFO, APP, "Core %d: Running TX thread for port %d\n", core_id, port_id);
 
 	for (;;) {
-		/* Read packets from the client's tx queue and process them as needed */
-		if (!onvm_nf_is_valid(cl))
-			continue;
-
-#if defined(BQUEUE_SWITCH)
-		onvm_pkt_bqueue_switch(tx, cl);
-#else
-		/* Dequeue all packets in ring up to max possible. */
-		tx_count = rte_ring_dequeue_burst(cl->tx_q, (void **)pkts, PACKET_READ_SIZE);
-
-		/* Now process the Client packets read */
+		tx_count = rte_ring_dequeue_burst(
+			ports->tx_q_new[port_id], (void **)tx->port_tx_buf[port_id].buffer, PACKET_READ_SIZE, NULL);
+		tx->port_tx_buf[port_id].count = tx->port_tx_buf[port_id].count;
 		if (likely(tx_count > 0)) {
-			onvm_pkt_process_tx_batch(tx, pkts, tx_count, cl);
+			onvm_pkt_flush_port_queue(tx, port_id);
 		}
-
-		/* Send a burst to every port */
-		onvm_pkt_flush_all_ports(tx);
-
-		/* Send a burst to every NF */
-		onvm_pkt_flush_all_nfs(tx);
-#endif
 	}
 
 	return 0;
@@ -162,9 +168,22 @@ tx_thread_main(void *arg) {
 
 /*******************************Main function*********************************/
 
+static void segv_handler(int sig) {
+	void *array[32];
+	size_t size;
+
+	// get void*'s for all entries on the stack
+	size = backtrace(array, 32);
+
+	// print out all the frames to stderr
+	fprintf(stderr, "Error: signal %d:\n", sig);
+	backtrace_symbols_fd(array, size, STDERR_FILENO);
+	exit(1);
+}
 
 int
 main(int argc, char *argv[]) {
+	signal(SIGSEGV, segv_handler);
 	unsigned cur_lcore, rx_lcores, tx_lcores;
 	unsigned i;
 
@@ -217,17 +236,16 @@ main(int argc, char *argv[]) {
 		return -1;
 	}
 
-	/* Assign each NF with a TX thread */
-	for (i = 0; i < tx_lcores; i++) {
+	/* Assign each port with a TX thread */
+	for (i = 0; i < ports->num_ports; i++) {
 		struct thread_info *tx = calloc(1, sizeof(struct thread_info));
-		tx->queue_id = i; /* FIXME: This way of setting queue_id is wrong, as only the last NF in the service chain can use the tx queue in the NIC */
+		tx->queue_id = ports->id[i]; /* Actually this is the port id */
 		tx->port_tx_buf = calloc(RTE_MAX_ETHPORTS, sizeof(struct packet_buf));
 		tx->nf_rx_buf = calloc(MAX_CLIENTS, sizeof(struct packet_buf));
-		tx->first_cl = i + 1;
 
 		cur_lcore = rte_get_next_lcore(cur_lcore, 1, 1);
 		if (rte_eal_remote_launch(tx_thread_main, (void*)tx,  cur_lcore) == -EBUSY) {
-			RTE_LOG(ERR, APP, "Core %d is already busy, can't use for client %d TX\n", cur_lcore, tx->first_cl);
+			RTE_LOG(ERR, APP, "Core %d is already busy, can't use for port %d TX\n", cur_lcore, tx->queue_id);
 			return -1;
 		}
 	}

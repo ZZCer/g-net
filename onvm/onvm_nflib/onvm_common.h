@@ -43,12 +43,45 @@
 #define _COMMON_H_
 
 #include <rte_mbuf.h>
+#include <rte_ip.h>
+#include <rte_tcp.h>
+#include <rte_udp.h>
 #include <stdint.h>
 #include <assert.h>
 #include <cuda.h>
 
 
 /**********************************Macros*************************************/
+// GPU Data Sharing
+#define GPU_DATA_SHARE 0
+#define GPU_PACKET_POOL_SIZE (4 * 1024 * 1024) // ~8GB data
+#define GPU_PACKET_POOL_QUEUE_NAME "GPU_PACKET_POOL"
+
+// New Switching
+#define NEW_SWITCHING 1
+#define BATCH_POOL_NAME "BATCH_POOL"
+#define BATCH_POOL_SIZE 1024
+#define BATCH_CACHE_SIZE 32
+//#define USE_BATCH_SWITCHING 1
+#define BATCH_QUEUE_FACTOR 4
+
+#define MZ_CLIENTS "MProc_clients"
+
+#define MAX_PKT_LEN 1514
+
+typedef struct gpu_packet_s {
+       struct ipv4_hdr ipv4_hdr_data;
+       union {
+               struct tcp_hdr tcp_hdr_data;
+               struct udp_hdr udp_hdr_data;
+       };
+       uint16_t payload_size;
+       uint8_t payload[MAX_PKT_LEN];
+} __attribute__((aligned(16))) gpu_packet_t;
+
+#define PORT_TX_QUEUE "port_tx_q_%u"
+
+/*****************************Original Below**********************************/
 
 #define ONVM_NUM_RX_THREADS	1 /* Should be the same with the number of worker threads in a NF --- what??? rx threads are matched to the num of NICs*/
 #define BQUEUE_SWITCH	1      /* Use BQueue to transfer packets */
@@ -449,6 +482,13 @@ get_gpu_info_name(unsigned instance_id) {
 	static char buffer[sizeof(MZ_GPU_INFO_NAME) + 2];
 	snprintf(buffer, sizeof(buffer) - 1, MZ_GPU_INFO_NAME, instance_id);
 	return buffer;
+}
+
+static inline const char *
+get_port_tx_queue_name(uint16_t port_id) {
+       static char buffer[sizeof(PORT_TX_QUEUE) + 2];
+       snprintf(buffer, sizeof(buffer) - 1, PORT_TX_QUEUE, port_id);
+       return buffer;
 }
 
 #define RTE_LOGTYPE_APP RTE_LOGTYPE_USER1
