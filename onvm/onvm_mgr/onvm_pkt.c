@@ -351,7 +351,7 @@ onvm_pkt_flush_all_nfs(struct thread_info *tx) {
 
 /****************************Internal functions*******************************/
 
-
+#if 0
 void
 onvm_pkt_flush_port_queue(struct thread_info *tx, uint16_t port) {
 	uint16_t i, sent;
@@ -378,6 +378,7 @@ onvm_pkt_flush_port_queue(struct thread_info *tx, uint16_t port) {
 
 	tx->port_tx_buf[port].count = 0;
 }
+#endif
 
 static void
 onvm_pkt_flush_nf_queue(struct thread_info *thread, uint16_t client) {
