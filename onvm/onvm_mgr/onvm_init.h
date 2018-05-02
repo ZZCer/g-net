@@ -72,8 +72,6 @@
 #include "onvm_common.h"
 #include "onvm_sc_mgr.h"
 #include "onvm_sc_common.h"
-#include "fifo.h"
-
 
 /***********************************Macros************************************/
 
