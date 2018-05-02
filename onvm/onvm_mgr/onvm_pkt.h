@@ -55,60 +55,7 @@
 
 #include <rte_mbuf.h>
 
-struct thread_info;
-
 /*********************************Interfaces**********************************/
-
-
-/*
- * Interface to process packets in a given RX queue.
- *
- * Inputs : a pointer to the rx queue
- *          an array of packets
- *          the size of the array
- *
- */
-void
-onvm_pkt_process_rx_batch(struct thread_info *rx, struct rte_mbuf *pkts[], uint16_t rx_count);
-
-
-/*
- * Interface to process packets in a given TX queue.
- *
- * Inputs : a pointer to the tx queue
- *          an array of packets
- *          the size of the array
- *          a pointer to the client possessing the TX queue.
- *
- */
-void
-onvm_pkt_process_tx_batch(struct thread_info *tx, struct rte_mbuf *pkts[], uint16_t tx_count, struct client *cl);
-
-
-/* Switching with B-Queue */
-void
-onvm_pkt_bqueue_switch(struct thread_info *tx, struct client *cl);
-
-
-/*
- * Interface to send packets to all ports after processing them.
- *
- * Input : a pointer to the tx queue
- *
- */
-void
-onvm_pkt_flush_all_ports(struct thread_info *tx);
-
-
-/*
- * Interface to send packets to all NFs after processing them.
- *
- * Input : a pointer to the tx queue
- *
- */
-void
-onvm_pkt_flush_all_nfs(struct thread_info *tx);
-
 /*
  * Helper function to drop a packet.
  *
@@ -139,14 +86,5 @@ onvm_pkt_drop_batch(struct rte_mbuf **pkts, uint16_t size) {
        for (i = 0; i < size; i++)
                onvm_pkt_drop(pkts[i]);
 }
-
-/*
- * Function to send packets to one port after processing them.
- *
- * Input : a pointer to the tx queue
- *
- */
-void
-onvm_pkt_flush_port_queue(struct thread_info *tx, uint16_t port);
 
 #endif  // _ONVM_PKT_H_
