@@ -181,7 +181,7 @@ onvm_framework_cpu(int thread_id)
 
 		// pre-processing // todo: pass param i insteadof modify the struct
 		for (i = 0; i < cur_buf_size; i++) {
-			((pseudo_struct_t *)&batch->user_bufs[buf_id])->job_num = i;
+			((pseudo_struct_t *)batch->user_bufs[buf_id])->job_num = i;
 			BATCH_FUNC(batch->user_bufs[buf_id], batch->pkt_ptr[buf_id][i]);
 		}
 
