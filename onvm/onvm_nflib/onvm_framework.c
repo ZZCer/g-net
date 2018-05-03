@@ -64,7 +64,7 @@ static inline int cpu_get_batch(nfv_batch_t *batch) {
 }
 
 static inline int gpu_get_batch(nfv_batch_t *batch) {
-       return get_batch(batch, BUF_STATE_CPU_READY);
+       return get_batch(batch, BUF_STATE_GPU_READY);
 }
 
 static void 
