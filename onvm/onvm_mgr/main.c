@@ -70,7 +70,7 @@ extern struct port_info *ports;
  */
 static int
 rx_thread_main(void *arg) {
-	uint16_t i, rx_count;
+	unsigned i, j, rx_count;
 	struct rte_mbuf *pkts[PACKET_READ_SIZE];
 	struct thread_info *rx = (struct thread_info*)arg;
 	unsigned int core_id = rte_lcore_id();
@@ -99,6 +99,11 @@ rx_thread_main(void *arg) {
 					}
 				}
 				if (likely(rx_q_new != NULL)) {
+					for (j = 0; j < rx_count; j++) {
+						// workaround: mark not to drop the packet
+						struct onvm_pkt_meta *meta = onvm_get_pkt_meta(pkts[j]);
+						meta->action = ONVM_NF_ACTION_TONF;
+					}
 					size_t queued;
 					queued = rte_ring_enqueue_burst(rx_q_new, (void **)pkts, rx_count, NULL);
 					if (unlikely(queued < rx_count)) {
