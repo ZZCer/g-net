@@ -167,16 +167,18 @@ onvm_framework_cpu(int thread_id)
 		int sent_packets = 0;
 		if (likely(tx_q != NULL && num_packets != 0)) {
 			sent_packets = rte_ring_enqueue_burst(tx_q, (void **)batch->pkt_ptr[buf_id], num_packets, NULL);
+			tx_stats[instance_id].tx += sent_packets;
 		}
 		if (sent_packets < cur_buf_size) {
 			onvm_pkt_drop_batch(batch->pkt_ptr[buf_id] + sent_packets, cur_buf_size - sent_packets);
-			tx_stats[instance_id].nf_drop_enq += cur_buf_size - sent_packets;
+			tx_stats[instance_id].tx_drop += cur_buf_size - sent_packets;
 		}
 
 		// rx
 		do {
 			num_packets = rte_ring_dequeue_bulk(rx_q, (void **)batch->pkt_ptr[buf_id], BATCH_SIZE, NULL);
 		} while (num_packets == 0);
+		cl->stats.rx += num_packets;
 		cur_buf_size = num_packets;
 		batch->buf_size[buf_id] = cur_buf_size;
 
