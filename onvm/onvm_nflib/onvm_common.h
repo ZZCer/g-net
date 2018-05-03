@@ -163,11 +163,7 @@ static void segv_handler(int sig) {
 	#define PKT_LEN 64
 #endif
 
-#if defined(UNCO_SHARE_GPU) || defined(FAIR_SHARE_GPU)
-	#define MAX_BATCH_SIZE 65536 
-#else
-	#define MAX_BATCH_SIZE 8192
-#endif
+#define MAX_BATCH_SIZE 8192
 
 #define NUM_BATCH_BUF 3
 
