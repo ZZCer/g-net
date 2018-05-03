@@ -50,12 +50,12 @@ CUDA_PATH  ?= /usr/local/cuda
 LIB    = libonvm.a
 
 # all source are stored in SRCS-y
-SRCS-y := onvm_pkt_helper.c onvm_sc_common.c onvm_sc_mgr.c onvm_nflib.c onvm_framework.c
+SRCS-y := onvm_pkt_helper.c onvm_nflib.c onvm_framework.c onvm_sc_mgr.c onvm_sc_common.c
 
-INC :=
+INC := onvm_includes.h
 
 CFLAGS += $(WERROR_FLAGS) -g -rdynamic $(USER_FLAGS)
-CFLAGS += -I$(SRCDIR) -I$(SRCDIR)/../shared -I$(SRCDIR)/../onvm_mgr
+CFLAGS += -I$(SRCDIR)
 CFLAGS += -I$(CUDA_PATH)/include
 #LDFLAGS += -L$(CUDA_PATH)/lib64 -lcudart -lcuda
 

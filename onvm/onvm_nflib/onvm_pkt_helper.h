@@ -41,7 +41,8 @@
 #ifndef _ONVM_PKT_HELPER_H_
 #define _ONVM_PKT_HELPER_H_
 
-struct rte_mbuf;
+#include <rte_mbuf.h>
+
 struct tcp_hdr;
 struct udp_hdr;
 struct ipv4_hdr;
@@ -102,5 +103,36 @@ onvm_pkt_print_ipv4(struct ipv4_hdr* hdr);
 
 void
 onvm_pkt_print_ether(struct ether_hdr* hdr);
+
+/*
+ * Helper function to drop a packet.
+ *
+ * Input : a pointer to the packet
+ *
+ * Ouput : an error code
+ *
+ */
+inline static void
+onvm_pkt_drop(struct rte_mbuf *pkt) {
+       rte_pktmbuf_free(pkt);
+}
+
+/*
+ * Interface to drop a batch of packets.
+ *
+ * Inputs : the array of packets
+ *          the size of the array
+ *
+ */
+inline static void
+onvm_pkt_drop_batch(struct rte_mbuf **pkts, uint16_t size) {
+       uint16_t i;
+
+       if (pkts == NULL)
+               return;
+
+       for (i = 0; i < size; i++)
+               onvm_pkt_drop(pkts[i]);
+}
 
 #endif  // _ONVM_PKT_HELPER_H_"

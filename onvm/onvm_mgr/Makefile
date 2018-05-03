@@ -56,18 +56,16 @@ APP = onvm_mgr
 # all source are stored in SRCS-y
 SRCS-y := main.c onvm_init.c onvm_args.c onvm_stats.c onvm_nf.c manager.c scheduler.c
 
-INC := onvm_mgr.h onvm_init.h onvm_args.h onvm_stats.h onvm_nf.h onvm_pkt.h manager.h scheduler.h
+INC :=
 
 WERROR_FLAGS += -Wno-error=unused-function
 
 CFLAGS += $(WERROR_FLAGS) -g -rdynamic $(USER_FLAGS)
-CFLAGS += -I$(SRCDIR)/ -I$(SRCDIR)/../onvm_nflib/ -I$(SRCDIR)/../shared/
+
+CFLAGS += -I$(SRCDIR)/../onvm_nflib
+LDFLAGS += -L$(SRCDIR)/../onvm_nflib/$(RTE_TARGET)/lib -lonvm
+
 CFLAGS += -I$(CUDA_PATH)/include
-LDFLAGS += $(SRCDIR)/../onvm_nflib/$(RTE_TARGET)/onvm_sc_common.o
-LDFLAGS += $(SRCDIR)/../onvm_nflib/$(RTE_TARGET)/onvm_sc_mgr.o
-LDFLAGS += $(SRCDIR)/../onvm_nflib/$(RTE_TARGET)/onvm_flow_table.o
-LDFLAGS += $(SRCDIR)/../onvm_nflib/$(RTE_TARGET)/onvm_pkt_helper.o
-LDFLAGS += $(SRCDIR)/../onvm_nflib/$(RTE_TARGET)/onvm_flow_dir.o
 LDFLAGS += -L$(CUDA_PATH)/lib64 -lcudart -lcuda
 
 # for newer gcc, e.g. 4.4, no-strict-aliasing may not be necessary

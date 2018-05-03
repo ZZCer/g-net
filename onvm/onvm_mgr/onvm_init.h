@@ -69,7 +69,7 @@
 
 #include "onvm_args.h"
 #include "onvm_includes.h"
-#include "onvm_common.h"
+//#include "onvm_common.h"
 #include "onvm_sc_mgr.h"
 #include "onvm_sc_common.h"
 
@@ -100,65 +100,6 @@
 #define NO_FLAGS 0
 
 /******************************Data structures********************************/
-
-/*
- * Define a client structure with all needed info, including
- * stats from the clients.
- */
-struct client {
-	struct rte_ring *response_q[MAX_CPU_THREAD_NUM];
-	struct rte_ring *global_response_q;
-	struct onvm_nf_info *info;
-	uint16_t instance_id;
-
-	struct rte_ring *rx_q_new;
-	struct rte_ring *tx_q_new;
-
-	double throughput_mpps; /* Throughput in mpps */
-	double latency_us; /* latency in microseconds (us) */
-	unsigned int avg_pkt_len;
-	int nf_type; /* NF_BPS or NF_PPS */
-	CUstream stream[MAX_CPU_THREAD_NUM];
-	uint8_t sync[MAX_CPU_THREAD_NUM];
-
-	double cost_time; /* Record the cost of GPU execution */
-
-	/* Be the value of each CUDA stream */
-	uint16_t threads_per_blk;
-	uint16_t blk_num;
-	uint32_t batch_size;
-
-	uint16_t init;
-	uint16_t worker_thread_num;
-	CUmodule module;
-	CUfunction function;
-	struct gpu_schedule_info *gpu_info;
-
-	/* these stats hold how many packets the client will actually receive,
-	 * and how many packets were dropped because the client's queue was full.
-	 * The port-info stats, in contrast, record how many packets were received
-	 * or transmitted on an actual NIC port.
-	 */
-	struct {
-		volatile uint64_t rx;
-		volatile uint64_t rx_datalen;
-		volatile uint64_t rx_drop;
-		volatile uint64_t act_out;
-		volatile uint64_t act_tonf;
-		volatile uint64_t act_drop;
-		volatile uint64_t act_next;
-		volatile uint64_t act_buffer;
-		volatile uint64_t htod_mem;
-		volatile uint64_t dtoh_mem;
-		volatile uint64_t batch_cnt;
-		volatile int reset;
-		struct timespec start;
-
-		double kernel_time;
-		double kernel_start;
-		uint64_t kernel_cnt;
-	} __attribute__ ((aligned (64))) stats;
-};
 
 struct rx_perf {
 	volatile uint64_t count;

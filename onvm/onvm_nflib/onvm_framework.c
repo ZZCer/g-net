@@ -8,11 +8,9 @@
 #include <emmintrin.h>
 #include <signal.h>
 
-#include "onvm_init.h"
-#include "onvm_pkt.h"
-
 #include "onvm_framework.h"
 #include "onvm_nflib.h"
+#include "onvm_pkt_helper.h"
 #include "onvm_includes.h"
 
 extern struct rte_mempool *nf_request_mp;
