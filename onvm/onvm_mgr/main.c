@@ -131,7 +131,7 @@ tx_thread_main(void *arg) {
 
 	for (;;) {
 		tx_count = rte_ring_dequeue_burst(
-			ports->tx_q_new[tx->port_id], (void **)tx->port_tx_buf, PACKET_READ_SIZE, NULL);
+			ports->tx_q_new[tx->port_id], (void **)tx->port_tx_buf, PACKET_WRITE_SIZE, NULL);
 		if (likely(tx_count > 0)) {
 			sent = rte_eth_tx_burst(tx->port_id, 0, tx->port_tx_buf, tx_count);
 			onvm_pkt_drop_batch(tx->port_tx_buf + sent, tx_count - sent);
@@ -191,7 +191,7 @@ main(int argc, char *argv[]) {
 	for (i = 0; i < tx_lcores; i++) {
 		struct thread_info *tx = calloc(1, sizeof(struct thread_info));
 		tx->port_id = ports->id[i]; /* Actually this is the port id */
-		tx->port_tx_buf = calloc(PACKET_READ_SIZE, sizeof(struct rte_mbuf *));
+		tx->port_tx_buf = calloc(PACKET_WRITE_SIZE, sizeof(struct rte_mbuf *));
 
 		cur_lcore = rte_get_next_lcore(cur_lcore, 1, 1);
 		if (rte_eal_remote_launch(tx_thread_main, (void*)tx,  cur_lcore) == -EBUSY) {
