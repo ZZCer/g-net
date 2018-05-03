@@ -230,20 +230,8 @@ onvm_stats_display_clients(void) {
 		diff = 1000000 * (end.tv_sec - clients[i].stats.start.tv_sec)
 			+ (end.tv_nsec - clients[i].stats.start.tv_nsec) / 1000;
 
-#if defined(BQUEUE_SWITCH)
-		uint64_t rx;
-		uint64_t rx_datalen;
-		if (clients[i].instance_id == 1) {
-			rx = clients[i].stats.rx * ONVM_NUM_RX_THREADS;
-			rx_datalen = clients[i].stats.rx_datalen * ONVM_NUM_RX_THREADS;
-		} else {
-			rx = clients[i].stats.rx;
-			rx_datalen = clients[i].stats.rx_datalen;
-		}
-#else
 		const uint64_t rx = clients[i].stats.rx;
 		const uint64_t rx_datalen = clients[i].stats.rx_datalen;
-#endif
 		const uint64_t rx_drop = clients[i].stats.rx_drop;
 		const uint64_t act_drop = clients[i].stats.act_drop;
 		const uint64_t act_next = clients[i].stats.act_next;
