@@ -140,7 +140,7 @@ onvm_framework_cpu(int thread_id)
 		buf_id = cpu_get_batch(batch);
 		if (buf_id == -1) {
 			starve_gpu_counter++;
-			if (starve_gpu_counter > STARVE_THRESHOLD) {
+			if (starve_gpu_counter == STARVE_THRESHOLD) {
 				RTE_LOG(INFO, APP, "GPU starving\n");
 			}
 			continue;
@@ -186,7 +186,7 @@ onvm_framework_cpu(int thread_id)
 			num_packets = rte_ring_dequeue_bulk(rx_q, (void **)batch->pkt_ptr[buf_id], BATCH_SIZE, NULL);
 			if (num_packets == 0) {
 				starve_rx_counter++;
-				if (starve_rx_counter > STARVE_THRESHOLD) {
+				if (starve_rx_counter == STARVE_THRESHOLD) {
 					RTE_LOG(INFO, APP, "Rx starving\n");
 				}
 			}
