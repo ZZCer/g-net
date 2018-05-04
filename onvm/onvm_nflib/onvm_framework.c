@@ -191,7 +191,6 @@ onvm_framework_cpu(int thread_id)
 		cl->stats.rx += cur_buf_size;		
 		cl->stats.rx_datalen += rx_datalen;
 		rte_spinlock_unlock(&cl->stats.update_lock);
-		RTE_LOG(INFO, APP, "%f\n", (double)rx_datalen / cur_buf_size);
 
 		// launch kernel
 		if (cur_buf_size > 0) {
