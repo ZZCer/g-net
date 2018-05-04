@@ -180,13 +180,14 @@ onvm_framework_cpu(int thread_id)
 		// pre-processing // todo: pass param i insteadof modify the struct
 		uint64_t rx_datalen;
 		for (i = 0; i < cur_buf_size; i++) {
-			rx_datalen += batch->pkt_ptr[buf_id][i]->pkt_len;
+			rx_datalen += batch->pkt_ptr[buf_id][i]->data_len;
 			((pseudo_struct_t *)batch->user_bufs[buf_id])->job_num = i;
 			BATCH_FUNC(batch->user_bufs[buf_id], batch->pkt_ptr[buf_id][i]);
 		}
 
 		cl->stats.rx += cur_buf_size;		
 		cl->stats.rx_datalen += rx_datalen;
+		RTE_LOG(INFO, APP, "%f\n", (double)rx_datalen / cur_buf_size);
 
 		// launch kernel
 		if (cur_buf_size > 0) {
