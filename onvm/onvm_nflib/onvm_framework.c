@@ -132,6 +132,8 @@ onvm_framework_cpu(int thread_id)
 	int cur_buf_size;
 	uint64_t starve_rx_counter = 0;
 	uint64_t starve_gpu_counter = 0;
+	uint64_t internal_rx = 0;
+	uint64_t internal_tx = 0;
 
 	rx_q = cl->rx_q_new;
 
@@ -147,6 +149,11 @@ onvm_framework_cpu(int thread_id)
 		}
 		starve_gpu_counter = 0;
 		cur_buf_size = batch->buf_size[buf_id];
+
+		uint64_t cnt_pkts = 0;
+		for (i = 0; i < NUM_BATCH_BUF; i++)
+			cnt_pkts += batch->buf_size[i];
+		RTE_ASSERT(cnt_pkts == internal_rx - internal_tx);
 
 		// post-processing
 		for (i = 0; i < cur_buf_size; i++) {
@@ -174,6 +181,7 @@ onvm_framework_cpu(int thread_id)
 		if (sent_packets < cur_buf_size) {
 			onvm_pkt_drop_batch(batch->pkt_ptr[buf_id] + sent_packets, cur_buf_size - sent_packets);
 		}
+		internal_tx += cur_buf_size;
 
 		rte_spinlock_lock(&cl->stats.update_lock);
 		cl->stats.tx += sent_packets;
@@ -202,6 +210,8 @@ onvm_framework_cpu(int thread_id)
 			((pseudo_struct_t *)batch->user_bufs[buf_id])->job_num = i;
 			BATCH_FUNC(batch->user_bufs[buf_id], batch->pkt_ptr[buf_id][i]);
 		}
+
+		internal_rx += cur_buf_size;
 
 		rte_spinlock_lock(&cl->stats.update_lock);
 		cl->stats.rx += cur_buf_size;		
