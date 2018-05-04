@@ -298,7 +298,6 @@ onvm_nflib_init(int argc, char *argv[], const char *nf_tag, int service_id,
 }
 
 
-#if defined(BQUEUE_SWITCH)
 int
 onvm_nflib_run(int(*handler)(int thread_id), int thread_id)
 {
@@ -313,78 +312,6 @@ onvm_nflib_run(int(*handler)(int thread_id), int thread_id)
 
 	return 0;
 }
-#else
-int
-onvm_nflib_run(int(*handler)(struct rte_mbuf **pkt, int nb_pkt, int thread_id), int thread_id)
-{
-	RTE_LOG(DEBUG, APP, "\nClient process %d, thread %d handling packets\n", nf_info->instance_id, thread_id);
-
-	/* Listen for ^C and docker stop so we can exit gracefully */
-	signal(SIGINT, onvm_nflib_handle_signal);
-	signal(SIGTERM, onvm_nflib_handle_signal);
-
-	void *pkts[PKT_READ_SIZE];
-	uint16_t nb_pkts;
-
-	for (; keep_running;) {
-		/* Dequeue all packets in ring up to max possible. */
-		/* TODO: shall each cpu thread has a rx ring? How to load balance? */
-		nb_pkts = rte_ring_dequeue_burst(rx_ring[thread_id], pkts, PKT_READ_SIZE);
-		if (nb_pkts != 0)
-			RTE_LOG(DEBUG, APP, "[%d] receives %d packets\n", thread_id, nb_pkts);
-
-#if defined(NF_RX_SPEED_TEST)
-		int i = 0;
-		for (i = 0; i < nb_pkts; i ++) {
-			rte_pktmbuf_free(pkts[i]);
-		}
-		continue;
-#endif
-
-		/* Give each packet to the user processing function */
-		(*handler)((struct rte_mbuf **)pkts, nb_pkts, thread_id);
-	}
-
-	// Stop and free
-	onvm_nflib_cleanup();
-
-
-	return 0;
-}
-
-int
-onvm_nflib_send_processed(struct rte_mbuf **pkt_ptr_buf, int tx_batch_size, int thread_id)
-{
-	int tx_go;
-	int progress = 0;
-	int free_slots;
-
-enqueue_again:
-	/* Avoid the batch size getting too large that can never be sent out.
-	 * The rte_ring_free_count() should not be placed in MIN() macro, because when it is
-	 * calculated twice in the macro, the first one and the second one can be different,
-	 * leading to a bug */
-	free_slots = rte_ring_free_count(tx_ring);
-	tx_go = GENERIC_MIN(free_slots, (uint16_t)(tx_batch_size - progress));
-
-	if (unlikely((tx_go > 0) && (rte_ring_enqueue_bulk(tx_ring, (void * const*)&(pkt_ptr_buf[progress]), tx_go, NULL) == 0))) {
-		/* Threads may compete to enqueue, therefore the free_slots can be changed by others. */
-		RTE_LOG(DEBUG, APP, "[%d] %u available free entries in the tx_ring, batch size %d\n",
-				thread_id, rte_ring_free_count(tx_ring), tx_batch_size);
-		goto enqueue_again;
-	} else {
-		if (thread_id == 0)
-			tx_stats[nf_info->instance_id].tx += tx_go;
-		progress += tx_go;
-		RTE_LOG(DEBUG, APP, "[%d] Send %d packets\n", thread_id, tx_go);
-	}
-
-	if (tx_batch_size - progress > 0)
-		goto enqueue_again;
-
-	return 0;
-}
-#endif /* BQUEUE_SWITCH */
 
 void
 onvm_nflib_stop(void) {
