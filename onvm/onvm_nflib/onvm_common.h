@@ -240,26 +240,22 @@ struct client {
 	 */
 	struct {
 		// updated by switching/framework
-		volatile uint64_t rx;
-		volatile uint64_t rx_datalen;
-		volatile uint64_t tx;
-		volatile uint64_t tx_drop;
-		volatile uint64_t act_drop;
-
-		volatile uint64_t htod_mem;
-		volatile uint64_t dtoh_mem;
-		volatile uint64_t batch_size;
-		volatile uint64_t batch_cnt;
+		uint64_t rx;
+		uint64_t rx_datalen;
+		uint64_t tx;
+		uint64_t tx_drop;
+		uint64_t act_drop;
 
 		double	 gpu_time;
-		uint64_t gpu_time_cnt;
+		uint64_t batch_size;
+		uint64_t batch_cnt;
 
-		volatile int reset;
 		struct timespec start;
 
 		// updated by manager
+		uint64_t htod_mem;
+		uint64_t dtoh_mem;
 		double kernel_time;
-		double kernel_start;
 		uint64_t kernel_cnt;
 	} __attribute__ ((aligned (64))) stats;
 };

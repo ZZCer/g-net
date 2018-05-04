@@ -111,15 +111,20 @@ onvm_stats_display_all(unsigned difftime) {
 }
 
 void
-onvm_stats_clear_client(uint16_t id) {
-		clients[id].stats.rx = 0;
-		clients[id].stats.rx_datalen = 0;
-		clients[id].stats.tx = 0;
-		clients[id].stats.tx_drop = 0;
-		clients[id].stats.act_drop = 0;
-		clients[id].stats.htod_mem = 0;
-		clients[id].stats.dtoh_mem = 0;
-		clients[id].stats.batch_cnt = 0;
+onvm_stats_clear_client(uint16_t i) {
+	clients[i].stats.rx = 0;
+	clients[i].stats.rx_datalen = 0;
+	clients[i].stats.tx = 0;
+	clients[i].stats.tx_drop = 0;
+	clients[i].stats.act_drop = 0;
+	clients[i].stats.htod_mem = 0;
+	clients[i].stats.dtoh_mem = 0;
+	clients[i].stats.batch_size = 0;
+	clients[i].stats.batch_cnt = 0;
+	clients[i].stats.gpu_time = 0;
+	clients[i].stats.kernel_time = 0;
+	clients[i].stats.kernel_cnt = 0;
+	clock_gettime(CLOCK_MONOTONIC, &clients[i].stats.start);
 }
 
 void
@@ -237,13 +242,7 @@ onvm_stats_display_clients(void) {
 		}
 
 		printf("Average GPU execution time in NF: %.2lf us, batch count is %ld\n",
-				clients[i].stats.gpu_time/clients[i].stats.gpu_time_cnt, clients[i].stats.gpu_time_cnt);
-
-		clients[i].stats.reset = 1;
-
-		if (clients[i].info->service_id == NF_PKTGEN) {
-			clock_gettime(CLOCK_MONOTONIC, &(clients[i].stats.start));
-		}
+				clients[i].stats.gpu_time/clients[i].stats.batch_cnt, clients[i].stats.batch_cnt);
 	}
 
 	printf("\n");

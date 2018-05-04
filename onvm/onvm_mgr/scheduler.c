@@ -123,7 +123,7 @@ gpu_get_resource(int instance_id, double T0) {
 	L0 = Lk + k2 * B0 * N + b2; /* expected overall gpu processing time */
 
 	/* GPU time (kernel + PCIe + other costs) collected from clients */
-	double measured_gpu_time = cl->stats.gpu_time / cl->stats.gpu_time_cnt;
+	double measured_gpu_time = cl->stats.gpu_time / cl->stats.batch_cnt;
 	/* Kernel execution time from Manager */
 	double measured_kernel_time = cl->stats.kernel_time / cl->stats.kernel_cnt;
 	/* Update cost time */
@@ -135,15 +135,6 @@ gpu_get_resource(int instance_id, double T0) {
 	printf("[%d] Expected Kernel time is %.2lf, Real Kernel time is %.2lf\n", cl->instance_id, Lk, measured_kernel_time);
 	printf("[%d] Expected Mem time is %.2lf\n", cl->instance_id, L0 - Lk);
 	printf("[%d] Extra cost: %.2lf\n", cl->instance_id, cl->cost_time);
-
-	cl->stats.gpu_time = 0;
-	cl->stats.gpu_time_cnt = 0;
-	cl->stats.batch_size = 0;
-	cl->stats.batch_cnt = 0;
-
-	cl->stats.kernel_time = 0;
-	cl->stats.kernel_start = 0;
-	cl->stats.kernel_cnt = 0;
 
 	/* Allocate resources */
 	preL = 10000;
@@ -397,11 +388,6 @@ schedule(void) {
 		if (!onvm_nf_is_valid(&clients[i]))
 			continue;
 
-		if (clients[i].info->service_id == NF_PKTGEN) {
-			clients[i].stats.reset = 1;
-			continue;
-		}
-
 		/* estimate resource allocation */
 		gpu_get_resource(i, minT * P_PERF);
 	}
@@ -423,13 +409,7 @@ scheduler_thread_main(void *arg) {
 	while (sleep(sleeptime) <= sleeptime) {
 
 		onvm_nf_check_status();
-#if !defined(GRAPH_TIME)
 		onvm_stats_display_all(sleeptime);
-#endif
-
-#if defined(NO_SCHEDULER)
-		continue;
-#endif
 
 #if defined(UNCO_SHARE_GPU)
 		int i;
@@ -509,6 +489,7 @@ scheduler_thread_main(void *arg) {
 #else
 		schedule();
 #endif
+		onvm_stats_clear_all_clients();
 	}
 
 	return 0;

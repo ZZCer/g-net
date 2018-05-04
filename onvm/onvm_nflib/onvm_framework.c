@@ -161,26 +161,34 @@ onvm_framework_cpu(int thread_id)
 		int sent_packets = 0;
 		if (likely(tx_q != NULL && num_packets != 0)) {
 			sent_packets = rte_ring_enqueue_burst(tx_q, (void **)batch->pkt_ptr[buf_id], num_packets, NULL);
-			cl->stats.tx += sent_packets;
 		}
 		if (sent_packets < cur_buf_size) {
 			onvm_pkt_drop_batch(batch->pkt_ptr[buf_id] + sent_packets, cur_buf_size - sent_packets);
-			cl->stats.tx_drop += cur_buf_size - sent_packets;
 		}
+
+		cl->stats.tx += sent_packets;
+		cl->stats.tx_drop += num_packets - sent_packets;
+		cl->stats.act_drop += cur_buf_size - num_packets;
 
 		// rx
 		do {
 			num_packets = rte_ring_dequeue_bulk(rx_q, (void **)batch->pkt_ptr[buf_id], BATCH_SIZE, NULL);
 		} while (num_packets == 0);
-		cl->stats.rx += num_packets;
 		cur_buf_size = num_packets;
 		batch->buf_size[buf_id] = cur_buf_size;
 
 		// pre-processing // todo: pass param i insteadof modify the struct
+		unsigned cur_len;
+		uint64_t rx_datalen = 0;
 		for (i = 0; i < cur_buf_size; i++) {
+			onvm_pkt_payload(batch->pkt_ptr[buf_id][i], &cur_len);
+			rx_datalen += cur_len;
 			((pseudo_struct_t *)batch->user_bufs[buf_id])->job_num = i;
 			BATCH_FUNC(batch->user_bufs[buf_id], batch->pkt_ptr[buf_id][i]);
 		}
+
+		cl->stats.rx += cur_buf_size;		
+		cl->stats.rx_datalen += rx_datalen;
 
 		// launch kernel
 		if (cur_buf_size > 0) {
@@ -316,9 +324,6 @@ onvm_framework_start_gpu(void (*user_gpu_htod)(void *, unsigned int),
 			gpu_buf_id = gpu_get_batch(batch);
 		}
 
-		cl->stats.batch_size += batch->buf_size[gpu_buf_id];
-		cl->stats.batch_cnt ++;
-
 		clock_gettime(CLOCK_MONOTONIC, &start);
 
 		/* 3. Launch kernel - USER DEFINED */
@@ -335,8 +340,9 @@ onvm_framework_start_gpu(void (*user_gpu_htod)(void *, unsigned int),
 		clock_gettime(CLOCK_MONOTONIC, &end);
 		diff = 1000000 * (end.tv_sec-start.tv_sec)+ (end.tv_nsec-start.tv_nsec)/1000;
 
+		cl->stats.batch_size += batch->buf_size[gpu_buf_id];
 		cl->stats.gpu_time += diff;
-		cl->stats.gpu_time_cnt ++;
+		cl->stats.batch_cnt++;
 
 		/* 5. Pass the results to CPU again for post processing */
 		batch->buf_state[gpu_buf_id] = BUF_STATE_CPU_READY;

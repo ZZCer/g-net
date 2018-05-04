@@ -113,11 +113,6 @@ init_manager(void)
 		memset(mz_gpu->addr, 0, sizeof(struct gpu_schedule_info));
 
 		clients[i].gpu_info = mz_gpu->addr;
-
-		/* Init the kernel time stats */
-		clients[i].stats.kernel_time = 0;
-		clients[i].stats.kernel_start = 0;
-		clients[i].stats.kernel_cnt = 0;
 	}
 
 	nf_request_pool = rte_mempool_create(_NF_REQUEST_MEMPOOL_NAME, MAX_REQUEST_NUM,
