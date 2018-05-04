@@ -42,9 +42,9 @@ typedef struct context_s{
 typedef void *(*init_func_t)(void);
 typedef void (*pre_func_t)(void *, struct rte_mbuf *, int);
 typedef void (*post_func_t)(void *, struct rte_mbuf *, int);
-typedef void (*gpu_htod_t)(void *, unsigned int);
-typedef void (*gpu_dtoh_t)(void *, unsigned int);
-typedef void (*gpu_set_arg_t)(void *, void *, void *);
+typedef void (*gpu_htod_t)(void *, int, unsigned int);
+typedef void (*gpu_dtoh_t)(void *, int, unsigned int);
+typedef void (*gpu_set_arg_t)(void *, void *, void *, int);
 
 void onvm_framework_start_cpu(init_func_t, pre_func_t, post_func_t);
 void onvm_framework_start_gpu(gpu_htod_t, gpu_dtoh_t, gpu_set_arg_t);

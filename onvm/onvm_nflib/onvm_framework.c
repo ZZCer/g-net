@@ -339,10 +339,10 @@ onvm_framework_start_gpu(gpu_htod_t user_gpu_htod, gpu_dtoh_t user_gpu_dtoh, gpu
 		clock_gettime(CLOCK_MONOTONIC, &start);
 
 		/* 3. Launch kernel - USER DEFINED */
-		user_gpu_htod(batch->user_bufs[gpu_buf_id], batch_id);
-		user_gpu_set_arg(batch->user_bufs[gpu_buf_id], gpu_info->args[batch_id], gpu_info->arg_info[batch_id]);
+		user_gpu_htod(batch->user_bufs[gpu_buf_id], batch->buf_size[gpu_buf_id], batch_id);
+		user_gpu_set_arg(batch->user_bufs[gpu_buf_id], gpu_info->args[batch_id], gpu_info->arg_info[batch_id], batch->buf_size[gpu_buf_id]);
 		gcudaLaunchKernel(batch_id);
-		user_gpu_dtoh(batch->user_bufs[gpu_buf_id], batch_id);
+		user_gpu_dtoh(batch->user_bufs[gpu_buf_id], batch->buf_size[gpu_buf_id], batch_id);
 
 		/* 4. Explicit SYNC if commands are not executed in SYNC_MODE, wait for the kernels to complete */
 	#if !defined(GRAPH_TIME) && !defined(SYNC_MODE)

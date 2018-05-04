@@ -36,8 +36,6 @@ static void *init_host_buf(void)
 {
 	buf_t *buf = malloc(sizeof(buf_t));
 
-	buf->job_num = 0;
-
 	gcudaHostAlloc((void **)&(buf->host_in), MAX_BATCH_SIZE * sizeof(uint32_t));
 	gcudaHostAlloc((void **)&(buf->host_out), MAX_BATCH_SIZE * sizeof(uint8_t));
 
@@ -47,12 +45,12 @@ static void *init_host_buf(void)
 	return buf;
 }
 
-static inline void user_batch_func(void *cur_buf, struct rte_mbuf *pkt)
+static inline void user_batch_func(void *cur_buf, struct rte_mbuf *pkt, int pkt_idx)
 {
 	buf_t *buf = (buf_t *)cur_buf;
 
 	struct ipv4_hdr *ipv4 = (struct ipv4_hdr*)(rte_pktmbuf_mtod(pkt, uint8_t*) + sizeof(struct ether_hdr));
-	buf->host_in[buf->job_num] = ipv4->dst_addr;
+	buf->host_in[pkt_idx] = ipv4->dst_addr;
 }
 
 static inline void user_post_func(void *cur_buf, struct rte_mbuf *pkt, int pkt_idx)
@@ -63,19 +61,19 @@ static inline void user_post_func(void *cur_buf, struct rte_mbuf *pkt, int pkt_i
 	pkt->port = buf->host_out[pkt_idx];
 }
 
-static void user_gpu_htod(void *cur_buf, unsigned int thread_id)
+static void user_gpu_htod(void *cur_buf, int job_num, unsigned int thread_id)
 {
 	buf_t *buf = (buf_t *)cur_buf;
-	gcudaMemcpyHtoD(buf->device_in, buf->host_in, buf->job_num * sizeof(uint32_t), ASYNC, thread_id);
+	gcudaMemcpyHtoD(buf->device_in, buf->host_in, job_num * sizeof(uint32_t), ASYNC, thread_id);
 }
 
-static void user_gpu_dtoh(void *cur_buf, unsigned int thread_id)
+static void user_gpu_dtoh(void *cur_buf, int job_num, unsigned int thread_id)
 {
 	buf_t *buf = (buf_t *)cur_buf;
-	gcudaMemcpyDtoH(buf->host_out, buf->device_out, buf->job_num * sizeof(uint8_t), ASYNC, thread_id);
+	gcudaMemcpyDtoH(buf->host_out, buf->device_out, job_num * sizeof(uint8_t), ASYNC, thread_id);
 }
 
-static void user_gpu_set_arg(void *cur_buf, void *arg_buf, void *arg_info)
+static void user_gpu_set_arg(void *cur_buf, void *arg_buf, void *arg_info, int job_num)
 {
 	uint64_t *info = (uint64_t *)arg_info;
 	buf_t *buf = (buf_t *)cur_buf;
@@ -90,8 +88,8 @@ static void user_gpu_set_arg(void *cur_buf, void *arg_buf, void *arg_info)
 	offset += sizeof(buf->device_in);
 
 	info[2] = offset;
-	rte_memcpy((uint8_t *)arg_buf + offset, &(buf->job_num), sizeof(buf->job_num));
-	offset += sizeof(buf->job_num);
+	rte_memcpy((uint8_t *)arg_buf + offset, &(job_num), sizeof(job_num));
+	offset += sizeof(job_num);
 	
 	info[3] = offset;
 	rte_memcpy((uint8_t *)arg_buf + offset, &(buf->device_out), sizeof(buf->device_out));
