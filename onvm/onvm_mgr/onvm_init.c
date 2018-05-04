@@ -88,7 +88,6 @@ static void check_all_ports_link_status(uint8_t port_num, uint32_t port_mask);
 int
 init(int argc, char *argv[]) {
 	int retval;
-	const struct rte_memzone *mz;
 	const struct rte_memzone *mz_scp;
 	uint8_t i, total_ports;
 
@@ -323,7 +322,7 @@ init_port(uint8_t port_num) {
  */
 static int
 init_shm_rings(void) {
-	unsigned i, j;
+	unsigned i;
 	unsigned socket_id;
 	const struct rte_memzone *mz;
 

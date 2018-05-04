@@ -83,6 +83,7 @@ typedef struct gpu_packet_s {
 
 #define PORT_TX_QUEUE "port_tx_q_%u"
 
+/*
 #include <unistd.h>
 #include <execinfo.h>
 #include <signal.h>
@@ -99,6 +100,7 @@ static void segv_handler(int sig) {
 	backtrace_symbols_fd(array, size, STDERR_FILENO);
 	kill(0, SIGABRT);
 }
+*/
 
 /*****************************Original Below**********************************/
 

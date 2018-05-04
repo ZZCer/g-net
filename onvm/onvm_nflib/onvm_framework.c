@@ -124,11 +124,9 @@ static int
 onvm_framework_cpu(int thread_id)
 {
 	int i, j;
-	const struct rte_memzone *mz;
 	int buf_id;
 	struct rte_ring *rx_q, *tx_q;
 	nfv_batch_t *batch;
-	int instance_id = nf_info->instance_id;
 	int cur_buf_size;
 	uint64_t starve_rx_counter = 0;
 	uint64_t starve_gpu_counter = 0;
@@ -311,7 +309,6 @@ onvm_framework_start_gpu(void (*user_gpu_htod)(void *, unsigned int),
 {
 	int gpu_buf_id;
 	int batch_id;
-	int instance_id = nf_info->instance_id;
 	unsigned int i;
 	struct timespec start, end;
 	double diff;
@@ -336,11 +333,12 @@ onvm_framework_start_gpu(void (*user_gpu_htod)(void *, unsigned int),
 		RTE_LOG(DEBUG, APP, "GPU thread is launching kernel\n");
 
 		gpu_buf_id = -1;
-		for (i = 0; gpu_buf_id == -1; i = (i + 1 < gpu_info->thread_num ? i + 1 : 0)) {
+		for (i = 0; keep_running && gpu_buf_id == -1; i = (i + 1 < gpu_info->thread_num ? i + 1 : 0)) {
 			batch = &batch_set[i];
 			batch_id = i;
 			gpu_buf_id = gpu_get_batch(batch);
 		}
+		if (!keep_running) break;
 
 		clock_gettime(CLOCK_MONOTONIC, &start);
 
@@ -485,7 +483,7 @@ gcudaHostAlloc(void **p, int size)
 }
 
 void
-gcudaMemcpyHtoD(CUdeviceptr dst, void *src, int size, int sync, unsigned int thread_id)
+gcudaMemcpyHtoD(CUdeviceptr dst, void *src, int size, int sync, int thread_id)
 {
 	nfv_batch_t *batch = &(batch_set[thread_id]);
 	assert(batch->thread_id == thread_id);
@@ -532,7 +530,7 @@ gcudaMemcpyHtoD(CUdeviceptr dst, void *src, int size, int sync, unsigned int thr
 }
 
 void
-gcudaMemcpyDtoH(void *dst, CUdeviceptr src, int size, int sync, unsigned int thread_id)
+gcudaMemcpyDtoH(void *dst, CUdeviceptr src, int size, int sync, int thread_id)
 {
 	nfv_batch_t *batch = &(batch_set[thread_id]);
 	assert(batch->thread_id == thread_id);

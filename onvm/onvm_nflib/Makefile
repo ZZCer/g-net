@@ -57,6 +57,6 @@ INC := onvm_includes.h
 CFLAGS += $(WERROR_FLAGS) -g -rdynamic $(USER_FLAGS)
 CFLAGS += -I$(SRCDIR)
 CFLAGS += -I$(CUDA_PATH)/include
-#LDFLAGS += -L$(CUDA_PATH)/lib64 -lcudart -lcuda
+CFLAGS += -D__CUDA_ARCH__=0
 
 include $(RTE_SDK)/mk/rte.extlib.mk

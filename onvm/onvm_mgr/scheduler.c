@@ -21,20 +21,6 @@
 static int allocated_sm_num;
 static int exausted;
 
-#if defined(SET_RESOURCE)
-static void set_resource(int instance_id)
-{
-	struct client *cl = &(clients[instance_id]);
-	int B0 = 1024;
-	cl->blk_num = 4;
-	cl->batch_size = B0 * cl->blk_num;
-	cl->threads_per_blk = B0 < MAX_THREAD_PER_BLK ? B0 : MAX_THREAD_PER_BLK;
-	allocated_sm_num += cl->blk_num;
-	printf("SET Resource on NF %d: blk_num %d, batch_size %d, threads_per_blk %d, allocated sm number %d\n",
-			instance_id, cl->blk_num, cl->batch_size, cl->threads_per_blk, allocated_sm_num);
-}
-#endif
-
 void
 scheduler_nf_spawn_new_thread(struct client *cl) {
 	if (cl->gpu_info->launch_worker_thread != 0)
@@ -48,8 +34,7 @@ gpu_get_resource(int instance_id, double T0) {
 	struct client *cl = &(clients[instance_id]);
 	double k1, b1, k2, b2;
 	uint16_t L = cl->gpu_info->latency_us;
-	L = 10000;
-	unsigned int thread_num = cl->gpu_info->thread_num;
+	//unsigned int thread_num = cl->gpu_info->thread_num;
 	unsigned int stream_num = 1;  // todo: multiple streams
 
 	printf("[%d] Current Resource Allocated: blk_num %d, batch_size %d, threads_per_blk %d\n",
@@ -61,7 +46,7 @@ gpu_get_resource(int instance_id, double T0) {
 	int B0, minB;
 	unsigned int i, success = 0;
 
-	if (thread_num == 0 || T0 == 0 || cl->avg_pkt_len == 0) {
+	if (stream_num == 0 || T0 == 0 || cl->avg_pkt_len == 0) {
 		/* Threads have not been initiated, return */
 		RTE_LOG(ERR, APP, "stream num %d, T %.2lf, avg pkt len %d\n", stream_num, T0, cl->avg_pkt_len);
 		return;	
@@ -373,16 +358,6 @@ schedule(void) {
 			minT = clients[i].throughput_mpps;
 	}
 
-#if defined(SET_RESOURCE)
-	for (i = 0; i < MAX_CLIENTS; i ++) {
-		if (!onvm_nf_is_valid(&clients[i]))
-			continue;
-
-		set_resource(i);
-	}
-	return;
-#endif
-
 	/* Local Schedule */
 	for (i = 0; i < MAX_CLIENTS; i ++) {
 		if (!onvm_nf_is_valid(&clients[i]))
@@ -410,85 +385,7 @@ scheduler_thread_main(void *arg) {
 
 		onvm_nf_check_status();
 		onvm_stats_display_all(sleeptime);
-
-#if defined(UNCO_SHARE_GPU)
-		int i;
-
-		for (i = 0; i < MAX_CLIENTS; i ++) {
-			if (!onvm_nf_is_valid(&clients[i]))
-				continue;
-			if (clients[i].gpu_info->thread_num == 0)
-				continue;
-
-			if (clients_stats[i].gpu_time_cnt == 0) clients_stats[i].gpu_time_cnt = 1;
-			if (clients[i].stats.kernel_time == 0) clients[i].stats.kernel_time = 1;
-			if (clients_stats[i].batch_cnt == 0) clients_stats[i].batch_cnt = 1;
-
-			double measured_gpu_time = clients_stats[i].gpu_time / clients_stats[i].gpu_time_cnt;
-			double measured_kernel_time = clients[i].stats.kernel_time / clients[i].stats.kernel_cnt;
-			int B0 = clients_stats[i].batch_size / clients_stats[i].batch_cnt;
-			RTE_LOG(INFO, APP, "[%d] measured GPU time %.2lf, measured kernel time %.2lf\n", i, measured_gpu_time, measured_kernel_time);
-			RTE_LOG(INFO, APP, "[%d] batch size per thread %d, batch size per SM %d\n", i, B0, B0/clients[i].blk_num);
-
-			clients[i].blk_num = (SM_TOTAL_NUM * 2) / clients[i].gpu_info->thread_num; 
-			clients[i].threads_per_blk = MAX_THREAD_PER_BLK; 
-			clients[i].batch_size = clients[i].blk_num * clients[i].threads_per_blk;
-			RTE_LOG(INFO, APP, "[%d] UNCO_SHARE allocated blk_num %d, threads_per_blk %d, batch_size %d\n", i, clients[i].blk_num, clients[i].threads_per_blk, clients[i].batch_size);
-
-			clients_stats[i].gpu_time = 0;
-			clients_stats[i].gpu_time_cnt = 0;
-			clients_stats[i].batch_size = 0;
-			clients_stats[i].batch_cnt = 0;
-		}
-#elif defined(FAIR_SHARE_GPU)
-		int i, num_client = 0;
-
-		for (i = 0; i < MAX_CLIENTS; i ++) {
-			if (!onvm_nf_is_valid(&clients[i]))
-				continue;
-			num_client ++;
-		}
-
-		for (i = 0; i < MAX_CLIENTS; i ++) {
-			if (!onvm_nf_is_valid(&clients[i]))
-				continue;
-			if (clients[i].gpu_info->thread_num == 0)
-				continue;
-
-			if (clients_stats[i].gpu_time_cnt == 0) clients_stats[i].gpu_time_cnt = 1;
-			if (clients[i].stats.kernel_time == 0) clients[i].stats.kernel_time = 1;
-			if (clients_stats[i].batch_cnt == 0) clients_stats[i].batch_cnt = 1;
-
-			double measured_gpu_time = clients_stats[i].gpu_time / clients_stats[i].gpu_time_cnt;
-			double measured_kernel_time = clients[i].stats.kernel_time / clients[i].stats.kernel_cnt;
-			int B0 = clients_stats[i].batch_size / clients_stats[i].batch_cnt;
-			RTE_LOG(INFO, APP, "[%d] measured GPU time %.2lf, measured kernel time %.2lf\n", i, measured_gpu_time, measured_kernel_time);
-			RTE_LOG(INFO, APP, "[%d] batch size per thread %d, batch size per SM %d\n", i, B0, B0/clients[i].blk_num);
-
-			clients[i].blk_num = ((SM_TOTAL_NUM * 2) / num_client) / clients[i].gpu_info->thread_num; 
-			clients[i].threads_per_blk = MAX_THREAD_PER_BLK; 
-			clients[i].batch_size = clients[i].blk_num * clients[i].threads_per_blk;
-			RTE_LOG(INFO, APP, "[%d] FAIR_SHARE allocated blk_num %d, threads_per_blk %d, batch_size %d\n", i, clients[i].blk_num, clients[i].threads_per_blk, clients[i].batch_size);
-
-			clients_stats[i].gpu_time = 0;
-			clients_stats[i].gpu_time_cnt = 0;
-			clients_stats[i].batch_size = 0;
-			clients_stats[i].batch_cnt = 0;
-		}
-#elif defined(PERF_TEST_GPU)
-		int i;
-		for (i = 0; i < MAX_CLIENTS; i ++) {
-			if (!onvm_nf_is_valid(&clients[i]))
-				continue;
-			if (clients[i].gpu_info->thread_num == 0)
-				continue;
-			clients[i].blk_num = 1;
-			clients[i].threads_per_blk = MAX_THREAD_PER_BLK; 
-			clients[i].batch_size = SCHED_BATCH_SIZE;
-		}
-#else
 		schedule();
-#endif
 		onvm_stats_clear_all_clients();
 	}
 

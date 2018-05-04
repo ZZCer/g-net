@@ -154,7 +154,7 @@ tx_thread_main(void *arg) {
 
 int
 main(int argc, char *argv[]) {
-	signal(SIGSEGV, segv_handler);
+	//signal(SIGSEGV, segv_handler);
 	unsigned cur_lcore, rx_lcores, tx_lcores;
 	unsigned i;
 

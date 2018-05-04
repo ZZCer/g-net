@@ -342,9 +342,6 @@ manager_thread_main(void *arg)
 #if !defined(SYNC_MODE)
 	unsigned int record_blk_num[MAX_CLIENTS];
 #endif
-#if defined(GRAPH_TIME) || defined(SYNC_MODE)
-	struct timespec tt;
-#endif
 
 	checkCudaErrors( cuCtxSetCurrent(context) );
 
@@ -428,10 +425,6 @@ manager_thread_main(void *arg)
 
 				checkCudaErrors( cuMemcpyHtoDAsync(req->device_ptr, host_ptr, req->size, cl->stream[req->thread_id]) );
 
-			#if defined(NOT_SHARE_GPU)
-				checkCudaErrors( cuCtxSynchronize() );
-			#endif
-
 				rte_mempool_put(nf_request_pool, req);
 
 				RTE_LOG(DEBUG, APP, "cuMemcpyHtoDAsync: %lx <- %p (%d), thread_id = %d\n", (uint64_t)req->device_ptr, host_ptr, req->size, req->thread_id);
@@ -445,17 +438,8 @@ manager_thread_main(void *arg)
 				cl->stats.htod_mem += req->size;
 				rte_spinlock_unlock(&cl->stats.update_lock);
 
-			#if defined(GRAPH_TIME)
-				while (graph_time_htod == 0);
-				graph_time_htod = 0;
-			#endif
-
 				checkCudaErrors( cuMemcpyHtoDAsync(req->device_ptr, host_ptr, req->size, cl->stream[req->thread_id]) );
 
-			#if defined(GRAPH_TIME)
-				clock_gettime(CLOCK_MONOTONIC, &tt);
-				printf("%d\t1\t%d\t%.2lf\n", req->instance_id, req->size, (double)1000000*tt.tv_sec + tt.tv_nsec/1000);
-			#endif
 				checkCudaErrors( cuStreamAddCallback(cl->stream[req->thread_id], memcpy_callback, (void *)req, 0) );
 
 				RTE_LOG(DEBUG, APP, "cuMemcpyHtoDAsync[SYNC]: %lx <- %p (%d), thread_id = %d\n", (uint64_t)req->device_ptr, host_ptr, req->size, req->thread_id);
@@ -471,10 +455,6 @@ manager_thread_main(void *arg)
 
 				checkCudaErrors( cuMemcpyDtoHAsync(host_ptr, req->device_ptr, req->size, cl->stream[req->thread_id]) );
 
-			#if defined(NOT_SHARE_GPU)
-				checkCudaErrors( cuCtxSynchronize() );
-			#endif
-
 				rte_mempool_put(nf_request_pool, req);
 
 				RTE_LOG(DEBUG, APP, "cuMemcpyDtoHAsync: %p <- %lx (%d), thread_id = %d\n", host_ptr, (uint64_t)req->device_ptr, req->size, req->thread_id);
@@ -488,17 +468,8 @@ manager_thread_main(void *arg)
 				cl->stats.dtoh_mem += req->size;
 				rte_spinlock_unlock(&cl->stats.update_lock);
 
-			#if defined(GRAPH_TIME)
-				while (graph_time_dtoh == 0);
-				graph_time_dtoh = 0;
-			#endif
-
 				checkCudaErrors( cuMemcpyDtoHAsync(host_ptr, req->device_ptr, req->size, cl->stream[req->thread_id]) );
 
-			#if defined(GRAPH_TIME)
-				clock_gettime(CLOCK_MONOTONIC, &tt);
-				printf("%d\t5\t%d\t%.2lf\n", req->instance_id, req->size, (double)1000000*tt.tv_sec + tt.tv_nsec/1000);
-			#endif
 				checkCudaErrors( cuStreamAddCallback(cl->stream[req->thread_id], memcpy_callback, (void *)req, 0) );
 
 				RTE_LOG(DEBUG, APP, "cuMemcpyDtoHAsync[SYNC]: %p <- %lx (%d), thread_id = %d\n", host_ptr, (uint64_t)req->device_ptr, req->size, req->thread_id);
@@ -543,9 +514,6 @@ manager_thread_main(void *arg)
 				break;
 
 			case REQ_GPU_LAUNCH_ALL_STREAM:
-				/* Try to execute pending kernels first */
-				//execute_pending_kernel();
-
 				cl = &(clients[req->instance_id]);
 				/* The thread_num in gpu_info can be modified by clients.
 				 * We record it in cl->worker_thread_num, so that the checking is correct in stream_callback */

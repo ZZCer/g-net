@@ -230,7 +230,7 @@ onvm_stats_display_clients(void) {
 		double approx_gbps = (double)((tx + tx_drop + act_drop) * (clients[i].avg_pkt_len + 20) * 8)/(1000 * diff);
 
 		printf("\n[Client %u - %s] :\n"
-		       "rx: %9u\t" "tx: %9u\t" "tx_drop: %9u\t" "act_drop: %9u\n"
+		       "rx: %9lu\t" "tx: %9lu\t" "tx_drop: %9lu\t" "act_drop: %9lu\n"
 			   "[[[ %.6lf Mpps, %.6lf Gbps, Pkt size %ld ]]]\n",
 				clients[i].instance_id, get_nf_name(clients[i].info->service_id),
 				rx, tx, tx_drop, act_drop,
