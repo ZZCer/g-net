@@ -351,6 +351,8 @@ init_shm_rings(void) {
 
 		clients[i].rx_q_new = rte_ring_create(get_rx_queue_name(i, 0), BATCH_QUEUE_FACTOR * MAX_BATCH_SIZE, socket_id, NO_FLAGS);
 		clients[i].tx_q_new = NULL;
+
+		rte_spinlock_init(&clients[i].stats.update_lock);
 	}
 	return 0;
 }

@@ -107,10 +107,10 @@ gpu_get_resource(int instance_id, double T0) {
 		printf(">>>>>>>>>>      Set latency is too low to meet the demand L <= b1 + b2 + cost_time      <<<<<<<<<<\n\n");
 	}
 
-	if (cl->stats.batch_cnt == 0)
-		cl->stats.batch_cnt = 1;
+	uint64_t batch_cnt = cl->stats.batch_cnt;
+	if (batch_cnt == 0) batch_cnt = 1;
 	/* Get the cost time */
-	B0 = cl->stats.batch_size / cl->stats.batch_cnt;
+	B0 = cl->stats.batch_size / batch_cnt;
 	B0 = B0 / cl->blk_num;
 	N = cl->blk_num * stream_num; /* all SMs allocated to the NF */
 	if (B0 <= 0) {
@@ -123,7 +123,7 @@ gpu_get_resource(int instance_id, double T0) {
 	L0 = Lk + k2 * B0 * N + b2; /* expected overall gpu processing time */
 
 	/* GPU time (kernel + PCIe + other costs) collected from clients */
-	double measured_gpu_time = cl->stats.gpu_time / cl->stats.batch_cnt;
+	double measured_gpu_time = cl->stats.gpu_time / batch_cnt;
 	/* Kernel execution time from Manager */
 	double measured_kernel_time = cl->stats.kernel_time / cl->stats.kernel_cnt;
 	/* Update cost time */

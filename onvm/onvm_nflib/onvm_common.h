@@ -46,6 +46,7 @@
 #include <rte_ip.h>
 #include <rte_tcp.h>
 #include <rte_udp.h>
+#include <rte_spinlock.h>
 #include <stdint.h>
 #include <assert.h>
 #include <cuda.h>
@@ -238,7 +239,8 @@ struct client {
 	 * The port-info stats, in contrast, record how many packets were received
 	 * or transmitted on an actual NIC port.
 	 */
-	volatile struct {
+	struct {
+		rte_spinlock_t update_lock;
 		// updated by switching/framework
 		uint64_t rx;
 		uint64_t rx_datalen;

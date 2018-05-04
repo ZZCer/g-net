@@ -112,6 +112,8 @@ onvm_stats_display_all(unsigned difftime) {
 
 void
 onvm_stats_clear_client(uint16_t i) {
+	rte_spinlock_lock(&clients[i].stats.update_lock);
+	clock_gettime(CLOCK_MONOTONIC, &clients[i].stats.start);
 	clients[i].stats.rx = 0;
 	clients[i].stats.rx_datalen = 0;
 	clients[i].stats.tx = 0;
@@ -124,7 +126,7 @@ onvm_stats_clear_client(uint16_t i) {
 	clients[i].stats.gpu_time = 0;
 	clients[i].stats.kernel_time = 0;
 	clients[i].stats.kernel_cnt = 0;
-	clock_gettime(CLOCK_MONOTONIC, &clients[i].stats.start);
+	rte_spinlock_unlock(&clients[i].stats.update_lock);
 }
 
 void

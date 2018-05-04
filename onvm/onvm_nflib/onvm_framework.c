@@ -166,9 +166,11 @@ onvm_framework_cpu(int thread_id)
 			onvm_pkt_drop_batch(batch->pkt_ptr[buf_id] + sent_packets, cur_buf_size - sent_packets);
 		}
 
+		rte_spinlock_lock(&cl->stats.update_lock);
 		cl->stats.tx += sent_packets;
 		cl->stats.tx_drop += num_packets - sent_packets;
 		cl->stats.act_drop += cur_buf_size - num_packets;
+		rte_spinlock_unlock(&cl->stats.update_lock);
 
 		// rx
 		do {
@@ -185,8 +187,10 @@ onvm_framework_cpu(int thread_id)
 			BATCH_FUNC(batch->user_bufs[buf_id], batch->pkt_ptr[buf_id][i]);
 		}
 
+		rte_spinlock_lock(&cl->stats.update_lock);
 		cl->stats.rx += cur_buf_size;		
 		cl->stats.rx_datalen += rx_datalen;
+		rte_spinlock_unlock(&cl->stats.update_lock);
 		RTE_LOG(INFO, APP, "%f\n", (double)rx_datalen / cur_buf_size);
 
 		// launch kernel
@@ -339,9 +343,11 @@ onvm_framework_start_gpu(void (*user_gpu_htod)(void *, unsigned int),
 		clock_gettime(CLOCK_MONOTONIC, &end);
 		diff = 1000000 * (end.tv_sec-start.tv_sec)+ (end.tv_nsec-start.tv_nsec)/1000;
 
+		rte_spinlock_lock(&cl->stats.update_lock);
 		cl->stats.batch_size += batch->buf_size[gpu_buf_id];
 		cl->stats.gpu_time += diff;
 		cl->stats.batch_cnt++;
+		rte_spinlock_unlock(&cl->stats.update_lock);
 
 		/* 5. Pass the results to CPU again for post processing */
 		batch->buf_state[gpu_buf_id] = BUF_STATE_CPU_READY;

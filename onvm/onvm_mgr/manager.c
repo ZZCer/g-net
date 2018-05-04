@@ -422,7 +422,9 @@ manager_thread_main(void *arg)
 				cl = &(clients[req->instance_id]);
 				mz = rte_memzone_lookup(get_buf_name(req->instance_id, req->thread_id));
 				host_ptr = (char *)(mz->addr) + req->host_offset;
+				rte_spinlock_lock(&cl->stats.update_lock);
 				cl->stats.htod_mem += req->size;
+				rte_spinlock_unlock(&cl->stats.update_lock);
 
 				checkCudaErrors( cuMemcpyHtoDAsync(req->device_ptr, host_ptr, req->size, cl->stream[req->thread_id]) );
 
@@ -439,7 +441,9 @@ manager_thread_main(void *arg)
 				cl = &(clients[req->instance_id]);
 				mz = rte_memzone_lookup(get_buf_name(req->instance_id, req->thread_id));
 				host_ptr = (char *)(mz->addr) + req->host_offset;
+				rte_spinlock_lock(&cl->stats.update_lock);
 				cl->stats.htod_mem += req->size;
+				rte_spinlock_unlock(&cl->stats.update_lock);
 
 			#if defined(GRAPH_TIME)
 				while (graph_time_htod == 0);
@@ -461,7 +465,9 @@ manager_thread_main(void *arg)
 				cl = &(clients[req->instance_id]);
 				mz = rte_memzone_lookup(get_buf_name(req->instance_id, req->thread_id));
 				host_ptr = (char *)(mz->addr) + req->host_offset;
+				rte_spinlock_lock(&cl->stats.update_lock);
 				cl->stats.dtoh_mem += req->size;
+				rte_spinlock_unlock(&cl->stats.update_lock);
 
 				checkCudaErrors( cuMemcpyDtoHAsync(host_ptr, req->device_ptr, req->size, cl->stream[req->thread_id]) );
 
@@ -478,7 +484,9 @@ manager_thread_main(void *arg)
 				cl = &(clients[req->instance_id]);
 				mz = rte_memzone_lookup(get_buf_name(req->instance_id, req->thread_id));
 				host_ptr = (char *)(mz->addr) + req->host_offset;
+				rte_spinlock_lock(&cl->stats.update_lock);
 				cl->stats.dtoh_mem += req->size;
+				rte_spinlock_unlock(&cl->stats.update_lock);
 
 			#if defined(GRAPH_TIME)
 				while (graph_time_dtoh == 0);
