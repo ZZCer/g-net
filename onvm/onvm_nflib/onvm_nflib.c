@@ -75,14 +75,10 @@ static struct rte_ring *nf_info_ring;
 static struct rte_ring *tx_ring, *rx_ring[MAX_CPU_THREAD_NUM];
 #endif
 
-
-// shared data from server. We update statistics here
-volatile struct client_tx_stats *tx_stats;
-
-
 // Shared data for client info
 struct onvm_nf_info *nf_info;
 
+struct client *cl;
 
 // Shared pool for all clients info
 static struct rte_mempool *nf_info_mp;
@@ -216,11 +212,6 @@ onvm_nflib_init(int argc, char *argv[], const char *nf_tag, int service_id,
 	if (mp == NULL)
 		rte_exit(EXIT_FAILURE, "Cannot get mempool for mbufs\n");
 
-	mz = rte_memzone_lookup(MZ_CLIENT_INFO);
-	if (mz == NULL)
-		rte_exit(EXIT_FAILURE, "Cannot get tx info structure\n");
-	tx_stats = mz->addr;
-
 	mz_scp = rte_memzone_lookup(MZ_SCP_INFO);
 	if (mz_scp == NULL)
 		rte_exit(EXIT_FAILURE, "Cannot get service chain info structre\n");
@@ -258,6 +249,11 @@ onvm_nflib_init(int argc, char *argv[], const char *nf_tag, int service_id,
 	}
 	RTE_LOG(INFO, APP, "Using Instance ID %d\n", nf_info->instance_id);
 	RTE_LOG(INFO, APP, "Using Service ID %d\n", nf_info->service_id);
+
+	mz = rte_memzone_lookup(MZ_CLIENTS);
+	if (!mz || !mz->addr)
+		rte_exit(EXIT_FAILURE, "clients not found");
+	cl = &((struct client *)mz->addr)[nf_info->instance_id];
 
 	/* Install GPU rules, including required latency and so on */
 	if ((service_id != NF_PKTGEN) && (service_id != NF_RAW)) {

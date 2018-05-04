@@ -110,27 +110,25 @@ onvm_stats_display_all(unsigned difftime) {
 	onvm_stats_display_clients();
 }
 
+void
+onvm_stats_clear_client(uint16_t id) {
+		clients[id].stats.rx = 0;
+		clients[id].stats.rx_datalen = 0;
+		clients[id].stats.tx = 0;
+		clients[id].stats.tx_drop = 0;
+		clients[id].stats.act_drop = 0;
+		clients[id].stats.htod_mem = 0;
+		clients[id].stats.dtoh_mem = 0;
+		clients[id].stats.batch_cnt = 0;
+}
 
 void
 onvm_stats_clear_all_clients(void) {
 	unsigned i;
 
 	for (i = 0; i < MAX_CLIENTS; i++) {
-		clients[i].stats.rx = clients[i].stats.rx_drop = 0;
-		clients[i].stats.rx_datalen = 0;
-		clients[i].stats.act_drop = clients[i].stats.act_tonf = 0;
-		clients[i].stats.act_next = clients[i].stats.act_out = 0;
-		clients[i].stats.reset = 0;
+		onvm_stats_clear_client(i);
 	}
-}
-
-void
-onvm_stats_clear_client(uint16_t id) {
-	clients[id].stats.rx = clients[id].stats.rx_drop = 0;
-	clients[id].stats.rx_datalen = 0;
-	clients[id].stats.act_drop = clients[id].stats.act_tonf = 0;
-	clients[id].stats.act_next = clients[id].stats.act_out = 0;
-	clients[id].stats.reset = 0;
 }
 
 
@@ -143,6 +141,11 @@ onvm_stats_display_ports(unsigned difftime) {
 	/* Arrays to store last TX/RX count to calculate rate */
 	static uint64_t tx_last[RTE_MAX_ETHPORTS];
 	static uint64_t rx_last[RTE_MAX_ETHPORTS];
+	/* Hardware statistic */
+	static struct timespec start, end;
+	struct rte_eth_stats stats;
+	static uint64_t ibytes[RTE_MAX_ETHPORTS] = {0}, obytes[RTE_MAX_ETHPORTS] = {0};
+	static uint64_t ipackets[RTE_MAX_ETHPORTS] = {0}, opackets[RTE_MAX_ETHPORTS] = {0};
 
 	printf("PORTS\n");
 	printf("-----\n");
@@ -163,45 +166,22 @@ onvm_stats_display_ports(unsigned difftime) {
 
 		rx_last[i] = ports->rx_stats.rx[ports->id[i]];
 		tx_last[i] = ports->tx_stats.tx[ports->id[i]];
+
+		clock_gettime(CLOCK_MONOTONIC, &end);
+		double diff = 1000000 * (end.tv_sec - start.tv_sec) + (end.tv_nsec - start.tv_nsec) / 1000;
+
+		rte_eth_stats_get(0, &stats);
+		printf("HW===\terr packets-%lu,\treceived packets-%lu,\ttransmitted packets-%lu,\tdropped packets-%lu\n"
+				"\tInput Speed - [[[ %.2lf Mpps, %.2lf Gbps ]]], Output Speed - [[[ %.2lf Mpps, %.2lf Gbps ]]]\n",
+				stats.ierrors, stats.ipackets, stats.opackets, stats.imissed,
+				(double)(stats.ipackets-ipackets[ports->id[i]])/diff, ((double)(stats.ibytes-ibytes[ports->id[i]]) * 8) / (1000 * diff),
+				(double)(stats.opackets-opackets[ports->id[i]])/diff, ((double)(stats.obytes-obytes[ports->id[i]]) * 8) / (1000 * diff));
+
+		ibytes[ports->id[i]] = stats.ibytes;
+		obytes[ports->id[i]] = stats.obytes;
+		ipackets[ports->id[i]] = stats.ipackets;
+		opackets[ports->id[i]] = stats.opackets;
 	}
-
-	/* Hardware statistic */
-	static struct timespec start, end;
-	struct rte_eth_stats stats;
-	static uint64_t ibytes = 0, obytes = 0;
-	static uint64_t ipackets = 0, opackets = 0;
-
-	clock_gettime(CLOCK_MONOTONIC, &end);
-	double diff = 1000000 * (end.tv_sec - start.tv_sec) + (end.tv_nsec - start.tv_nsec) / 1000;
-
-	rte_eth_stats_get(0, &stats);
-	printf("\n===== HW statistics for Port 0: err packets-%lu,\treceived packets-%lu,\ttransmitted packets-%lu,\tdropped packets-%lu\n"
-			"\tInput Speed - [[[ %.2lf Mpps, %.2lf Gbps ]]], Output Speed - [[[ %.2lf Mpps, %.2lf Gbps ]]]\n",
-			stats.ierrors, stats.ipackets, stats.opackets, stats.imissed,
-			(double)(stats.ipackets-ipackets)/diff, ((double)(stats.ibytes-ibytes) * 8) / (1000 * diff),
-			(double)(stats.opackets-opackets)/diff, ((double)(stats.obytes-obytes) * 8) / (1000 * diff));
-
-	ibytes = stats.ibytes;
-	obytes = stats.obytes;
-	ipackets = stats.ipackets;
-	opackets = stats.opackets;
-
-#if defined(RX_SPEED_TEST) || defined(RX_SPEED_TEST_2)
-	printf("\n===== RX SPEED TEST =====\n");
-	uint64_t rx_count = 0, rx_bytes = 0;
-
-	for (i = 0; i < ONVM_NUM_RX_THREADS; i ++) {
-		rx_count += rx_stats[i].count;
-		rx_bytes += rx_stats[i].bytes;
-
-		printf("\tRX queue %d: rx %lu pkts, speed %.2lf Mpps, %.2lf Gbps\n",
-				i, rx_stats[i].count, (double)rx_stats[i].count/diff, (double)((rx_stats[i].bytes + 20 * rx_stats[i].count) * 8) / (1000 * diff));
-
-		rx_stats[i].reset = 1;
-	}
-
-	printf("\tRX Overall Performance: %.2lf Mpps, %.2lf Gbps\n", (double)rx_count/diff, (double)((rx_bytes + 20 * rx_count) * 8) / (1000 * diff));
-#endif
 
 	clock_gettime(CLOCK_MONOTONIC, &start);
 }
@@ -211,9 +191,6 @@ static void
 onvm_stats_display_clients(void) {
 	unsigned i;
 	static struct timespec end;
-	static uint64_t tx_last[MAX_CLIENTS];
-	static uint64_t nf_drop_last[MAX_CLIENTS], nf_drop_l;
-	static uint64_t nf_drop_enq_last[MAX_CLIENTS], nf_drop_enq_l;
 	double diff;
 
 	printf("\nCLIENTS\n");
@@ -222,65 +199,47 @@ onvm_stats_display_clients(void) {
 		if (!onvm_nf_is_valid(&clients[i]))
 			continue;
 
-		/* avoid dividing 0 */
-		if (clients[i].stats.rx == 0)
-			clients[i].stats.rx = 1;
-
 		clock_gettime(CLOCK_MONOTONIC, &end);
 		diff = 1000000 * (end.tv_sec - clients[i].stats.start.tv_sec)
 			+ (end.tv_nsec - clients[i].stats.start.tv_nsec) / 1000;
 
-		const uint64_t rx = clients[i].stats.rx;
-		const uint64_t rx_datalen = clients[i].stats.rx_datalen;
-		const uint64_t rx_drop = clients[i].stats.rx_drop;
-		const uint64_t act_drop = clients[i].stats.act_drop;
-		const uint64_t act_next = clients[i].stats.act_next;
-		const uint64_t act_out = clients[i].stats.act_out;
-		const uint64_t act_tonf = clients[i].stats.act_tonf;
-		const uint64_t tx = clients_stats[i].tx * clients[i].gpu_info->thread_num;
-		const uint64_t tx_drop = clients_stats[i].tx_drop * clients[i].gpu_info->thread_num;
-		const uint64_t nf_drop = clients_stats[i].nf_drop * clients[i].gpu_info->thread_num;
-		const uint64_t nf_drop_enq = clients_stats[i].nf_drop_enq * clients[i].gpu_info->thread_num;
-		const uint64_t batch_size = clients_stats[i].batch_size;
-		const uint64_t batch_cnt = clients_stats[i].batch_cnt;
+		uint64_t rx = clients[i].stats.rx;
+		uint64_t rx_datalen = clients[i].stats.rx_datalen;
+		uint64_t tx = clients[i].stats.tx;
+		uint64_t tx_drop = clients[i].stats.tx_drop;
+		uint64_t act_drop = clients[i].stats.act_drop;
+		uint64_t batch_size = clients[i].stats.batch_size;
+		uint64_t batch_cnt = clients[i].stats.batch_cnt;
 
-		nf_drop_l = nf_drop - nf_drop_last[i];
-		nf_drop_enq_l = nf_drop_enq - nf_drop_enq_last[i];
+		if (rx == 0) rx = 1;
 
 		/* Update scheduler info */
 		clients[i].avg_pkt_len = (double)rx_datalen / rx;
-		clients[i].throughput_mpps = (double)(rx - nf_drop_l) / diff;
-		//clients[i].throughput_mpps = (double)(rx) / diff;
-		clients[i].stats.reset = 1;
+		clients[i].throughput_mpps = (double)(tx + tx_drop + act_drop) / diff;
 
-		printf("\n[Client %u - %s] :\nrx: %9"PRIu64"\trx_drop: %9"PRIu64"\tnext: %9"PRIu64"\tdrop: %9"PRIu64"\tnf_drop: %9"PRIu64"\tnf_drop_enq: %9"PRIu64"\t[[[ %.6lf Mpps, %.6lf Gbps, Pkt size %ld ]]]\n"
-				"tx: %9"PRIu64"\ttx_drop: %9"PRIu64"\tout:  %9"PRIu64"\ttonf: %9"PRIu64"\t[[[ %.6lf Mpps ]]]\n",
+		double approx_gbps = (double)((tx + tx_drop + act_drop) * (clients[i].avg_pkt_len + 20) * 8)/(1000 * diff);
+
+		printf("\n[Client %u - %s] :\n"
+		       "rx: %9u\t" "tx: %9u\t" "tx_drop: %9u\t" "act_drop: %9u\n"
+			   "[[[ %.6lf Mpps, %.6lf Gbps, Pkt size %ld ]]]\n",
 				clients[i].instance_id, get_nf_name(clients[i].info->service_id),
-				rx, rx_drop, act_next, act_drop, nf_drop_l, nf_drop_enq_l,
-				(double)(rx - nf_drop_l)/diff, (double)((rx - nf_drop_l) * (rx_datalen/rx + 20) * 8)/(1000 * diff), rx_datalen/rx,
-				tx, tx_drop, act_out, act_tonf, (double)(tx-tx_last[i])/diff);
+				rx, tx, tx_drop, act_drop,
+				clients[i].throughput_mpps, approx_gbps, rx_datalen/rx);
 
-		printf("GPU: Average batch size per thread is %.2lf, set batch as %d\n", (double)batch_size/batch_cnt, clients[i].batch_size);
+		printf("GPU: Avg. batch size = %.2lf, => %d\n", (double)batch_size/batch_cnt, clients[i].batch_size);
 		if (clients[i].stats.batch_cnt == 0) {
 			printf("Kernel count is 0, no statistics\n");
 		} else {
-			printf("Average HtoD PCIe size each kernel is %ld bytes, DtoH PCIe size is %ld bytes, batch count is %ld\n", clients[i].stats.htod_mem/clients[i].stats.batch_cnt, clients[i].stats.dtoh_mem/clients[i].stats.batch_cnt, clients[i].stats.batch_cnt);
+			printf("Avg HtoD = %ld bytes, DtoH = %ld bytes, Batch count = %ld\n",
+					clients[i].stats.htod_mem/clients[i].stats.batch_cnt,
+					clients[i].stats.dtoh_mem/clients[i].stats.batch_cnt,
+					clients[i].stats.batch_cnt);
 		}
-		clients[i].stats.htod_mem = 0;
-		clients[i].stats.dtoh_mem = 0;
-		clients[i].stats.batch_cnt = 0;
 
-	#if defined(MEASURE_KERNEL_TIME)
-		printf("Average kernel execution time in Manager: %.2lf us\n", total_kernel_time_diff/total_kernel_time_cnt); 
-		total_kernel_time_cnt = 0;
-		total_kernel_time_diff = 0;
-	#endif
+		printf("Average GPU execution time in NF: %.2lf us, batch count is %ld\n",
+				clients[i].stats.gpu_time/clients[i].stats.gpu_time_cnt, clients[i].stats.gpu_time_cnt);
 
-		printf("Average GPU execution time (kernel + PCIe + message) in NF: %.2lf us, batch count is %ld\n", clients_stats[i].gpu_time/clients_stats[i].gpu_time_cnt, clients_stats[i].gpu_time_cnt);
-
-		tx_last[i] = tx;
-		nf_drop_last[i] = nf_drop;
-		nf_drop_enq_last[i] = nf_drop_enq;
+		clients[i].stats.reset = 1;
 
 		if (clients[i].info->service_id == NF_PKTGEN) {
 			clock_gettime(CLOCK_MONOTONIC, &(clients[i].stats.start));

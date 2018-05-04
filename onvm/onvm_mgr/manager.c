@@ -3,7 +3,6 @@
 
 #include "onvm_init.h"
 #include "onvm_common.h"
-//#include "onvm_framework.h"
 #include "manager.h"
 #include "drvapi_error_string.h"
 
@@ -160,75 +159,6 @@ manager_nf_init(int instance_id)
 
 	return;
 }
-
-#if defined(GRAPH_TIME) || defined(SYNC_MODE)
-/* Release the resources immediately once the stream has terminated;
- * Send the host a response when all streams have completed processing. */
-static void
-stream_callback(CUstream cuda_stream, CUresult status, void *user_data)
-{
-	checkCudaErrors(status);
-
-	struct timespec tt;
-	clock_gettime(CLOCK_MONOTONIC, &tt);
-
-	struct nf_rsp *rsp;
-	type_arg a;
-	a.arg = (uint64_t)user_data;
-	struct client *cl = &(clients[a.info.instance_id]);
-	int i, thread_id = -1, allset = 1, res;
-
-#if defined(GRAPH_TIME)
-	printf("%d\t4\t%.2lf\n", cl->instance_id, (double)1000000*tt.tv_sec + tt.tv_nsec/1000);
-#endif
-
-	/* calculate the kernel time */
-	double diff = (double)1000000*tt.tv_sec + tt.tv_nsec/1000 - cl->stats.kernel_start;
-	if (diff > 0 && diff < 10000) {
-		cl->stats.kernel_time += diff;
-		cl->stats.kernel_cnt ++;
-	}
-
-	pthread_mutex_lock(&lock);
-	allocated_sm -= a.info.blk_num;
-	pthread_mutex_unlock(&lock);
-
-	for (i = 0; i < cl->worker_thread_num; i ++) {
-		if (cuda_stream == cl->stream[i]) {
-			thread_id = i;
-			cl->sync[i] = 1;
-			RTE_LOG(DEBUG, APP, "Kernel from stream %d completes, allocated_sm = %d\n", i, allocated_sm);
-		} else if (cl->sync[i] != 1) {
-			/* There is still stream unfinished */
-			allset = 0;
-		}
-	}
-
-	if (thread_id == -1)
-		rte_exit(EXIT_FAILURE, "Failed to find the cuda stream\n");
-
-	/* release SM resource */
-	/* If all streams are ended, send response */
-	if (allset == 1) {
-		/* allocate a response  */
-		if (rte_mempool_get(nf_response_pool, (void **)&rsp) < 0)
-			rte_exit(EXIT_FAILURE, "Failed to get response memory\n");
-		if (rsp == NULL)
-			rte_exit(EXIT_FAILURE, "Response memory not allocated\n");
-
-		rsp->type = RSP_GPU_KERNEL_SYNC;
-		rsp->batch_size = cl->batch_size;
-
-		res = rte_ring_enqueue(cl->global_response_q, rsp);
-		if (res < 0) {
-			rte_mempool_put(nf_response_pool, rsp);
-			rte_exit(EXIT_FAILURE, "Cannot enqueue into global response queue");
-		}
-
-		RTE_LOG(DEBUG, APP, "Kernel Synchronized, allocated_sm = %d\n", allocated_sm);
-	}
-}
-#endif
 
 static void
 sync_callback(CUstream cuda_stream, CUresult status, void *user_data)
@@ -585,8 +515,6 @@ manager_thread_main(void *arg)
 					rte_exit(EXIT_FAILURE, "instance id %d, blk_num %d, threads_per_blk %d\n", cl->instance_id, blk_num, threads_per_blk);
 				}
 
-				cl->stats.batch_cnt ++;
-
 				if (blk_num > SM_TOTAL_NUM - allocated_sm) {
 					rte_exit(EXIT_FAILURE, "There should always have available SMs\n");
 				}
@@ -630,7 +558,6 @@ manager_thread_main(void *arg)
 					rte_exit(EXIT_FAILURE, "instance id %d, blk_num %d, threads_per_blk %d\n", cl->instance_id, blk_num, threads_per_blk);
 				}
 
-				cl->stats.batch_cnt ++;
 				/* Remove the lock if stream_callback is not called */
 				//pthread_mutex_lock(&lock);
 

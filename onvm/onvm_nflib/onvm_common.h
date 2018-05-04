@@ -239,20 +239,25 @@ struct client {
 	 * or transmitted on an actual NIC port.
 	 */
 	struct {
+		// updated by switching/framework
 		volatile uint64_t rx;
 		volatile uint64_t rx_datalen;
-		volatile uint64_t rx_drop;
-		volatile uint64_t act_out;
-		volatile uint64_t act_tonf;
+		volatile uint64_t tx;
+		volatile uint64_t tx_drop;
 		volatile uint64_t act_drop;
-		volatile uint64_t act_next;
-		volatile uint64_t act_buffer;
+
 		volatile uint64_t htod_mem;
 		volatile uint64_t dtoh_mem;
+		volatile uint64_t batch_size;
 		volatile uint64_t batch_cnt;
+
+		double	 gpu_time;
+		uint64_t gpu_time_cnt;
+
 		volatile int reset;
 		struct timespec start;
 
+		// updated by manager
 		double kernel_time;
 		double kernel_start;
 		uint64_t kernel_cnt;
@@ -272,25 +277,6 @@ static inline struct onvm_pkt_meta* onvm_get_pkt_meta(struct rte_mbuf* pkt) {
 static inline uint8_t onvm_get_pkt_chain_index(struct rte_mbuf* pkt) {
 	return ((struct onvm_pkt_meta*)&pkt->udata64)->chain_index;
 }
-
-/*
- * Define a structure with stats from the clients.
- */
-struct client_tx_stats {
-	/* these stats hold how many packets the manager will actually receive,
-	 * and how many packets were dropped because the manager's queue was full.
-	 */
-	uint64_t tx;
-	uint64_t tx_drop;
-	uint64_t nf_drop;
-	uint64_t nf_drop_enq;
-	uint64_t batch_size;
-	uint64_t batch_cnt;
-	double	 gpu_time;
-	uint64_t gpu_time_cnt;
-}__attribute__ ((aligned (64)));
-
-extern struct client_tx_stats *clients_stats;
 
 /*
  * Define a structure to describe one NF

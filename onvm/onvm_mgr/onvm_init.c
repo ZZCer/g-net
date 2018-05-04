@@ -67,7 +67,6 @@ struct rte_ring *nf_info_queue;
 
 uint16_t **services;
 uint16_t *nf_per_service_count;
-struct client_tx_stats *clients_stats;
 struct onvm_service_chain *default_chain;
 struct onvm_service_chain **default_sc_p;
 
@@ -102,13 +101,6 @@ init(int argc, char *argv[]) {
 
 	/* get total number of ports */
 	total_ports = rte_eth_dev_count();
-
-	/* set up array for client tx data */
-	mz = rte_memzone_reserve(MZ_CLIENT_INFO, MAX_CLIENTS * sizeof(*clients_stats), rte_socket_id(), NO_FLAGS);
-	if (mz == NULL)
-		rte_exit(EXIT_FAILURE, "Cannot reserve memory zone for client information\n");
-	memset(mz->addr, 0, sizeof(*clients_stats));
-	clients_stats = mz->addr;
 
 	/* set up ports info */
 	ports = rte_malloc(MZ_PORT_INFO, sizeof(*ports), 0);

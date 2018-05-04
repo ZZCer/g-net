@@ -17,7 +17,7 @@ extern struct rte_mempool *nf_request_mp;
 extern struct rte_mempool *nf_response_mp;
 extern struct rte_ring *nf_request_queue;
 extern struct onvm_nf_info *nf_info;
-extern struct client_tx_stats *tx_stats;
+extern struct client *cl;
 extern volatile uint8_t keep_running;
 extern void onvm_nflib_handle_signal(int sig);
 
@@ -131,10 +131,6 @@ onvm_framework_cpu(int thread_id)
 	int instance_id = nf_info->instance_id;
 	int cur_buf_size;
 
-	mz = rte_memzone_lookup(MZ_CLIENTS);
-	if (!mz || !mz->addr)
-		rte_exit(EXIT_FAILURE, "clients not found");
-	struct client *cl = &((struct client *)mz->addr)[instance_id];
 	rx_q = cl->rx_q_new;
 
 	while (keep_running) {
@@ -165,11 +161,11 @@ onvm_framework_cpu(int thread_id)
 		int sent_packets = 0;
 		if (likely(tx_q != NULL && num_packets != 0)) {
 			sent_packets = rte_ring_enqueue_burst(tx_q, (void **)batch->pkt_ptr[buf_id], num_packets, NULL);
-			tx_stats[instance_id].tx += sent_packets;
+			cl->stats.tx += sent_packets;
 		}
 		if (sent_packets < cur_buf_size) {
 			onvm_pkt_drop_batch(batch->pkt_ptr[buf_id] + sent_packets, cur_buf_size - sent_packets);
-			tx_stats[instance_id].tx_drop += cur_buf_size - sent_packets;
+			cl->stats.tx_drop += cur_buf_size - sent_packets;
 		}
 
 		// rx
@@ -297,7 +293,6 @@ onvm_framework_start_gpu(void (*user_gpu_htod)(void *, unsigned int),
 
 	/* Listen for ^C and docker stop so we can exit gracefully */
 	signal(SIGINT, onvm_nflib_handle_signal);
-	signal(SIGTERM, onvm_nflib_handle_signal);
 
 	if (user_gpu_set_arg == NULL || user_gpu_htod == NULL || user_gpu_dtoh == NULL) {
 		rte_exit(EXIT_FAILURE, "GPU function is NULL\n");
@@ -321,8 +316,8 @@ onvm_framework_start_gpu(void (*user_gpu_htod)(void *, unsigned int),
 			gpu_buf_id = gpu_get_batch(batch);
 		}
 
-		tx_stats[instance_id].batch_size += batch->buf_size[gpu_buf_id];
-		tx_stats[instance_id].batch_cnt ++;
+		cl->stats.batch_size += batch->buf_size[gpu_buf_id];
+		cl->stats.batch_cnt ++;
 
 		clock_gettime(CLOCK_MONOTONIC, &start);
 
@@ -340,8 +335,8 @@ onvm_framework_start_gpu(void (*user_gpu_htod)(void *, unsigned int),
 		clock_gettime(CLOCK_MONOTONIC, &end);
 		diff = 1000000 * (end.tv_sec-start.tv_sec)+ (end.tv_nsec-start.tv_nsec)/1000;
 
-		tx_stats[instance_id].gpu_time += diff;
-		tx_stats[instance_id].gpu_time_cnt ++;
+		cl->stats.gpu_time += diff;
+		cl->stats.gpu_time_cnt ++;
 
 		/* 5. Pass the results to CPU again for post processing */
 		batch->buf_state[gpu_buf_id] = BUF_STATE_CPU_READY;

@@ -49,7 +49,8 @@ gpu_get_resource(int instance_id, double T0) {
 	double k1, b1, k2, b2;
 	uint16_t L = cl->gpu_info->latency_us;
 	L = 10000;
-	unsigned int stream_num = cl->gpu_info->thread_num;
+	unsigned int thread_num = cl->gpu_info->thread_num;
+	unsigned int stream_num = 1;  // todo: multiple streams
 
 	printf("[%d] Current Resource Allocated: blk_num %d, batch_size %d, threads_per_blk %d\n",
 			instance_id, cl->blk_num, cl->batch_size, cl->threads_per_blk);
@@ -60,7 +61,7 @@ gpu_get_resource(int instance_id, double T0) {
 	int B0, minB;
 	unsigned int i, success = 0;
 
-	if (stream_num == 0 || T0 == 0 || cl->avg_pkt_len == 0) {
+	if (thread_num == 0 || T0 == 0 || cl->avg_pkt_len == 0) {
 		/* Threads have not been initiated, return */
 		RTE_LOG(ERR, APP, "stream num %d, T %.2lf, avg pkt len %d\n", stream_num, T0, cl->avg_pkt_len);
 		return;	
@@ -106,10 +107,10 @@ gpu_get_resource(int instance_id, double T0) {
 		printf(">>>>>>>>>>      Set latency is too low to meet the demand L <= b1 + b2 + cost_time      <<<<<<<<<<\n\n");
 	}
 
-	if (clients_stats[instance_id].batch_cnt == 0)
-		clients_stats[instance_id].batch_cnt = 1;
+	if (cl->stats.batch_cnt == 0)
+		cl->stats.batch_cnt = 1;
 	/* Get the cost time */
-	B0 = clients_stats[instance_id].batch_size / clients_stats[instance_id].batch_cnt;
+	B0 = cl->stats.batch_size / cl->stats.batch_cnt;
 	B0 = B0 / cl->blk_num;
 	N = cl->blk_num * stream_num; /* all SMs allocated to the NF */
 	if (B0 <= 0) {
@@ -122,7 +123,7 @@ gpu_get_resource(int instance_id, double T0) {
 	L0 = Lk + k2 * B0 * N + b2; /* expected overall gpu processing time */
 
 	/* GPU time (kernel + PCIe + other costs) collected from clients */
-	double measured_gpu_time = clients_stats[instance_id].gpu_time / clients_stats[instance_id].gpu_time_cnt;
+	double measured_gpu_time = cl->stats.gpu_time / cl->stats.gpu_time_cnt;
 	/* Kernel execution time from Manager */
 	double measured_kernel_time = cl->stats.kernel_time / cl->stats.kernel_cnt;
 	/* Update cost time */
@@ -135,10 +136,10 @@ gpu_get_resource(int instance_id, double T0) {
 	printf("[%d] Expected Mem time is %.2lf\n", cl->instance_id, L0 - Lk);
 	printf("[%d] Extra cost: %.2lf\n", cl->instance_id, cl->cost_time);
 
-	clients_stats[instance_id].gpu_time = 0;
-	clients_stats[instance_id].gpu_time_cnt = 0;
-	clients_stats[instance_id].batch_size = 0;
-	clients_stats[instance_id].batch_cnt = 0;
+	cl->stats.gpu_time = 0;
+	cl->stats.gpu_time_cnt = 0;
+	cl->stats.batch_size = 0;
+	cl->stats.batch_cnt = 0;
 
 	cl->stats.kernel_time = 0;
 	cl->stats.kernel_start = 0;
