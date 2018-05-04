@@ -115,11 +115,9 @@ rx_thread_main(void *arg) {
 						onvm_pkt_drop_batch(pkts, rx_count);
 				}
 			} else {
-				if (num_packets == 0) {
-					starve_rx_counter++;
-					if (starve_rx_counter == STARVE_THRESHOLD) {
-						RTE_LOG(INFO, APP, "Rx starving\n");
-					}
+				starve_rx_counter++;
+				if (starve_rx_counter == STARVE_THRESHOLD) {
+					RTE_LOG(INFO, APP, "Rx starving\n");
 				}
 			}
 		}
