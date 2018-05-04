@@ -130,13 +130,22 @@ onvm_framework_cpu(int thread_id)
 	nfv_batch_t *batch;
 	int instance_id = nf_info->instance_id;
 	int cur_buf_size;
+	uint64_t starve_rx_counter = 0;
+	uint64_t starve_gpu_counter = 0;
 
 	rx_q = cl->rx_q_new;
 
 	while (keep_running) {
 		batch = &batch_set[thread_id];
 		buf_id = cpu_get_batch(batch);
-		if (buf_id == -1) continue;
+		if (buf_id == -1) {
+			starve_gpu_counter++;
+			if (starve_gpu_counter > STARVE_THRESHOLD) {
+				RTE_LOG(INFO, APP, "GPU starving\n");
+			}
+			continue;
+		}
+		starve_gpu_counter = 0;
 		cur_buf_size = batch->buf_size[buf_id];
 
 		// post-processing
@@ -175,7 +184,14 @@ onvm_framework_cpu(int thread_id)
 		// rx
 		do {
 			num_packets = rte_ring_dequeue_bulk(rx_q, (void **)batch->pkt_ptr[buf_id], BATCH_SIZE, NULL);
+			if (num_packets == 0) {
+				starve_rx_counter++;
+				if (starve_rx_counter > STARVE_THRESHOLD) {
+					RTE_LOG(INFO, APP, "Rx starving\n");
+				}
+			}
 		} while (num_packets == 0);
+		starve_rx_counter = 0;
 		cur_buf_size = num_packets;
 		batch->buf_size[buf_id] = cur_buf_size;
 

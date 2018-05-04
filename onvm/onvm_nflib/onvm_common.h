@@ -65,6 +65,7 @@
 #define BATCH_CACHE_SIZE 32
 //#define USE_BATCH_SWITCHING 1
 #define BATCH_QUEUE_FACTOR 4
+#define STARVE_THRESHOLD 10000
 
 #define MZ_CLIENTS "MProc_clients"
 
