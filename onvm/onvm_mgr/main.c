@@ -74,6 +74,7 @@ rx_thread_main(void *arg) {
 	struct rte_mbuf *pkts[PACKET_READ_SIZE];
 	struct thread_info *rx = (struct thread_info*)arg;
 	unsigned int core_id = rte_lcore_id();
+	uint64_t starve_rx_counter = 0;	
 
 	RTE_LOG(INFO, APP, "Core %d: Running RX thread for RX queue %d\n", core_id, rx->queue_id);
 	
@@ -93,6 +94,7 @@ rx_thread_main(void *arg) {
 
 			/* Now process the NIC packets read */
 			if (likely(rx_count > 0)) {
+				starve_rx_counter = 0;
 				if (unlikely(rx_q_new == NULL)) {
 					if (nf_per_service_count[first_service_id] > 0) {
 						rx_q_new = clients[services[first_service_id][0]].rx_q_new;
@@ -111,6 +113,13 @@ rx_thread_main(void *arg) {
 					}
 				} else {
 						onvm_pkt_drop_batch(pkts, rx_count);
+				}
+			} else {
+				if (num_packets == 0) {
+					starve_rx_counter++;
+					if (starve_rx_counter == STARVE_THRESHOLD) {
+						RTE_LOG(INFO, APP, "Rx starving\n");
+					}
 				}
 			}
 		}
