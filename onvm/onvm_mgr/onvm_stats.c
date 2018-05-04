@@ -108,6 +108,9 @@ onvm_stats_display_all(unsigned difftime) {
 	onvm_stats_clear_terminal();
 	onvm_stats_display_ports(difftime);
 	onvm_stats_display_clients();
+	struct rte_mempool *mp;
+	mp = rte_mempool_lookup(PKTMBUF_POOL_NAME);
+	printf("AVAIL MBUFS: %u\n", rte_mempool_avail_count(mp));
 }
 
 void
