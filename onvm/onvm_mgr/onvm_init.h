@@ -69,7 +69,7 @@
 
 #include "onvm_args.h"
 #include "onvm_includes.h"
-//#include "onvm_common.h"
+#include "onvm_common.h"
 #include "onvm_sc_mgr.h"
 #include "onvm_sc_common.h"
 
@@ -78,10 +78,10 @@
 #if defined(UNCO_SHARE_GPU) || defined(FAIR_SHARE_GPU)
 	#define MBUFS_PER_CLIENT (65000)
 #else
-	#define MBUFS_PER_CLIENT 2048
+	#define MBUFS_PER_CLIENT (MAX_BATCH_SIZE * (NUM_BATCH_BUF + BATCH_QUEUE_FACTOR))
 #endif
 //#define MBUFS_PER_CLIENT (MAX_BATCH_SIZE * NUM_BATCH_BUF)
-#define MBUFS_PER_PORT 1536
+#define MBUFS_PER_PORT (4 * 512 * 2)
 #define MBUF_CACHE_SIZE 512
 #define MBUF_OVERHEAD (sizeof(struct rte_mbuf) + RTE_PKTMBUF_HEADROOM)
 #define RX_MBUF_DATA_SIZE 2048
