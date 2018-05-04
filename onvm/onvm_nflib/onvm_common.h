@@ -238,7 +238,7 @@ struct client {
 	 * The port-info stats, in contrast, record how many packets were received
 	 * or transmitted on an actual NIC port.
 	 */
-	struct {
+	volatile struct {
 		// updated by switching/framework
 		uint64_t rx;
 		uint64_t rx_datalen;
