@@ -170,8 +170,6 @@ onvm_nflib_init(int argc, char *argv[], const char *nf_tag, int service_id,
 	struct onvm_service_chain **scp;
 	int retval_eal, retval_parse, retval_final;
 
-	//signal(SIGSEGV, segv_handler);
-
 	if (service_id < 0)
 		rte_exit(EXIT_FAILURE, "Service ID not set");
 
@@ -260,20 +258,6 @@ onvm_nflib_init(int argc, char *argv[], const char *nf_tag, int service_id,
 		assert(user_install_gpu_rule != NULL);
 		user_install_gpu_rule();
 	}
-
-#if !defined(BQUEUE_SWITCH)
-	/* Now, map rx and tx rings into client space */
-	unsigned i;
-	for (i = 0; i < MAX_CPU_THREAD_NUM; i ++) {
-		rx_ring[i] = rte_ring_lookup(get_rx_queue_name(nf_info->instance_id, i));
-		if (rx_ring[i] == NULL)
-			rte_exit(EXIT_FAILURE, "Cannot get RX ring - is server process running?\n");
-	}
-
-	tx_ring = rte_ring_lookup(get_tx_queue_name(nf_info->instance_id));
-	if (tx_ring == NULL)
-		rte_exit(EXIT_FAILURE, "Cannot get TX ring - is server process running?\n");
-#endif
 
 	/* Tell the manager we're ready to recieve packets */
 	nf_info->status = NF_RUNNING;

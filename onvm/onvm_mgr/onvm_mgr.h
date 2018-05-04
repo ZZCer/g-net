@@ -99,16 +99,6 @@ extern uint16_t next_instance_id;
 /*******************************Data Structures*******************************/
 
 
-/*
- * Local buffers to put packets in, used to send packets in bursts to the
- * clients or to the NIC
- */
-struct packet_buf {
-	struct rte_mbuf *buffer[PACKET_READ_SIZE];
-	uint16_t count;
-};
-
-
 /** Thread state. This specifies which NFs the thread will handle and
  *  includes the packet buffers used by the thread for NFs and ports.
  */

@@ -29,9 +29,10 @@ typedef struct pseudo_struct_s {
 } pseudo_struct_t;
 
 static nfv_batch_t batch_set[MAX_CPU_THREAD_NUM];
-static void *(*INIT_FUNC)(void);
-static void (*BATCH_FUNC)(void *,  struct rte_mbuf *);
-static void (*POST_FUNC)(void *, struct rte_mbuf *, int);
+
+static init_func_t INIT_FUNC;
+static pre_func_t  PRE_FUNC;
+static post_func_t POST_FUNC;
 
 static int onvm_framework_cpu(int thread_id);
 
@@ -197,8 +198,7 @@ onvm_framework_cpu(int thread_id)
 		uint64_t rx_datalen = 0;
 		for (i = 0; i < cur_buf_size; i++) {
 			rx_datalen += batch->pkt_ptr[buf_id][i]->data_len;
-			((pseudo_struct_t *)batch->user_bufs[buf_id])->job_num = i;
-			BATCH_FUNC(batch->user_bufs[buf_id], batch->pkt_ptr[buf_id][i]);
+			PRE_FUNC(batch->user_bufs[buf_id], batch->pkt_ptr[buf_id][i], i);
 		}
 
 		rte_spinlock_lock(&cl->stats.update_lock);
@@ -286,12 +286,10 @@ onvm_framework_init(const char *module_file, const char *kernel_name)
 }
 
 void
-onvm_framework_start_cpu(void *(*user_init_buf_func)(void), 
-						void (*user_batch_func)(void *,  struct rte_mbuf *),
-						void (*user_post_func)(void *, struct rte_mbuf *, int))
+onvm_framework_start_cpu(init_func_t user_init_buf_func, pre_func_t user_pre_func, post_func_t user_post_func)
 {
 	INIT_FUNC = user_init_buf_func;
-	BATCH_FUNC = user_batch_func;
+	PRE_FUNC = user_pre_func;
 	POST_FUNC = user_post_func;
 
 	int i;
@@ -303,9 +301,7 @@ onvm_framework_start_cpu(void *(*user_init_buf_func)(void),
 }
 
 void
-onvm_framework_start_gpu(void (*user_gpu_htod)(void *, unsigned int),
-						void (*user_gpu_dtoh)(void *, unsigned int),
-						void (*user_gpu_set_arg)(void *, void *, void *))
+onvm_framework_start_gpu(gpu_htod_t user_gpu_htod, gpu_dtoh_t user_gpu_dtoh, gpu_set_arg_t user_gpu_set_arg)
 {
 	int gpu_buf_id;
 	int batch_id;

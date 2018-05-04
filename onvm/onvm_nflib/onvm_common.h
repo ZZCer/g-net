@@ -83,25 +83,6 @@ typedef struct gpu_packet_s {
 
 #define PORT_TX_QUEUE "port_tx_q_%u"
 
-/*
-#include <unistd.h>
-#include <execinfo.h>
-#include <signal.h>
-
-static void segv_handler(int sig) {
-	void *array[32];
-	size_t size;
-
-	// get void*'s for all entries on the stack
-	size = backtrace(array, 32);
-
-	// print out all the frames to stderr
-	fprintf(stderr, "Error: signal %d:\n", sig);
-	backtrace_symbols_fd(array, size, STDERR_FILENO);
-	kill(0, SIGABRT);
-}
-*/
-
 /*****************************Original Below**********************************/
 
 #define ONVM_NUM_RX_THREADS	4 /* Should be the same with the number of worker threads in a NF --- what??? rx threads are matched to the num of NICs*/
