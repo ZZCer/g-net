@@ -144,8 +144,8 @@ onvm_framework_cpu(int thread_id)
 			}
 			continue;
 		}
-		if (starve_gpu_counter) {
-			RTE_LOG(INFO, APP, "GPU resumes\n");
+		if (starve_gpu_counter >= STARVE_THRESHOLD) {
+			RTE_LOG(INFO, APP, "GPU resumed\n");
 			starve_gpu_counter = 0;
 		}
 		cur_buf_size = batch->buf_size[buf_id];
@@ -197,7 +197,7 @@ onvm_framework_cpu(int thread_id)
 				RTE_LOG(INFO, APP, "batch size changed to %u\n", last_batch_size);
 			}
 		} while (num_packets == 0);
-		if (starve_rx_counter) {
+		if (starve_rx_counter >= STARVE_THRESHOLD) {
 			RTE_LOG(INFO, APP, "Rx resumed\n");
 			starve_rx_counter = 0;
 		}
