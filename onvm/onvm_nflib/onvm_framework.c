@@ -130,6 +130,7 @@ onvm_framework_cpu(int thread_id)
 	int cur_buf_size;
 	uint64_t starve_rx_counter = 0;
 	uint64_t starve_gpu_counter = 0;
+	unsigned last_batch_size;
 
 	rx_q = cl->rx_q_new;
 
@@ -143,7 +144,10 @@ onvm_framework_cpu(int thread_id)
 			}
 			continue;
 		}
-		starve_gpu_counter = 0;
+		if (starve_gpu_counter) {
+			RTE_LOG(INFO, APP, "GPU resumes\n");
+			starve_gpu_counter = 0;
+		}
 		cur_buf_size = batch->buf_size[buf_id];
 
 		// post-processing
@@ -188,8 +192,15 @@ onvm_framework_cpu(int thread_id)
 					RTE_LOG(INFO, APP, "Rx starving\n");
 				}
 			}
+			if (last_batch_size != BATCH_SIZE) {
+				last_batch_size = BATCH_SIZE;
+				RTE_LOG(INFO, APP, "batch size changed to %u\n", last_batch_size);
+			}
 		} while (num_packets == 0);
-		starve_rx_counter = 0;
+		if (starve_rx_counter) {
+			RTE_LOG(INFO, APP, "Rx resumed\n");
+			starve_rx_counter = 0;
+		}
 		cur_buf_size = num_packets;
 		batch->buf_size[buf_id] = cur_buf_size;
 
