@@ -130,7 +130,7 @@ onvm_framework_cpu(int thread_id)
 	int cur_buf_size;
 	uint64_t starve_rx_counter = 0;
 	uint64_t starve_gpu_counter = 0;
-	unsigned last_batch_size;
+	unsigned last_batch_size = 0;
 
 	rx_q = cl->rx_q_new;
 
