@@ -171,7 +171,7 @@ onvm_framework_cpu(int thread_id)
 			sent_packets = rte_ring_enqueue_burst(tx_q, (void **)batch->pkt_ptr, num_packets, NULL);
 		}
 		if (sent_packets < cur_buf_size) {
-			onvm_pkt_drop_batch(batch->pkt_ptr[buf_id] + sent_packets, cur_buf_size - sent_packets);
+			onvm_pkt_drop_batch(batch->pkt_ptr + sent_packets, cur_buf_size - sent_packets);
 		}
 
 		rte_spinlock_lock(&cl->stats.update_lock);
@@ -204,13 +204,8 @@ onvm_framework_cpu(int thread_id)
 		// pre-processing
 		uint64_t rx_datalen = 0;
 		for (i = 0; i < cur_buf_size; i++) {
-<<<<<<< HEAD
 			rx_datalen += batch->pkt_ptr[i]->data_len;
 			BATCH_FUNC(batch->user_buf, batch->pkt_ptr[i], i);
-=======
-			rx_datalen += batch->pkt_ptr[buf_id][i]->data_len;
-			PRE_FUNC(batch->user_bufs[buf_id], batch->pkt_ptr[buf_id][i], i);
->>>>>>> mas3
 		}
 
 		rte_spinlock_lock(&cl->stats.update_lock);
@@ -220,7 +215,7 @@ onvm_framework_cpu(int thread_id)
 
 		// launch kernel
 		if (cur_buf_size > 0) {
-			batch->buf_state[buf_id] = BUF_STATE_GPU_READY;
+			batch->buf_state = BUF_STATE_GPU_READY;
 		}
 	}
 
