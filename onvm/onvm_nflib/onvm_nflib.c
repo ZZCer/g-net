@@ -104,6 +104,7 @@ struct rte_ring *nf_request_queue;
 
 extern int NF_REQUIRED_LATENCY;
 extern int INIT_WORKER_THREAD_NUM;
+extern int INIT_WORKER_STREAM_NUM;
 
 /***********************Internal Functions Prototypes*************************/
 
@@ -370,6 +371,10 @@ onvm_nflib_parse_args(int argc, char *argv[]) {
 			case 'k':
 				INIT_WORKER_THREAD_NUM = (uint16_t) strtoul(optarg, NULL, 10);
 				RTE_LOG(INFO, APP, "[ARG] Initial worker thread number = %d\n", INIT_WORKER_THREAD_NUM);
+				break;
+			case 's':
+				INIT_WORKER_STREAM_NUM = (uint16_t) strtoul(optarg, NULL, 10);
+				RTE_LOG(INFO, APP, "[ARG] Initial worker stream number = %d\n", INIT_WORKER_STREAM_NUM);
 				break;
 			case '?':
 				onvm_nflib_usage(progname);

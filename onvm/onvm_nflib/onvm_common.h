@@ -190,7 +190,7 @@ static void segv_handler(int sig) {
 #define MAX_SERVICES 16           // total number of unique services allowed
 #define MAX_CLIENTS_PER_SERVICE 1 // max number of NFs per service.
 
-#define MAX_CPU_THREAD_NUM	8     // max number of worker threads per NF
+#define MAX_CONCURRENCY_NUM	8     // max number of threads + streams per NF
 #define MAX_ARG_SIZE		128
 #define MAX_ARG_NUM			16
 #define MAX_MODULE_FILE_LEN	100
@@ -342,10 +342,10 @@ struct gpu_schedule_info {
 	unsigned int line_start_batch[MAX_PARA_NUM];
 	unsigned int para_num;
 
-	char args[MAX_CPU_THREAD_NUM][MAX_ARG_SIZE];
-	void *arg_info[MAX_CPU_THREAD_NUM][MAX_ARG_NUM + 1];
+	char args[MAX_CONCURRENCY_NUM][MAX_ARG_SIZE];
+	void *arg_info[MAX_CONCURRENCY_NUM][MAX_ARG_NUM + 1];
 
-	unsigned int thread_num;
+	unsigned int stream_num;
 	int init;
 
 	uint16_t latency_us;

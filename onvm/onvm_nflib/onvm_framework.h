@@ -16,19 +16,22 @@
 /* Each CPU worker holds such a data structure */
 typedef struct nfv_batch_s
 {
-	void *user_bufs[NUM_BATCH_BUF];
-	struct rte_mbuf **pkt_ptr[NUM_BATCH_BUF];
+	void *user_buf;
+	struct rte_mbuf **pkt_ptr;
 
-	int buf_size[NUM_BATCH_BUF];
-	volatile int buf_state[NUM_BATCH_BUF];
+	int buf_size;
+	volatile int buf_state;
 
-	int thread_id;
+	int stream_id;
+} nfv_batch_t;
 
+typedef struct gpu_stream_s
+{
 	void *host_mem_addr_base;
 	void *host_mem_addr_cur;
 	int host_mem_size_total;
 	int host_mem_size_left;
-} nfv_batch_t;
+} gpu_stream_t;
 
 enum {
 	BUF_STATE_CPU_READY = 0,

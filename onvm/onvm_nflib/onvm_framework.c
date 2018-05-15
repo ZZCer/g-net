@@ -24,11 +24,9 @@ extern void onvm_nflib_handle_signal(int sig);
 /* shared data from server. */
 struct gpu_schedule_info *gpu_info;
 
-typedef struct pseudo_struct_s {
-	int64_t job_num;
-} pseudo_struct_t;
+static nfv_batch_t batch_set[MAX_CONCURRENCY_NUM];
+//static gpu_stream_t stream_ctx[MAX_CONCURRENCY_NUM];
 
-static nfv_batch_t batch_set[MAX_CPU_THREAD_NUM];
 static void *(*INIT_FUNC)(void);
 static void (*BATCH_FUNC)(void *,  struct rte_mbuf *);
 static void (*POST_FUNC)(void *, struct rte_mbuf *, int);
@@ -43,26 +41,27 @@ static pthread_mutex_t lock;
 static int BATCH_SIZE = 1024;
 
 int NF_REQUIRED_LATENCY = 1000; // us -- default latency
-int INIT_WORKER_THREAD_NUM = 1; // us -- default latency
+int THREAD_NUM = 1;
+int STREAM_NUM = 1;
 
 struct thread_arg {
 	int thread_id;
 };
 
-static inline int get_batch(nfv_batch_t *batch, int state) {
-       int i;
-       for (i = 0; i < NUM_BATCH_BUF; i++) {
-               if (batch->buf_state[i] == state) return i;
-       }
-       return -1;
+static inline int get_batch(int state) {
+	int i;
+	for (i = 0; i < THREAD_NUM + STREAM_NUM; i++) {
+			if (batch_set[i].buf_state == state) return i;
+	}
+	return -1;
 }
 
-static inline int cpu_get_batch(nfv_batch_t *batch) {
-       return get_batch(batch, BUF_STATE_CPU_READY);
+static inline int cpu_get_batch() {
+       return get_batch(BUF_STATE_CPU_READY);
 }
 
-static inline int gpu_get_batch(nfv_batch_t *batch) {
-       return get_batch(batch, BUF_STATE_GPU_READY);
+static inline int gpu_get_batch() {
+       return get_batch(BUF_STATE_GPU_READY);
 }
 
 static void 
@@ -70,20 +69,22 @@ onvm_framework_thread_init(int thread_id)
 {
 	int i = 0;
 
+#if 0
 	nfv_batch_t *batch = &(batch_set[thread_id]);
 	/* The main thread set twice, elegant plan? */
 	pthread_setspecific(my_batch, (void *)batch);
 	batch->thread_id = thread_id;
-
+#endif
 	/* the last 1 is used to mark the allocation for not the first thread */
 	if (thread_id != 0) {
 		gcudaAllocSize(0, 0, 1);
 	}
-
+/*
 	for (i = 0; i < NUM_BATCH_BUF; i ++) {
 		batch->user_bufs[i] = INIT_FUNC();
 		batch->pkt_ptr[i] = (struct rte_mbuf **)malloc(sizeof(struct rte_mbuf *) * MAX_BATCH_SIZE);
 	}
+*/
 }
 
 static int 
@@ -93,10 +94,6 @@ cpu_thread(void *arg)
 	unsigned cur_lcore = rte_lcore_id();
 
 	onvm_framework_thread_init(my_arg->thread_id);
-
-	pthread_mutex_lock(&lock);
-	gpu_info->thread_num ++;
-	pthread_mutex_unlock(&lock);
 
 	RTE_LOG(INFO, APP, "New CPU thread %d is spawned, running on lcore %u, total_thread %d\n", my_arg->thread_id, cur_lcore, gpu_info->thread_num);
 
@@ -125,9 +122,9 @@ onvm_framework_cpu(int thread_id)
 {
 	int i, j;
 	int buf_id;
-	struct rte_ring *rx_q, *tx_q;
 	nfv_batch_t *batch;
 	int cur_buf_size;
+	struct rte_ring *rx_q, *tx_q;
 	uint64_t starve_rx_counter = 0;
 	uint64_t starve_gpu_counter = 0;
 	int last_batch_size = 0;
@@ -135,8 +132,7 @@ onvm_framework_cpu(int thread_id)
 	rx_q = cl->rx_q_new;
 
 	while (keep_running) {
-		batch = &batch_set[thread_id];
-		buf_id = cpu_get_batch(batch);
+		buf_id = cpu_get_batch();
 		if (buf_id == -1) {
 			starve_gpu_counter++;
 			if (starve_gpu_counter == STARVE_THRESHOLD) {
@@ -148,21 +144,22 @@ onvm_framework_cpu(int thread_id)
 			RTE_LOG(INFO, APP, "GPU resumed\n");
 			starve_gpu_counter = 0;
 		}
-		cur_buf_size = batch->buf_size[buf_id];
+		batch = &batch_set[buf_id];
+		cur_buf_size = batch->buf_size;
 
 		// post-processing
 		for (i = 0; i < cur_buf_size; i++) {
-			POST_FUNC(batch->user_bufs[buf_id], batch->pkt_ptr[buf_id][i], i);
+			POST_FUNC(batch->user_buf, batch->pkt_ptr[i], i);
 		}
 
 		// handle dropped packets
 		for (i = j = 0; i < cur_buf_size; i++) {
-			struct onvm_pkt_meta *meta = onvm_get_pkt_meta(batch->pkt_ptr[buf_id][i]);
+			struct onvm_pkt_meta *meta = onvm_get_pkt_meta(batch->pkt_ptr[i]);
 			if (meta->action != ONVM_NF_ACTION_DROP) {
 				// swap
-				struct rte_mbuf *p = batch->pkt_ptr[buf_id][i];
-				batch->pkt_ptr[buf_id][i] = batch->pkt_ptr[buf_id][j];
-				batch->pkt_ptr[buf_id][j++] = p;
+				struct rte_mbuf *p = batch->pkt_ptr[i];
+				batch->pkt_ptr[i] = batch->pkt_ptr[j];
+				batch->pkt_ptr[j++] = p;
 			}
 		}
 		int num_packets = j;
@@ -171,7 +168,7 @@ onvm_framework_cpu(int thread_id)
 		tx_q = *(struct rte_ring * const volatile*)&cl->tx_q_new;
 		int sent_packets = 0;
 		if (likely(tx_q != NULL && num_packets != 0)) {
-			sent_packets = rte_ring_enqueue_burst(tx_q, (void **)batch->pkt_ptr[buf_id], num_packets, NULL);
+			sent_packets = rte_ring_enqueue_burst(tx_q, (void **)batch->pkt_ptr, num_packets, NULL);
 		}
 		if (sent_packets < cur_buf_size) {
 			onvm_pkt_drop_batch(batch->pkt_ptr[buf_id] + sent_packets, cur_buf_size - sent_packets);
@@ -185,7 +182,7 @@ onvm_framework_cpu(int thread_id)
 
 		// rx
 		do {
-			num_packets = rte_ring_dequeue_burst(rx_q, (void **)batch->pkt_ptr[buf_id], BATCH_SIZE, NULL);
+			num_packets = rte_ring_dequeue_bulk(rx_q, (void **)batch->pkt_ptr, BATCH_SIZE, NULL);
 			if (num_packets == 0) {
 				starve_rx_counter++;
 				if (starve_rx_counter == STARVE_THRESHOLD) {
@@ -202,14 +199,13 @@ onvm_framework_cpu(int thread_id)
 			starve_rx_counter = 0;
 		}
 		cur_buf_size = num_packets;
-		batch->buf_size[buf_id] = cur_buf_size;
+		batch->buf_size = cur_buf_size;
 
-		// pre-processing // todo: pass param i insteadof modify the struct
+		// pre-processing
 		uint64_t rx_datalen = 0;
 		for (i = 0; i < cur_buf_size; i++) {
-			rx_datalen += batch->pkt_ptr[buf_id][i]->data_len;
-			((pseudo_struct_t *)batch->user_bufs[buf_id])->job_num = i;
-			BATCH_FUNC(batch->user_bufs[buf_id], batch->pkt_ptr[buf_id][i]);
+			rx_datalen += batch->pkt_ptr[i]->data_len;
+			BATCH_FUNC(batch->user_buf, batch->pkt_ptr[i], i);
 		}
 
 		rte_spinlock_lock(&cl->stats.update_lock);
