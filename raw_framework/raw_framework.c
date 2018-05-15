@@ -25,7 +25,6 @@ typedef struct my_buf_s {
 static void *init_host_buf(void)
 {
 	buf_t *buf = malloc(sizeof(buf_t));
-	buf->job_num = 0;
 	return buf;
 }
 

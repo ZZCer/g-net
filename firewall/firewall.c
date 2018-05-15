@@ -50,8 +50,6 @@ static void *init_host_buf(void)
 {
 	buf_t *buf = malloc(sizeof(buf_t));
 
-	buf->job_num = 0;
-
 	gcudaHostAlloc((void **)&(buf->host_pkt_fives), MAX_BATCH_SIZE * sizeof(struct pcktFive));
 	gcudaHostAlloc((void **)&(buf->host_res), MAX_BATCH_SIZE * 4 * sizeof(unsigned int));
 
@@ -61,7 +59,7 @@ static void *init_host_buf(void)
 	return buf;
 }
 
-static inline void user_batch_func(void *cur_buf, struct rte_mbuf *pkt)
+static inline void user_batch_func(void *cur_buf, struct rte_mbuf *pkt, int pkt_idx)
 {
 	buf_t *buf = (buf_t *)cur_buf;
 
@@ -69,19 +67,19 @@ static inline void user_batch_func(void *cur_buf, struct rte_mbuf *pkt)
 		rte_exit(EXIT_FAILURE, "Packet is not ipv4\n");
 
 	struct ipv4_hdr *ip = onvm_pkt_ipv4_hdr(pkt);
-	buf->host_pkt_fives[buf->job_num].srcAddr = ip->src_addr;
-	buf->host_pkt_fives[buf->job_num].desAddr = ip->dst_addr;
+	buf->host_pkt_fives[pkt_idx].srcAddr = ip->src_addr;
+	buf->host_pkt_fives[pkt_idx].desAddr = ip->dst_addr;
 
 	if (onvm_pkt_is_tcp(pkt)) {
 		struct tcp_hdr *tcp = onvm_pkt_tcp_hdr(pkt);
-		buf->host_pkt_fives[buf->job_num].protocol = IP_PROTOCOL_TCP;
-		buf->host_pkt_fives[buf->job_num].srcPort = tcp->src_port;
-		buf->host_pkt_fives[buf->job_num].desPort = tcp->dst_port;
+		buf->host_pkt_fives[pkt_idx].protocol = IP_PROTOCOL_TCP;
+		buf->host_pkt_fives[pkt_idx].srcPort = tcp->src_port;
+		buf->host_pkt_fives[pkt_idx].desPort = tcp->dst_port;
 	} else if(onvm_pkt_is_udp(pkt)) {
 		struct udp_hdr *udp = onvm_pkt_udp_hdr(pkt);
-		buf->host_pkt_fives[buf->job_num].protocol = IP_PROTOCOL_UDP;
-		buf->host_pkt_fives[buf->job_num].srcPort = udp->src_port;
-		buf->host_pkt_fives[buf->job_num].desPort = udp->dst_port;
+		buf->host_pkt_fives[pkt_idx].protocol = IP_PROTOCOL_UDP;
+		buf->host_pkt_fives[pkt_idx].srcPort = udp->src_port;
+		buf->host_pkt_fives[pkt_idx].desPort = udp->dst_port;
 	} else {
 		rte_exit(EXIT_FAILURE, "Packet is neither TCP or UDP\n");
 	}
@@ -101,19 +99,19 @@ static inline void user_post_func(void *cur_buf, struct rte_mbuf *pkt, int pkt_i
 	}
 }
 
-static void user_gpu_htod(void *cur_buf, unsigned int thread_id)
+static void user_gpu_htod(void *cur_buf, int job_num, unsigned int thread_id)
 {
 	buf_t *buf = (buf_t *)cur_buf;
-	gcudaMemcpyHtoD(buf->dev_pkt_fives, buf->host_pkt_fives, buf->job_num * sizeof(struct pcktFive), ASYNC, thread_id);
+	gcudaMemcpyHtoD(buf->dev_pkt_fives, buf->host_pkt_fives, job_num * sizeof(struct pcktFive), ASYNC, thread_id);
 }
 
-static void user_gpu_dtoh(void *cur_buf, unsigned int thread_id)
+static void user_gpu_dtoh(void *cur_buf, int job_num, unsigned int thread_id)
 {
 	buf_t *buf = (buf_t *)cur_buf;
-	gcudaMemcpyDtoH(buf->host_res, buf->dev_res, buf->job_num * 4 * sizeof(unsigned int), ASYNC, thread_id);
+	gcudaMemcpyDtoH(buf->host_res, buf->dev_res, job_num * 4 * sizeof(unsigned int), ASYNC, thread_id);
 }
 
-static void user_gpu_set_arg(void *cur_buf, void *arg_buf, void *arg_info)
+static void user_gpu_set_arg(void *cur_buf, void *arg_buf, void *arg_info, int job_num)
 {
 	uint64_t *info = (uint64_t *)arg_info;
 	buf_t *buf = (buf_t *)cur_buf;
@@ -152,8 +150,8 @@ static void user_gpu_set_arg(void *cur_buf, void *arg_buf, void *arg_info)
 	offset += sizeof(buf->dev_pkt_fives);
 	
 	info[8] = offset;
-	rte_memcpy((uint8_t *)arg_buf + offset, &(buf->job_num), sizeof(buf->job_num));
-	offset += sizeof(buf->job_num);
+	rte_memcpy((uint8_t *)arg_buf + offset, &(job_num), sizeof(job_num));
+	offset += sizeof(job_num);
 }
 
 static void init_main(void)

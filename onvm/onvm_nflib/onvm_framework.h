@@ -42,12 +42,15 @@ typedef struct context_s{
 	int thread_id;
 } context_t;
 
-void onvm_framework_start_cpu(void *(*user_init_buf_func)(void), 
-						void (*user_batch_func)(void *,  struct rte_mbuf *),
-						void (*user_post_func)(void *, struct rte_mbuf *, int));
-void onvm_framework_start_gpu(void (*user_gpu_htod)(void *, unsigned int),
-						void (*user_gpu_dtoh)(void *, unsigned int),
-						void (*user_gpu_set_arg)(void *, void *, void *));
+typedef void *(*init_func_t)(void);
+typedef void (*pre_func_t)(void *, struct rte_mbuf *, int);
+typedef void (*post_func_t)(void *, struct rte_mbuf *, int);
+typedef void (*gpu_htod_t)(void *, int, unsigned int);
+typedef void (*gpu_dtoh_t)(void *, int, unsigned int);
+typedef void (*gpu_set_arg_t)(void *, void *, void *, int);
+
+void onvm_framework_start_cpu(init_func_t, pre_func_t, post_func_t);
+void onvm_framework_start_gpu(gpu_htod_t, gpu_dtoh_t, gpu_set_arg_t);
 
 void onvm_framework_install_kernel_perf_parameter(double k1, double b1, double k2, double b2);
 void onvm_framework_install_kernel_perf_para_set(double *u_k1, double *u_b1, double *u_k2, double *u_b2, unsigned int *pkt_size, unsigned int *line_start_batch, unsigned int para_num);

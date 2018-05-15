@@ -40,8 +40,6 @@ static void *init_host_buf(void)
 {
 	buf_t *buf = malloc(sizeof(buf_t));
 
-	buf->job_num = 0;
-
 	gcudaHostAlloc((void **)&(buf->host_pkt), MAX_BATCH_SIZE * MAX_PKT_LEN * sizeof(char));
 	gcudaHostAlloc((void **)&(buf->host_pkt_offset), (MAX_BATCH_SIZE + 1) * sizeof(uint32_t));
 	gcudaHostAlloc((void **)&(buf->host_res), MAX_BATCH_SIZE * sizeof(uint16_t));
@@ -53,7 +51,7 @@ static void *init_host_buf(void)
 	return buf;
 }
 
-static inline void user_batch_func(void *cur_buf, struct rte_mbuf *pkt)
+static inline void user_batch_func(void *cur_buf, struct rte_mbuf *pkt, int pkt_idx)
 {
 	buf_t *buf = (buf_t *)cur_buf;
 
@@ -68,12 +66,12 @@ static inline void user_batch_func(void *cur_buf, struct rte_mbuf *pkt)
 	uint16_t payload_len = rte_be_to_cpu_16(udp->dgram_len) - 8; /* 8 byte udp header size */
 
 	/* Batch in the buf */
-	if (buf->job_num == 0) {
-		buf->host_pkt_offset[buf->job_num] = 0;
+	if (pkt_idx == 0) {
+		buf->host_pkt_offset[pkt_idx] = 0;
 	}
-	buf->host_pkt_offset[buf->job_num + 1] = buf->host_pkt_offset[buf->job_num] + payload_len;
+	buf->host_pkt_offset[pkt_idx + 1] = buf->host_pkt_offset[pkt_idx] + payload_len;
 
-	rte_memcpy(buf->host_pkt + buf->host_pkt_offset[buf->job_num], pkt_data, payload_len);
+	rte_memcpy(buf->host_pkt + buf->host_pkt_offset[pkt_idx], pkt_data, payload_len);
 }
 
 static inline void user_post_func(void *cur_buf, struct rte_mbuf *pkt, int pkt_idx)
@@ -92,20 +90,20 @@ static inline void user_post_func(void *cur_buf, struct rte_mbuf *pkt, int pkt_i
 	}
 }
 
-static void user_gpu_htod(void *cur_buf, unsigned int thread_id)
+static void user_gpu_htod(void *cur_buf, int job_num, unsigned int thread_id)
 {
 	buf_t *buf = (buf_t *)cur_buf;
-	gcudaMemcpyHtoD(buf->dev_pkt, buf->host_pkt, buf->host_pkt_offset[buf->job_num], ASYNC, thread_id);
-	gcudaMemcpyHtoD(buf->dev_pkt_offset, buf->host_pkt_offset, (buf->job_num + 1) * sizeof(uint32_t), ASYNC, thread_id);
+	gcudaMemcpyHtoD(buf->dev_pkt, buf->host_pkt, buf->host_pkt_offset[job_num], ASYNC, thread_id);
+	gcudaMemcpyHtoD(buf->dev_pkt_offset, buf->host_pkt_offset, (job_num + 1) * sizeof(uint32_t), ASYNC, thread_id);
 }
 
-static void user_gpu_dtoh(void *cur_buf, unsigned int thread_id)
+static void user_gpu_dtoh(void *cur_buf, int job_num, unsigned int thread_id)
 {
 	buf_t *buf = (buf_t *)cur_buf;
-	gcudaMemcpyDtoH(buf->host_res, buf->dev_res, buf->job_num * sizeof(uint16_t), ASYNC, thread_id);
+	gcudaMemcpyDtoH(buf->host_res, buf->dev_res, job_num * sizeof(uint16_t), ASYNC, thread_id);
 }
 
-static void user_gpu_set_arg(void *cur_buf, void *arg_buf, void *arg_info)
+static void user_gpu_set_arg(void *cur_buf, void *arg_buf, void *arg_info, int job_num)
 {
 	uint64_t *info = (uint64_t *)arg_info;
 	buf_t *buf = (buf_t *)cur_buf;
@@ -132,8 +130,8 @@ static void user_gpu_set_arg(void *cur_buf, void *arg_buf, void *arg_info)
 	offset += sizeof(buf->dev_res);
 	
 	info[5] = offset;
-	rte_memcpy((uint8_t *)arg_buf + offset, &(buf->job_num), sizeof(buf->job_num));
-	offset += sizeof(buf->job_num);
+	rte_memcpy((uint8_t *)arg_buf + offset, &job_num, sizeof(job_num));
+	offset += sizeof(job_num);
 }
 
 static void init_main(void)

@@ -27,9 +27,9 @@ struct gpu_schedule_info *gpu_info;
 static nfv_batch_t batch_set[MAX_CONCURRENCY_NUM];
 //static gpu_stream_t stream_ctx[MAX_CONCURRENCY_NUM];
 
-static void *(*INIT_FUNC)(void);
-static void (*BATCH_FUNC)(void *,  struct rte_mbuf *);
-static void (*POST_FUNC)(void *, struct rte_mbuf *, int);
+static init_func_t INIT_FUNC;
+static pre_func_t  PRE_FUNC;
+static post_func_t POST_FUNC;
 
 static int onvm_framework_cpu(int thread_id);
 
@@ -204,8 +204,13 @@ onvm_framework_cpu(int thread_id)
 		// pre-processing
 		uint64_t rx_datalen = 0;
 		for (i = 0; i < cur_buf_size; i++) {
+<<<<<<< HEAD
 			rx_datalen += batch->pkt_ptr[i]->data_len;
 			BATCH_FUNC(batch->user_buf, batch->pkt_ptr[i], i);
+=======
+			rx_datalen += batch->pkt_ptr[buf_id][i]->data_len;
+			PRE_FUNC(batch->user_bufs[buf_id], batch->pkt_ptr[buf_id][i], i);
+>>>>>>> mas3
 		}
 
 		rte_spinlock_lock(&cl->stats.update_lock);
@@ -293,12 +298,10 @@ onvm_framework_init(const char *module_file, const char *kernel_name)
 }
 
 void
-onvm_framework_start_cpu(void *(*user_init_buf_func)(void), 
-						void (*user_batch_func)(void *,  struct rte_mbuf *),
-						void (*user_post_func)(void *, struct rte_mbuf *, int))
+onvm_framework_start_cpu(init_func_t user_init_buf_func, pre_func_t user_pre_func, post_func_t user_post_func)
 {
 	INIT_FUNC = user_init_buf_func;
-	BATCH_FUNC = user_batch_func;
+	PRE_FUNC = user_pre_func;
 	POST_FUNC = user_post_func;
 
 	int i;
@@ -310,9 +313,7 @@ onvm_framework_start_cpu(void *(*user_init_buf_func)(void),
 }
 
 void
-onvm_framework_start_gpu(void (*user_gpu_htod)(void *, unsigned int),
-						void (*user_gpu_dtoh)(void *, unsigned int),
-						void (*user_gpu_set_arg)(void *, void *, void *))
+onvm_framework_start_gpu(gpu_htod_t user_gpu_htod, gpu_dtoh_t user_gpu_dtoh, gpu_set_arg_t user_gpu_set_arg)
 {
 	int gpu_buf_id;
 	int batch_id;
@@ -350,10 +351,10 @@ onvm_framework_start_gpu(void (*user_gpu_htod)(void *, unsigned int),
 		clock_gettime(CLOCK_MONOTONIC, &start);
 
 		/* 3. Launch kernel - USER DEFINED */
-		user_gpu_htod(batch->user_bufs[gpu_buf_id], batch_id);
-		user_gpu_set_arg(batch->user_bufs[gpu_buf_id], gpu_info->args[batch_id], gpu_info->arg_info[batch_id]);
+		user_gpu_htod(batch->user_bufs[gpu_buf_id], batch->buf_size[gpu_buf_id], batch_id);
+		user_gpu_set_arg(batch->user_bufs[gpu_buf_id], gpu_info->args[batch_id], gpu_info->arg_info[batch_id], batch->buf_size[gpu_buf_id]);
 		gcudaLaunchKernel(batch_id);
-		user_gpu_dtoh(batch->user_bufs[gpu_buf_id], batch_id);
+		user_gpu_dtoh(batch->user_bufs[gpu_buf_id], batch->buf_size[gpu_buf_id], batch_id);
 
 		/* 4. Explicit SYNC if commands are not executed in SYNC_MODE, wait for the kernels to complete */
 	#if !defined(GRAPH_TIME) && !defined(SYNC_MODE)

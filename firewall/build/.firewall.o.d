@@ -14,7 +14,7 @@ dep_firewall.o = /home/swordfeng/Documents/lab/nfv/g-net/firewall/firewall.c \
  /usr/include/bits/wchar.h /usr/include/bits/stdint-intn.h \
  /usr/include/bits/stdint-uintn.h /usr/include/stdio.h \
  /usr/include/bits/types/__FILE.h /usr/include/bits/types/FILE.h \
- /usr/include/libio.h /usr/include/_G_config.h \
+ /usr/include/bits/libio.h /usr/include/bits/_G_config.h \
  /usr/include/bits/types/__mbstate_t.h \
  /usr/lib/gcc/x86_64-pc-linux-gnu/7.3.1/include/stdarg.h \
  /usr/include/bits/stdio_lim.h /usr/include/bits/sys_errlist.h \
@@ -23,14 +23,14 @@ dep_firewall.o = /home/swordfeng/Documents/lab/nfv/g-net/firewall/firewall.c \
  /usr/include/asm-generic/errno.h /usr/include/asm-generic/errno-base.h \
  /usr/include/sys/queue.h /usr/include/stdlib.h \
  /usr/include/bits/waitflags.h /usr/include/bits/waitstatus.h \
- /usr/include/bits/floatn.h /usr/include/sys/types.h \
- /usr/include/bits/types/clock_t.h /usr/include/bits/types/clockid_t.h \
- /usr/include/bits/types/time_t.h /usr/include/bits/types/timer_t.h \
- /usr/include/endian.h /usr/include/bits/endian.h \
- /usr/include/bits/byteswap.h /usr/include/bits/byteswap-16.h \
- /usr/include/bits/uintn-identity.h /usr/include/sys/select.h \
- /usr/include/bits/select.h /usr/include/bits/types/sigset_t.h \
- /usr/include/bits/types/__sigset_t.h \
+ /usr/include/bits/floatn.h /usr/include/bits/floatn-common.h \
+ /usr/include/sys/types.h /usr/include/bits/types/clock_t.h \
+ /usr/include/bits/types/clockid_t.h /usr/include/bits/types/time_t.h \
+ /usr/include/bits/types/timer_t.h /usr/include/endian.h \
+ /usr/include/bits/endian.h /usr/include/bits/byteswap.h \
+ /usr/include/bits/byteswap-16.h /usr/include/bits/uintn-identity.h \
+ /usr/include/sys/select.h /usr/include/bits/select.h \
+ /usr/include/bits/types/sigset_t.h /usr/include/bits/types/__sigset_t.h \
  /usr/include/bits/types/struct_timeval.h \
  /usr/include/bits/types/struct_timespec.h /usr/include/sys/sysmacros.h \
  /usr/include/bits/sysmacros.h /usr/include/bits/pthreadtypes.h \
@@ -163,5 +163,6 @@ dep_firewall.o = /home/swordfeng/Documents/lab/nfv/g-net/firewall/firewall.c \
  /usr/include/assert.h /opt/cuda/include/cuda.h \
  /home/swordfeng/Documents/lab/nfv/g-net/firewall/../onvm/onvm_nflib/onvm_pkt_helper.h \
  /home/swordfeng/Documents/lab/nfv/g-net/firewall/../onvm/onvm_nflib/onvm_framework.h \
+ /home/swordfeng/Documents/lab/nfv/g-net/dpdk/x86_64-native-linuxapp-gcc/include/rte_config.h \
  /home/swordfeng/Documents/lab/nfv/g-net/firewall/construct_rules.h \
  /home/swordfeng/Documents/lab/nfv/g-net/firewall/gpu/firewall_kernel.h
