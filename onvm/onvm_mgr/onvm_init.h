@@ -78,7 +78,7 @@
 #if defined(UNCO_SHARE_GPU) || defined(FAIR_SHARE_GPU)
 	#define MBUFS_PER_CLIENT (65000)
 #else
-	#define MBUFS_PER_CLIENT (2048)
+	#define MBUFS_PER_CLIENT (MAX_BATCH_SIZE)
 #endif
 //#define MBUFS_PER_CLIENT (MAX_BATCH_SIZE * NUM_BATCH_BUF)
 #define MBUFS_PER_PORT (4 * 512 * 2)
