@@ -232,6 +232,8 @@ onvm_stats_display_clients(void) {
 		double   gpu_time = clients[i].stats.gpu_time;
 		double   kernel_time = clients[i].stats.kernel_time;
 		uint64_t kernel_cnt = clients[i].stats.kernel_cnt;
+
+		uint64_t gpu_thread_cnt = clients[i].stats.gpu_thread_cnt;		
 		//rte_spinlock_unlock(&clients[i].stats.update_lock);
 
 		if (rx == 0) rx = 1;
@@ -254,10 +256,10 @@ onvm_stats_display_clients(void) {
 		if (clients[i].stats.batch_cnt == 0) {
 			printf("Kernel count is 0, no statistics\n");
 		} else {
-			printf("Avg HtoD = %ld bytes, DtoH = %ld bytes, GPU counted = %ld, CPU counted = %ld\n",
+			printf("Avg HtoD = %ld bytes, DtoH = %ld bytes, GPU counted = %ld, CPU counted = %ld %ld\n",
 					htod_mem/kernel_cnt,
 					dtoh_mem/kernel_cnt,
-					kernel_cnt, batch_cnt);
+					kernel_cnt, batch_cnt, gpu_thread_cnt);
 			printf("Kernal time = %f, GPU time = %f, CPU time = %f\n", kernel_time / kernel_cnt, gpu_time / kernel_cnt,
 				cpu_time / batch_cnt);
 		}
