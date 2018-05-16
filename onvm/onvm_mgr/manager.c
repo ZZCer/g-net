@@ -373,6 +373,7 @@ manager_thread_main(void *arg)
 				cl = &(clients[req->instance_id]);
 				cl->recording[req->stream_id] = 1;
 				checkCudaErrors( cuEventRecord(cl->gpu_start[req->stream_id], cl->stream[req->stream_id]) );
+				rte_mempool_put(nf_request_pool, req);
 				break;
 
 			case REQ_GPU_MEMFREE:
