@@ -35,6 +35,7 @@ static pre_func_t  PRE_FUNC;
 static post_func_t POST_FUNC;
 
 static int onvm_framework_cpu(int thread_id);
+static void gcudaStreamSynchronize(int thread_id);
 
 static pthread_key_t my_batch;
 static pthread_mutex_t lock;
@@ -84,6 +85,7 @@ onvm_framework_thread_init(int thread_id)
 	for (i = 0; i < NUM_BATCH_BUF; i ++) {
 		batch->user_bufs[i] = INIT_FUNC();
 		batch->pkt_ptr[i] = (struct rte_mbuf **)malloc(sizeof(struct rte_mbuf *) * MAX_BATCH_SIZE);
+		batch->gpu_buf_id = -1;
 	}
 }
 
@@ -342,13 +344,24 @@ onvm_framework_start_gpu(gpu_htod_t user_gpu_htod, gpu_dtoh_t user_gpu_dtoh, gpu
 		 * We have load balance among all threads, so their batch size are the same. */
 		RTE_LOG(DEBUG, APP, "GPU thread is launching kernel\n");
 
-		gpu_buf_id = -1;
-		for (i = 0; keep_running && gpu_buf_id == -1; i = (i + 1 < gpu_info->thread_num ? i + 1 : 0)) {
+		for (i = 0; i < gpu_info->thread_num; i++) {
 			batch = &batch_set[i];
+			if (batch->gpu_buf_id != -1 && cl->sync[i] == 1) {
+				batch->buf_state[batch->gpu_buf_id] = BUF_STATE_CPU_READY;
+				batch->gpu_buf_id = -1;
+			}
+		}
+
+		gpu_buf_id = -1;
+		for (i = 0; gpu_buf_id == -1 && i < gpu_info->thread_num; i++) {
+			batch = &batch_set[i];
+			if (batch->gpu_buf_id != -1) continue;
 			batch_id = i;
 			gpu_buf_id = gpu_get_batch(batch);
 		}
 		if (!keep_running) break;
+		if (gpu_buf_id == -1) continue;
+		batch->gpu_buf_id = gpu_buf_id;
 
 		clock_gettime(CLOCK_MONOTONIC, &start);
 
@@ -358,10 +371,7 @@ onvm_framework_start_gpu(gpu_htod_t user_gpu_htod, gpu_dtoh_t user_gpu_dtoh, gpu
 		gcudaLaunchKernel(batch_id);
 		user_gpu_dtoh(batch->user_bufs[gpu_buf_id], batch->buf_size[gpu_buf_id], batch_id);
 
-		/* 4. Explicit SYNC if commands are not executed in SYNC_MODE, wait for the kernels to complete */
-	#if !defined(GRAPH_TIME) && !defined(SYNC_MODE)
-		gcudaDeviceSynchronize();
-	#endif
+		gcudaStreamSynchronize(batch_id);
 
 		clock_gettime(CLOCK_MONOTONIC, &end);
 		diff = 1000000 * (end.tv_sec-start.tv_sec)+ (end.tv_nsec-start.tv_nsec)/1000;
@@ -677,4 +687,24 @@ gcudaDeviceSynchronize(void)
 	gcudaWaitForSyncResponse();
 
 	RTE_LOG(DEBUG, APP, "[G] cudaDeviceSync finished\n");
+}
+
+static void
+gcudaStreamSynchronize(int thread_id)
+{
+	struct nf_req *req;
+	if (rte_mempool_get(nf_request_mp, (void **)&req) < 0) {
+		rte_exit(EXIT_FAILURE, "Failed to get request memory\n");
+	}
+
+	req->type = REQ_GPU_SYNC_STREAM;
+	req->instance_id = nf_info->instance_id;
+	req->thread_id = thread_id;
+
+	RTE_LOG(DEBUG, APP, "[G] cudaStreamSync\n");
+
+	if (rte_ring_enqueue(nf_request_queue, req) < 0) {
+		rte_mempool_put(nf_request_mp, req);
+		rte_exit(EXIT_FAILURE, "Cannot send request_info to scheduler\n");
+	}
 }

@@ -202,6 +202,19 @@ sync_callback(CUstream cuda_stream, CUresult status, void *user_data)
 }
 
 static void
+stream_sync_callback(CUstream cuda_stream, CUresult status, void *user_data)
+{
+	UNUSED(cuda_stream);
+	checkCudaErrors(status);
+	struct nf_req *req = (struct nf_req *)user_data;
+	struct client *cl = &(clients[req->instance_id]);
+
+	cl->sync[req->thread_id] = 1;
+
+	rte_mempool_put(nf_request_pool, req);
+}
+
+static void
 memcpy_callback(CUstream cuda_stream, CUresult status, void *user_data)
 {
 	UNUSED(cuda_stream);
@@ -341,6 +354,7 @@ manager_thread_main(void *arg)
 	uint64_t i, offset;
 #if !defined(SYNC_MODE)
 	unsigned int record_blk_num[MAX_CLIENTS];
+	unsigned int record_blk_num_thread[MAX_CLIENTS][MAX_CPU_THREAD_NUM];
 #endif
 
 	checkCudaErrors( cuCtxSetCurrent(context) );
@@ -482,7 +496,7 @@ manager_thread_main(void *arg)
 				cl->worker_thread_num = cl->gpu_info->thread_num;
 				blk_num = cl->blk_num;
 #if !defined(SYNC_MODE)
-				record_blk_num[cl->instance_id] = blk_num;
+				record_blk_num_thread[cl->instance_id][tid] = blk_num;
 #endif
 				threads_per_blk = cl->threads_per_blk;
 				if (blk_num <= 0 || threads_per_blk < 128 || threads_per_blk > 1024) {
@@ -631,7 +645,6 @@ manager_thread_main(void *arg)
 				/* Synchronize all the streams for the NF */
 				cl = &(clients[req->instance_id]);
 
-				int tid;
 				for (tid = 0; tid < cl->worker_thread_num; tid ++) {
 					cl->sync[tid] = 0;
 				}
@@ -646,6 +659,15 @@ manager_thread_main(void *arg)
 			#endif
 
 				rte_mempool_put(nf_request_pool, req);
+				break;
+
+			case REQ_GPU_SYNC_STREAM:
+				cl = &(clients[req->instance_id]);
+				tid = req->thread_id;
+				checkCudaErrors( cuStreamAddCallback(cl->stream[tid], stream_sync_callback, (void *)(req), 0) );
+			#if !defined(SYNC_MODE)
+				allocated_sm -= record_blk_num_thread[cl->instance_id][tid];
+			#endif
 				break;
 
 			case REQ_GPU_MEMFREE:

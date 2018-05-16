@@ -203,7 +203,7 @@ struct client {
 	unsigned int avg_pkt_len;
 	int nf_type; /* NF_BPS or NF_PPS */
 	CUstream stream[MAX_CPU_THREAD_NUM];
-	uint8_t sync[MAX_CPU_THREAD_NUM];
+	volatile uint8_t sync[MAX_CPU_THREAD_NUM];
 
 	double cost_time; /* Record the cost of GPU execution */
 
@@ -350,6 +350,7 @@ struct gpu_schedule_info {
 #define REQ_GPU_SYNC				8
 #define REQ_GPU_MEMFREE				9
 #define REQ_GPU_MEMSET				10
+#define REQ_GPU_SYNC_STREAM			11
 
 #define RSP_HOST_MALLOC				0
 #define RSP_GPU_MALLOC				1
