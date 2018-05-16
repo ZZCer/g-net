@@ -207,7 +207,7 @@ static void init_gpu_schedule(void)
 	/* Initialize the GPU info, onvm_framework_init should be performed before onvm_nflib_init */
 	const char *module_file = "../firewall/gpu/firewall.ptx";
 	const char *kernel_name = "firewall_gpu";
-	onvm_framework_init(module_file, kernel_name, &(init_host_buf));
+	onvm_framework_init(module_file, kernel_name);
 
 	double K1 = 0.136325;
 	double B1 = 15.241;
@@ -231,7 +231,7 @@ int main(int argc, char *argv[])
 	init_main();
 
 	/* Initialization is done, start threads */
-	onvm_framework_start_cpu(&(user_batch_func), &(user_post_func));
+	onvm_framework_start_cpu(&(init_host_buf), &(user_batch_func), &(user_post_func));
 
 	onvm_framework_start_gpu(&(user_gpu_htod), &(user_gpu_dtoh), &(user_gpu_set_arg));
 

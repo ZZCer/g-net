@@ -264,7 +264,7 @@ onvm_framework_install_kernel_perf_para_set(double *u_k1, double *u_b1, double *
 }
 
 void
-onvm_framework_init(const char *module_file, const char *kernel_name, init_func_t user_init_buf_func)
+onvm_framework_init(const char *module_file, const char *kernel_name)
 {
 	const struct rte_memzone *mz_gpu;
 
@@ -294,17 +294,10 @@ onvm_framework_init(const char *module_file, const char *kernel_name, init_func_
 
 	rte_memcpy((void *)(gpu_info->module_file), module_file, strlen(module_file));
 	rte_memcpy((void *)(gpu_info->kernel_name), kernel_name, strlen(kernel_name));
-
-	int i;
-	for (i = 0; i < THREAD_NUM; i++) {
-		batch_set[i].buf_size = 0;
-		batch_set[i].buf_state = BUF_STATE_CPU_READY;
-		batch_set[i].user_buf = user_init_buf_func();
-	}
 }
 
 void
-onvm_framework_start_cpu(pre_func_t user_pre_func, post_func_t user_post_func)
+onvm_framework_start_cpu(init_func_t user_init_buf_func, pre_func_t user_pre_func, post_func_t user_post_func)
 {
 	PRE_FUNC = user_pre_func;
 	POST_FUNC = user_post_func;
@@ -312,6 +305,11 @@ onvm_framework_start_cpu(pre_func_t user_pre_func, post_func_t user_post_func)
 	all_threads_ready = 0;
 
 	int i;
+	for (i = 0; i < THREAD_NUM + STREAM_NUM; i++) {
+		batch_set[i].buf_size = 0;
+		batch_set[i].buf_state = BUF_STATE_CPU_READY;
+		batch_set[i].user_buf = user_init_buf_func();
+	}
 	for (i = 0; i < THREAD_NUM; i ++) {
 		onvm_framework_spawn_thread(i);
 	}

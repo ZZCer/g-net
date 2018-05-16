@@ -165,7 +165,7 @@ static void init_gpu_schedule(void)
 	/* Initialize the GPU info, onvm_framework_init should be performed before onvm_nflib_init */
 	const char *module_file = "../nids/gpu/nids.ptx";
 	const char *kernel_name = "match";
-	onvm_framework_init(module_file, kernel_name, &(init_host_buf));
+	onvm_framework_init(module_file, kernel_name);
 
 	unsigned int pkt_size[6] = {64, 128, 256, 512, 1024, 1518};
 	unsigned int line_start_batch[6] = {1024, 640, 550, 512, 512, 512};
@@ -192,7 +192,7 @@ int main(int argc, char *argv[])
 	init_main();
 
 	/* Initialization is done, start threads */
-	onvm_framework_start_cpu(&(user_batch_func), &(user_post_func));
+	onvm_framework_start_cpu(&(init_host_buf), &(user_batch_func), &(user_post_func));
 
 	onvm_framework_start_gpu(&(user_gpu_htod), &(user_gpu_dtoh), &(user_gpu_set_arg));
 
