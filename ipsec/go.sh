@@ -10,6 +10,7 @@ SCRIPT=$(readlink -f "$0")
 SCRIPTPATH=$(dirname "$SCRIPT")
 cpu=$1
 thread_num=$2
+stream_num=$3
 
 cpu_list=$cpu
 for k in $(seq 1 $thread_num)
@@ -20,4 +21,4 @@ done
 
 shift 3
 
-exec sudo $SCRIPTPATH/build/ipsec -l $cpu_list -n 4 --proc-type=secondary --log-level 7 -- -k $thread_num
+exec sudo $SCRIPTPATH/build/ipsec -l $cpu_list -n 4 --proc-type=secondary --log-level 7 -- -k $thread_num -s $stream_num
