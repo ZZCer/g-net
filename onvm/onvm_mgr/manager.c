@@ -496,6 +496,7 @@ manager_thread_main(void *arg)
 				cl->worker_thread_num = cl->gpu_info->thread_num;
 				blk_num = cl->blk_num;
 #if !defined(SYNC_MODE)
+				record_blk_num[cl->instance_id] = blk_num;
 				record_blk_num_thread[cl->instance_id][tid] = blk_num;
 #endif
 				threads_per_blk = cl->threads_per_blk;
