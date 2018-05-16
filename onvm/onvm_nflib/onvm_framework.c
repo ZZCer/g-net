@@ -371,7 +371,8 @@ onvm_framework_start_gpu(gpu_htod_t user_gpu_htod, gpu_dtoh_t user_gpu_dtoh, gpu
 		gcudaLaunchKernel(batch_id);
 		user_gpu_dtoh(batch->user_bufs[gpu_buf_id], batch->buf_size[gpu_buf_id], batch_id);
 
-		gcudaStreamSynchronize(batch_id);
+		//gcudaStreamSynchronize(batch_id);
+		gcudaDeviceSynchronize();
 
 		clock_gettime(CLOCK_MONOTONIC, &end);
 		diff = 1000000 * (end.tv_sec-start.tv_sec)+ (end.tv_nsec-start.tv_nsec)/1000;
