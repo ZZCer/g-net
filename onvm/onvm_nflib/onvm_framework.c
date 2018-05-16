@@ -593,7 +593,7 @@ handleSyncStreamResponse(void)
 	int thread_id = local->thread_id;
 
 	struct nf_rsp *rsp;
-	if (0 == rte_ring_dequeue(cl->response_q[thread_id], (void **)&rsp))
+	if (0 != rte_ring_dequeue(cl->response_q[thread_id], (void **)&rsp))
 		return -1;
 	assert((rsp->type == RSP_GPU_SYNC_STREAM) & (rsp->states == RSP_SUCCESS));
 	int stream_id = rsp->stream_id;
