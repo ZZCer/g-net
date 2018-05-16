@@ -7,12 +7,14 @@
 #include <time.h>
 #include <emmintrin.h>
 #include <signal.h>
+#include <rte_malloc.h>
 
 #include "onvm_framework.h"
 #include "onvm_nflib.h"
 #include "onvm_pkt_helper.h"
 #include "onvm_includes.h"
 
+// ========== globals ==========
 extern struct rte_mempool *nf_request_mp;
 extern struct rte_mempool *nf_response_mp;
 extern struct rte_ring *nf_request_queue;
@@ -24,29 +26,50 @@ extern void onvm_nflib_handle_signal(int sig);
 /* shared data from server. */
 struct gpu_schedule_info *gpu_info;
 
-static nfv_batch_t batch_set[MAX_CONCURRENCY_NUM];
-//static gpu_stream_t stream_ctx[MAX_CONCURRENCY_NUM];
+int THREAD_NUM = 1;
+int STREAM_NUM = 1;
 
-static init_func_t INIT_FUNC;
+pthread_key_t thread_local_key;
+
+// ========== locals ==========
+/* host memory area */
+static void *host_mem_addr_base;
+static void *host_mem_addr_cur;
+static int host_mem_size_total;
+static int host_mem_size_left;
+
+/* gpu thread started */
+static int all_threads_ready;
+
+static nfv_batch_t batch_set[MAX_CONCURRENCY_NUM];
+
 static pre_func_t  PRE_FUNC;
 static post_func_t POST_FUNC;
 
-static int onvm_framework_cpu(int thread_id);
+static struct {
+	int working;
+} stream_ctx[MAX_CONCURRENCY_NUM];
 
-static pthread_key_t my_batch;
+static int onvm_framework_cpu(int thread_id);
+static void gcudaSyncStreamRequest(void);
+static int handleSyncStreamResponse(void);
+
 static pthread_mutex_t lock;
 
 /* NOTE: The batch size should be at least 10x? larger than the number of items 
  * in PKTMBUF_POOL when running local. Or not enough mbufs to loop */
-static int BATCH_SIZE = 1024;
+static unsigned int BATCH_SIZE = 1024;
 
 int NF_REQUIRED_LATENCY = 1000; // us -- default latency
-int THREAD_NUM = 1;
-int STREAM_NUM = 1;
 
 struct thread_arg {
 	int thread_id;
 };
+
+typedef struct thread_local_s {
+	int thread_id;
+	int stream_id;
+} thread_local_t;
 
 static inline int get_batch(int state) {
 	int i;
@@ -56,35 +79,12 @@ static inline int get_batch(int state) {
 	return -1;
 }
 
-static inline int cpu_get_batch() {
+static inline int cpu_get_batch(void) {
        return get_batch(BUF_STATE_CPU_READY);
 }
 
-static inline int gpu_get_batch() {
+static inline int gpu_get_batch(void) {
        return get_batch(BUF_STATE_GPU_READY);
-}
-
-static void 
-onvm_framework_thread_init(int thread_id)
-{
-	int i = 0;
-
-#if 0
-	nfv_batch_t *batch = &(batch_set[thread_id]);
-	/* The main thread set twice, elegant plan? */
-	pthread_setspecific(my_batch, (void *)batch);
-	batch->thread_id = thread_id;
-#endif
-	/* the last 1 is used to mark the allocation for not the first thread */
-	if (thread_id != 0) {
-		gcudaAllocSize(0, 0, 1);
-	}
-/*
-	for (i = 0; i < NUM_BATCH_BUF; i ++) {
-		batch->user_bufs[i] = INIT_FUNC();
-		batch->pkt_ptr[i] = (struct rte_mbuf **)malloc(sizeof(struct rte_mbuf *) * MAX_BATCH_SIZE);
-	}
-*/
 }
 
 static int 
@@ -93,9 +93,7 @@ cpu_thread(void *arg)
 	struct thread_arg *my_arg = (struct thread_arg *)arg;
 	unsigned cur_lcore = rte_lcore_id();
 
-	onvm_framework_thread_init(my_arg->thread_id);
-
-	RTE_LOG(INFO, APP, "New CPU thread %d is spawned, running on lcore %u, total_thread %d\n", my_arg->thread_id, cur_lcore, gpu_info->thread_num);
+	RTE_LOG(INFO, APP, "New CPU thread %d is spawned, running on lcore %u", my_arg->thread_id, cur_lcore);
 
 	onvm_nflib_run(&(onvm_framework_cpu), my_arg->thread_id);
 
@@ -127,9 +125,15 @@ onvm_framework_cpu(int thread_id)
 	struct rte_ring *rx_q, *tx_q;
 	uint64_t starve_rx_counter = 0;
 	uint64_t starve_gpu_counter = 0;
-	int last_batch_size = 0;
 
 	rx_q = cl->rx_q_new;
+
+	thread_local_t *local = (thread_local_t *)rte_calloc("thread_local", 1, sizeof(thread_local_t), 0);
+	local->thread_id = thread_id;
+	local->stream_id = -1;
+	pthread_setspecific(thread_local_key, local);
+
+	while (keep_running && !all_threads_ready);
 
 	while (keep_running) {
 		buf_id = cpu_get_batch();
@@ -182,16 +186,16 @@ onvm_framework_cpu(int thread_id)
 
 		// rx
 		do {
+			if (BATCH_SIZE != cl->batch_size) {
+				BATCH_SIZE = cl->batch_size;
+				RTE_LOG(INFO, APP, "batch size changed to %u\n", BATCH_SIZE);
+			}
 			num_packets = rte_ring_dequeue_bulk(rx_q, (void **)batch->pkt_ptr, BATCH_SIZE, NULL);
 			if (num_packets == 0) {
 				starve_rx_counter++;
 				if (starve_rx_counter == STARVE_THRESHOLD) {
 					RTE_LOG(INFO, APP, "Rx starving\n");
 				}
-			}
-			if (last_batch_size != BATCH_SIZE) {
-				last_batch_size = BATCH_SIZE;
-				RTE_LOG(INFO, APP, "batch size changed to %u\n", last_batch_size);
 			}
 		} while (num_packets == 0);
 		if (starve_rx_counter >= STARVE_THRESHOLD) {
@@ -205,7 +209,7 @@ onvm_framework_cpu(int thread_id)
 		uint64_t rx_datalen = 0;
 		for (i = 0; i < cur_buf_size; i++) {
 			rx_datalen += batch->pkt_ptr[i]->data_len;
-			BATCH_FUNC(batch->user_buf, batch->pkt_ptr[i], i);
+			PRE_FUNC(batch->user_buf, batch->pkt_ptr[i], i);
 		}
 
 		rte_spinlock_lock(&cl->stats.update_lock);
@@ -260,7 +264,7 @@ onvm_framework_install_kernel_perf_para_set(double *u_k1, double *u_b1, double *
 }
 
 void
-onvm_framework_init(const char *module_file, const char *kernel_name)
+onvm_framework_init(const char *module_file, const char *kernel_name, init_func_t user_init_buf_func)
 {
 	const struct rte_memzone *mz_gpu;
 
@@ -270,7 +274,7 @@ onvm_framework_init(const char *module_file, const char *kernel_name)
 		rte_exit(EXIT_FAILURE, "Cannot get GPU info structre\n");
 	gpu_info = mz_gpu->addr;
 
-	gpu_info->thread_num = 0;
+	gpu_info->stream_num = STREAM_NUM;
 	gpu_info->init = 1;
 	gpu_info->latency_us = NF_REQUIRED_LATENCY;
 	gpu_info->launch_tx_thread = 0;
@@ -290,19 +294,25 @@ onvm_framework_init(const char *module_file, const char *kernel_name)
 
 	rte_memcpy((void *)(gpu_info->module_file), module_file, strlen(module_file));
 	rte_memcpy((void *)(gpu_info->kernel_name), kernel_name, strlen(kernel_name));
+
+	int i;
+	for (i = 0; i < THREAD_NUM; i++) {
+		batch_set[i].buf_size = 0;
+		batch_set[i].buf_state = BUF_STATE_CPU_READY;
+		batch_set[i].user_buf = user_init_buf_func();
+	}
 }
 
 void
-onvm_framework_start_cpu(init_func_t user_init_buf_func, pre_func_t user_pre_func, post_func_t user_post_func)
+onvm_framework_start_cpu(pre_func_t user_pre_func, post_func_t user_post_func)
 {
-	INIT_FUNC = user_init_buf_func;
 	PRE_FUNC = user_pre_func;
 	POST_FUNC = user_post_func;
 
+	all_threads_ready = 0;
+
 	int i;
-	for (i = 0; i < INIT_WORKER_THREAD_NUM; i ++) {
-		/* Better to wait for a while between launching two threads, don't know why */
-		sleep(1);
+	for (i = 0; i < THREAD_NUM; i ++) {
 		onvm_framework_spawn_thread(i);
 	}
 }
@@ -311,11 +321,9 @@ void
 onvm_framework_start_gpu(gpu_htod_t user_gpu_htod, gpu_dtoh_t user_gpu_dtoh, gpu_set_arg_t user_gpu_set_arg)
 {
 	int gpu_buf_id;
-	int batch_id;
-	unsigned int i;
-	struct timespec start, end;
-	double diff;
+	int i;
 	nfv_batch_t *batch;
+	int stream_id;
 
 	/* Listen for ^C and docker stop so we can exit gracefully */
 	signal(SIGINT, onvm_nflib_handle_signal);
@@ -324,53 +332,59 @@ onvm_framework_start_gpu(gpu_htod_t user_gpu_htod, gpu_dtoh_t user_gpu_dtoh, gpu
 		rte_exit(EXIT_FAILURE, "GPU function is NULL\n");
 	}
 
-	while (gpu_info->thread_num != (unsigned int)INIT_WORKER_THREAD_NUM && keep_running) ;
+	thread_local_t *local = (thread_local_t *)rte_calloc("thread_local", 1, sizeof(thread_local_t), 0);
+	local->thread_id = THREAD_NUM;
+	pthread_setspecific(thread_local_key, local);
+
+	for (i = 0; i < STREAM_NUM; i++) {
+		local->stream_id = i;
+		stream_ctx[i].working = -1;
+		gcudaSyncStreamRequest();
+	}
 
 	unsigned cur_lcore = rte_lcore_id();
 	RTE_LOG(INFO, APP, "GPU thread is running on lcore %u\n", cur_lcore);
 	printf("[Press Ctrl-C to quit ...]\n\n");
 
+	all_threads_ready = 1;
+
 	for (; keep_running;) {
-		/* 1. Wait until the batch size is reached for the first thread.
-		 * We have load balance among all threads, so their batch size are the same. */
 		RTE_LOG(DEBUG, APP, "GPU thread is launching kernel\n");
 
-		gpu_buf_id = -1;
-		for (i = 0; keep_running && gpu_buf_id == -1; i = (i + 1 < gpu_info->thread_num ? i + 1 : 0)) {
-			batch = &batch_set[i];
-			batch_id = i;
-			gpu_buf_id = gpu_get_batch(batch);
+		// find an available stream
+		do {
+			stream_id = handleSyncStreamResponse();
+		} while (stream_id == -1 && keep_running);
+		if (!keep_running) break;
+		local->stream_id = stream_id;
+
+		// set previous work to finished
+		if (stream_ctx[stream_id].working != -1) {
+			batch_set[stream_ctx[stream_id].working].buf_state = BUF_STATE_CPU_READY;
+
+			/*
+			rte_spinlock_lock(&cl->stats.update_lock);
+			cl->stats.batch_size += batch->buf_size;
+			cl->stats.gpu_time += diff;
+			cl->stats.batch_cnt++;
+			rte_spinlock_unlock(&cl->stats.update_lock);
+			*/
 		}
+
+		// find a batch
+		do {
+			gpu_buf_id = gpu_get_batch();
+		} while (gpu_buf_id == -1 && keep_running);
 		if (!keep_running) break;
 
-		clock_gettime(CLOCK_MONOTONIC, &start);
+		batch = &batch_set[gpu_buf_id];
 
-		/* 3. Launch kernel - USER DEFINED */
-		user_gpu_htod(batch->user_bufs[gpu_buf_id], batch->buf_size[gpu_buf_id], batch_id);
-		user_gpu_set_arg(batch->user_bufs[gpu_buf_id], gpu_info->args[batch_id], gpu_info->arg_info[batch_id], batch->buf_size[gpu_buf_id]);
-		gcudaLaunchKernel(batch_id);
-		user_gpu_dtoh(batch->user_bufs[gpu_buf_id], batch->buf_size[gpu_buf_id], batch_id);
-
-		/* 4. Explicit SYNC if commands are not executed in SYNC_MODE, wait for the kernels to complete */
-	#if !defined(GRAPH_TIME) && !defined(SYNC_MODE)
-		gcudaDeviceSynchronize();
-	#endif
-
-		clock_gettime(CLOCK_MONOTONIC, &end);
-		diff = 1000000 * (end.tv_sec-start.tv_sec)+ (end.tv_nsec-start.tv_nsec)/1000;
-
-		rte_spinlock_lock(&cl->stats.update_lock);
-		cl->stats.batch_size += batch->buf_size[gpu_buf_id];
-		cl->stats.gpu_time += diff;
-		cl->stats.batch_cnt++;
-		rte_spinlock_unlock(&cl->stats.update_lock);
-
-		/* 5. Pass the results to CPU again for post processing */
-		batch->buf_state[gpu_buf_id] = BUF_STATE_CPU_READY;
-
-		RTE_LOG(DEBUG, APP, "Handle GPU processed results to sender\n");
-
-		// TODO: check the tx status & send requests to the Manager
+		// go
+		user_gpu_htod(batch->user_buf, batch->buf_size);
+		user_gpu_set_arg(batch->user_buf, gpu_info->args[stream_id], gpu_info->arg_info[stream_id], batch->buf_size);
+		gcudaLaunchKernel();
+		user_gpu_dtoh(batch->user_buf, batch->buf_size);
+		gcudaSyncStreamRequest();
 	}
 
 	onvm_nflib_stop(); // clean up
@@ -379,24 +393,13 @@ onvm_framework_start_gpu(gpu_htod_t user_gpu_htod, gpu_dtoh_t user_gpu_dtoh, gpu
 /* ======================================= */
 
 void
-gcudaAllocSize(int size_per_thread, int size_global, int first)
+gcudaAllocSize(int size_per_thread, int size_global)
 {
 	int size;
-	nfv_batch_t *batch;
-	static int size_thread;
+	size = size_per_thread * THREAD_NUM + size_global;
 
-	if (first == 0) {
-		/* Main thread of this NF */
-		size = size_per_thread * 3 + size_global;
-		size_thread = size_per_thread;
-		batch = &(batch_set[0]);
-		pthread_key_create(&my_batch, NULL);
-		pthread_setspecific(my_batch, (void *)batch);
-	} else {
-		/* Spawned thread of this NF */
-		size = size_thread * 3;
-		batch = (nfv_batch_t *)pthread_getspecific(my_batch);
-	}
+	thread_local_t *local = (thread_local_t *)pthread_getspecific(thread_local_key);
+	int thread_id = (local ? local->thread_id : 0);
 
 	struct nf_req *req;
 	if (rte_mempool_get(nf_request_mp, (void **)&req) < 0) {
@@ -405,32 +408,28 @@ gcudaAllocSize(int size_per_thread, int size_global, int first)
 
 	req->type = REQ_HOST_MALLOC;
 	req->instance_id = nf_info->instance_id;
-	req->thread_id = batch->thread_id;
-	req->size = size;  /* 3 buffers in total */
+	req->thread_id = thread_id;
+	req->size = size;
 
-	RTE_LOG(DEBUG, APP, "[%d] Host Alloc, size %d\n", batch->thread_id, size);
+	RTE_LOG(DEBUG, APP, "[%d] Host Alloc, size %d\n", thread_id, size);
 
 	if (rte_ring_enqueue(nf_request_queue, req) < 0) {
 		rte_mempool_put(nf_request_mp, req);
 		rte_exit(EXIT_FAILURE, "Cannot send request_info to scheduler\n");
 	}
 
-	struct rte_ring *nf_response_ring = rte_ring_lookup(get_rsp_queue_name(nf_info->instance_id, batch->thread_id));
-	if (nf_response_ring == NULL)
-		rte_exit(EXIT_FAILURE, "Failed to get response ring\n");
-
 	struct nf_rsp *rsp;
-	while (rte_ring_dequeue(nf_response_ring, (void **)&rsp) != 0 && keep_running) ;
+	while (rte_ring_dequeue(cl->response_q[thread_id], (void **)&rsp) != 0 && keep_running) ;
 	assert((rsp->type == RSP_HOST_MALLOC) & (rsp->states == RSP_SUCCESS));
 
-	const struct rte_memzone *mz = rte_memzone_lookup(get_buf_name(nf_info->instance_id, batch->thread_id));
+	const struct rte_memzone *mz = rte_memzone_lookup(get_buf_name(nf_info->instance_id));
 	if (mz == NULL)
 		rte_exit(EXIT_FAILURE, "Cannot find memzone\n");
 
-	batch->host_mem_addr_base = mz->addr;
-	batch->host_mem_addr_cur = mz->addr;
-	batch->host_mem_size_total = mz->len;
-	batch->host_mem_size_left = mz->len;
+	host_mem_addr_base = mz->addr;
+	host_mem_addr_cur = mz->addr;
+	host_mem_size_total = mz->len;
+	host_mem_size_left = mz->len;
 
 	rte_mempool_put(nf_response_mp, rsp);
 }
@@ -438,7 +437,8 @@ gcudaAllocSize(int size_per_thread, int size_global, int first)
 void
 gcudaMalloc(CUdeviceptr *p, int size)
 {
-	nfv_batch_t *batch = (nfv_batch_t *)pthread_getspecific(my_batch);
+	thread_local_t *local = (thread_local_t *)pthread_getspecific(thread_local_key);
+	int thread_id = (local ? local->thread_id : 0);
 
 	struct nf_req *req;
 	if (rte_mempool_get(nf_request_mp, (void **)&req) < 0) {
@@ -447,7 +447,7 @@ gcudaMalloc(CUdeviceptr *p, int size)
 
 	req->type = REQ_GPU_MALLOC;
 	req->instance_id = nf_info->instance_id;
-	req->thread_id = batch->thread_id;
+	req->thread_id = thread_id;
 	req->size = size;
 
 	if (rte_ring_enqueue(nf_request_queue, req) < 0) {
@@ -455,17 +455,13 @@ gcudaMalloc(CUdeviceptr *p, int size)
 		rte_exit(EXIT_FAILURE, "Cannot send request_info to scheduler\n");
 	}
 
-	struct rte_ring *nf_response_ring = rte_ring_lookup(get_rsp_queue_name(nf_info->instance_id, batch->thread_id));
-	if (nf_response_ring == NULL)
-		rte_exit(EXIT_FAILURE, "Failed to get response ring\n");
-
 	struct nf_rsp *rsp;
-	while (rte_ring_dequeue(nf_response_ring, (void **)&rsp) != 0 && keep_running) ;
+	while (rte_ring_dequeue(cl->response_q[thread_id], (void **)&rsp) != 0 && keep_running) ;
 
 	assert((rsp->type == RSP_GPU_MALLOC) & (rsp->states == RSP_SUCCESS));
 	*p = rsp->dev_ptr;
 
-	RTE_LOG(DEBUG, APP, "[%d] cudaMalloc %lx, size %d\n", batch->thread_id, (uint64_t)*p, size);
+	RTE_LOG(DEBUG, APP, "[%d] cudaMalloc %lx, size %d\n", thread_id, (uint64_t)*p, size);
 
 	rte_mempool_put(nf_response_mp, rsp);
 }
@@ -473,115 +469,82 @@ gcudaMalloc(CUdeviceptr *p, int size)
 void
 gcudaHostAlloc(void **p, int size)
 {
-	nfv_batch_t *batch = (nfv_batch_t *)pthread_getspecific(my_batch);
+	thread_local_t *local = (thread_local_t *)pthread_getspecific(thread_local_key);
+	int thread_id = (local ? local->thread_id : 0);
 
-	if (size > batch->host_mem_size_left)
-		rte_exit(EXIT_FAILURE, "[%d] No enough host memory space left %d > %d\n", batch->thread_id, size, batch->host_mem_size_left);
+	if (size > host_mem_size_left)
+		rte_exit(EXIT_FAILURE, "[%d] No enough host memory space left %d > %d\n", thread_id, size, host_mem_size_left);
 
-	*p = batch->host_mem_addr_cur;
-	batch->host_mem_addr_cur = (void *)((char *)batch->host_mem_addr_cur + size);
-	batch->host_mem_size_left -= size;
+	*p = host_mem_addr_cur;
+	host_mem_addr_cur = (void *)((char *)host_mem_addr_cur + size);
+	host_mem_size_left -= size;
 
-	RTE_LOG(DEBUG, APP, "[%d] allocating %d host memory, leaving %d\n", batch->thread_id, size, batch->host_mem_size_left);
+	RTE_LOG(DEBUG, APP, "[%d] allocating %d host memory, leaving %d\n", thread_id, size, host_mem_size_left);
 }
 
 void
-gcudaMemcpyHtoD(CUdeviceptr dst, void *src, int size, int sync, int thread_id)
+gcudaMemcpyHtoD(CUdeviceptr dst, void *src, int size)
 {
-	nfv_batch_t *batch = &(batch_set[thread_id]);
-	assert(batch->thread_id == thread_id);
-
-#if defined(GRAPH_TIME) || defined(SYNC_MODE)
-	sync = SYNC;
-#endif
+	thread_local_t *local = (thread_local_t *)pthread_getspecific(thread_local_key);
+	int stream_id = (local ? local->stream_id : 0);
+	assert(stream_id != -1);
 
 	struct nf_req *req;
 	if (rte_mempool_get(nf_request_mp, (void **)&req) < 0) {
 		rte_exit(EXIT_FAILURE, "Failed to get resquest memory\n");
 	}
 
-	if (sync == SYNC) {
-		req->type = REQ_GPU_MEMCPY_HTOD_SYNC;
-	} else {
-		req->type = REQ_GPU_MEMCPY_HTOD_ASYNC;
-	}
+	req->type = REQ_GPU_MEMCPY_HTOD_ASYNC;
 	req->device_ptr = dst;
-	req->host_offset = (char *)src - (char *)(batch->host_mem_addr_base);
+	req->host_offset = (char *)src - (char *)(host_mem_addr_base);
 	req->instance_id = nf_info->instance_id;
-	req->thread_id = thread_id;
+	req->stream_id = stream_id;
 	req->size = size;
 
-	RTE_LOG(DEBUG, APP, "[%d] cudaMemcpyHtoD, dst %lx, host offset %d, size %d, sync %d\n", 
-			thread_id, (uint64_t)dst, req->host_offset, size, sync);
+	RTE_LOG(DEBUG, APP, "[s%d] cudaMemcpyHtoD, dst %lx, host offset %d, size %d", 
+			stream_id, (uint64_t)dst, req->host_offset, size);
 
 	if (rte_ring_enqueue(nf_request_queue, req) < 0) {
 		rte_mempool_put(nf_request_mp, req);
 		rte_exit(EXIT_FAILURE, "Cannot send request_info to scheduler\n");
 	}
-
-	if (sync == SYNC) {
-		struct rte_ring *nf_response_ring = rte_ring_lookup(get_rsp_queue_name(nf_info->instance_id, thread_id));
-		if (nf_response_ring == NULL)
-			rte_exit(EXIT_FAILURE, "Failed to get response ring\n");
-
-		struct nf_rsp *rsp;
-		while (rte_ring_dequeue(nf_response_ring, (void **)&rsp) != 0 && keep_running) ;
-		assert((rsp->type == RSP_GPU_MEMCPY_HTOD_SYNC) & (rsp->states == RSP_SUCCESS));
-
-		rte_mempool_put(nf_response_mp, rsp);
-	}
 }
 
 void
-gcudaMemcpyDtoH(void *dst, CUdeviceptr src, int size, int sync, int thread_id)
+gcudaMemcpyDtoH(void *dst, CUdeviceptr src, int size)
 {
-	nfv_batch_t *batch = &(batch_set[thread_id]);
-	assert(batch->thread_id == thread_id);
-
-#if defined(GRAPH_TIME) || defined(SYNC_MODE)
-	sync = SYNC;
-#endif
+	thread_local_t *local = (thread_local_t *)pthread_getspecific(thread_local_key);
+	int stream_id = (local ? local->stream_id : 0);
+	assert(stream_id != -1);
 
 	struct nf_req *req;
 	if (rte_mempool_get(nf_request_mp, (void **)&req) < 0) {
 		rte_exit(EXIT_FAILURE, "Failed to get resquest memory\n");
 	}
 
-	if (sync == SYNC) {
-		req->type = REQ_GPU_MEMCPY_DTOH_SYNC;
-	} else if (sync == ASYNC) {
-		req->type = REQ_GPU_MEMCPY_DTOH_ASYNC;
-	}
+	req->type = REQ_GPU_MEMCPY_DTOH_ASYNC;
 	req->device_ptr = src;
-	req->host_offset = (char *)dst - (char *)(batch->host_mem_addr_base);
+	req->host_offset = (char *)dst - (char *)(host_mem_addr_base);
 	req->instance_id = nf_info->instance_id;
-	req->thread_id = thread_id;
+	req->stream_id = stream_id;
 	req->size = size;
 
-	RTE_LOG(DEBUG, APP, "[%d] cudaMemcpyDtoH, host offset %d, src %lx, size %d\n", 
-			thread_id, req->host_offset, (uint64_t)src, size);
+	RTE_LOG(DEBUG, APP, "[s%d] cudaMemcpyDtoH, host offset %d, src %lx, size %d\n", 
+			stream_id, req->host_offset, (uint64_t)src, size);
 
 	if (rte_ring_enqueue(nf_request_queue, req) < 0) {
 		rte_mempool_put(nf_request_mp, req);
 		rte_exit(EXIT_FAILURE, "Cannot send request_info to scheduler\n");
 	}
-
-	if (sync == SYNC) {
-		struct rte_ring *nf_response_ring = rte_ring_lookup(get_rsp_queue_name(nf_info->instance_id, thread_id));
-		if (nf_response_ring == NULL)
-			rte_exit(EXIT_FAILURE, "Failed to get response ring\n");
-
-		struct nf_rsp *rsp;
-		while (rte_ring_dequeue(nf_response_ring, (void **)&rsp) != 0 && keep_running) ;
-		assert((rsp->type == RSP_GPU_MEMCPY_DTOH_SYNC) & (rsp->states == RSP_SUCCESS));
-
-		rte_mempool_put(nf_response_mp, rsp);
-	}
 }
 
 void
-gcudaLaunchKernel(int thread_id)
+gcudaLaunchKernel(void)
 {
+	thread_local_t *local = (thread_local_t *)pthread_getspecific(thread_local_key);
+	int stream_id = (local ? local->stream_id : 0);
+	assert(stream_id != -1);
+
 	struct nf_req *req;
 	if (rte_mempool_get(nf_request_mp, (void **)&req) < 0) {
 		rte_exit(EXIT_FAILURE, "Failed to get resquest memory\n");
@@ -589,7 +552,7 @@ gcudaLaunchKernel(int thread_id)
 
 	req->type = REQ_GPU_LAUNCH_STREAM_ASYNC;
 	req->instance_id = nf_info->instance_id;
-	req->thread_id = thread_id;
+	req->stream_id = stream_id;
 
 	RTE_LOG(DEBUG, APP, "[G] cudaLaunchKernel\n");
 
@@ -600,74 +563,42 @@ gcudaLaunchKernel(int thread_id)
 }
 
 static void
-gcudaWaitForSyncResponse(void)
+gcudaSyncStreamRequest(void)
 {
-	/* Waiting for the manager to send back the SYNC response */
-	struct rte_ring *nf_response_ring = rte_ring_lookup(get_rsp_queue_name(nf_info->instance_id, GLOBAL_RSP_QUEUE));
-	if (nf_response_ring == NULL)
-		rte_exit(EXIT_FAILURE, "Failed to get response ring\n");
+	thread_local_t *local = (thread_local_t *)pthread_getspecific(thread_local_key);
+	int thread_id = (local ? local->stream_id : 0);
+	int stream_id = (local ? local->stream_id : 0);
+	assert(stream_id != -1);
 
-	struct nf_rsp *rsp;
-	while (rte_ring_dequeue(nf_response_ring, (void **)&rsp) != 0 && keep_running) ;
-
-	if ((rsp->type != RSP_GPU_GLOBAL_SYNC) && (rsp->type != RSP_GPU_KERNEL_SYNC))
-		rte_exit(EXIT_FAILURE, "Wrong response type %d\n", rsp->type);
-
-	if ((rsp->batch_size != 0) && (rsp->batch_size < MAX_BATCH_SIZE)) {
-		if (BATCH_SIZE != rsp->batch_size) {
-			BATCH_SIZE = rsp->batch_size;
-			RTE_LOG(DEBUG, APP, "Update BATCH_SIZE as %d\n", BATCH_SIZE);
-		}
-	} else {
-		RTE_LOG(DEBUG, APP, "Batch size is %d, larger than %d\n", rsp->batch_size, MAX_BATCH_SIZE);
-		BATCH_SIZE = MAX_BATCH_SIZE;
-	}
-
-	rte_mempool_put(nf_response_mp, rsp);
-}
-
-void
-gcudaLaunchKernel_allStream(void)
-{
 	struct nf_req *req;
 	if (rte_mempool_get(nf_request_mp, (void **)&req) < 0) {
 		rte_exit(EXIT_FAILURE, "Failed to get resquest memory\n");
 	}
 
-	req->type = REQ_GPU_LAUNCH_ALL_STREAM;
+	req->type = REQ_GPU_SYNC_STREAM;
 	req->instance_id = nf_info->instance_id;
+	req->thread_id = thread_id;
+	req->stream_id = stream_id;
 
-	RTE_LOG(DEBUG, APP, "[G] cudaLaunchKernel_allStream\n");
+	RTE_LOG(DEBUG, APP, "[G] cudaSyncStream\n");
 
 	if (rte_ring_enqueue(nf_request_queue, req) < 0) {
 		rte_mempool_put(nf_request_mp, req);
 		rte_exit(EXIT_FAILURE, "Cannot send request_info to scheduler\n");
 	}
-
-#if defined(GRAPH_TIME) || defined(SYNC_MODE)
-	gcudaWaitForSyncResponse();
-#endif
 }
 
-void
-gcudaDeviceSynchronize(void)
+static int
+handleSyncStreamResponse(void)
 {
-	struct nf_req *req;
-	if (rte_mempool_get(nf_request_mp, (void **)&req) < 0) {
-		rte_exit(EXIT_FAILURE, "Failed to get request memory\n");
-	}
+	thread_local_t *local = (thread_local_t *)pthread_getspecific(thread_local_key);
+	int thread_id = (local ? local->stream_id : 0);
 
-	req->type = REQ_GPU_SYNC;
-	req->instance_id = nf_info->instance_id;
-
-	RTE_LOG(DEBUG, APP, "[G] cudaDeviceSync\n");
-
-	if (rte_ring_enqueue(nf_request_queue, req) < 0) {
-		rte_mempool_put(nf_request_mp, req);
-		rte_exit(EXIT_FAILURE, "Cannot send request_info to scheduler\n");
-	}
-
-	gcudaWaitForSyncResponse();
-
-	RTE_LOG(DEBUG, APP, "[G] cudaDeviceSync finished\n");
+	struct nf_rsp *rsp;
+	if (0 == rte_ring_dequeue(cl->response_q[thread_id], (void **)&rsp))
+		return -1;
+	assert((rsp->type == RSP_GPU_SYNC_STREAM) & (rsp->states == RSP_SUCCESS));
+	int stream_id = rsp->stream_id;
+	rte_mempool_put(nf_response_mp, rsp);
+	return stream_id;	
 }

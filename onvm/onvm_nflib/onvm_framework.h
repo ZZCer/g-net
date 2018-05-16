@@ -25,14 +25,6 @@ typedef struct nfv_batch_s
 	int stream_id;
 } nfv_batch_t;
 
-typedef struct gpu_stream_s
-{
-	void *host_mem_addr_base;
-	void *host_mem_addr_cur;
-	int host_mem_size_total;
-	int host_mem_size_left;
-} gpu_stream_t;
-
 enum {
 	BUF_STATE_CPU_READY = 0,
 	BUF_STATE_GPU_READY,
@@ -45,23 +37,23 @@ typedef struct context_s{
 typedef void *(*init_func_t)(void);
 typedef void (*pre_func_t)(void *, struct rte_mbuf *, int);
 typedef void (*post_func_t)(void *, struct rte_mbuf *, int);
-typedef void (*gpu_htod_t)(void *, int, unsigned int);
-typedef void (*gpu_dtoh_t)(void *, int, unsigned int);
+typedef void (*gpu_htod_t)(void *, int);
+typedef void (*gpu_dtoh_t)(void *, int);
 typedef void (*gpu_set_arg_t)(void *, void *, void *, int);
 
-void onvm_framework_start_cpu(init_func_t, pre_func_t, post_func_t);
+void onvm_framework_start_cpu(pre_func_t, post_func_t);
 void onvm_framework_start_gpu(gpu_htod_t, gpu_dtoh_t, gpu_set_arg_t);
 
 void onvm_framework_install_kernel_perf_parameter(double k1, double b1, double k2, double b2);
 void onvm_framework_install_kernel_perf_para_set(double *u_k1, double *u_b1, double *u_k2, double *u_b2, unsigned int *pkt_size, unsigned int *line_start_batch, unsigned int para_num);
-void onvm_framework_init(const char *module_file, const char *kernel_name);
+void onvm_framework_init(const char *module_file, const char *kernel_name, init_func_t user_init_buf_func);
 
-void gcudaAllocSize(int size1, int size2, int first);
+void gcudaAllocSize(int size1, int size2);
 void gcudaMalloc(CUdeviceptr *p, int size);
 void gcudaHostAlloc(void **p, int size);
-void gcudaMemcpyHtoD(CUdeviceptr dst, void *src, int size, int sync, int thread_id);
-void gcudaMemcpyDtoH(void *dst, CUdeviceptr src, int size, int sync, int thread_id);
-void gcudaLaunchKernel(int thread_id);
+void gcudaMemcpyHtoD(CUdeviceptr dst, void *src, int size);
+void gcudaMemcpyDtoH(void *dst, CUdeviceptr src, int size);
+void gcudaLaunchKernel(void);
 void gcudaLaunchKernel_allStream(void);
 void gcudaDeviceSynchronize(void);
 

@@ -225,12 +225,7 @@ onvm_nf_start(struct onvm_nf_info *nf_info) {
 	/* Wait for the NF to install GPU rules before manager initiation */
 	while (nf_info->status != NF_RUNNING) ;
 
-	/* Initialize the GPU related data structures for this NF */
-	if ((nf_info->service_id != NF_PKTGEN) && (nf_info->service_id != NF_RAW)) {
-		manager_nf_init(instance_id);
-	} else {
-		clients[instance_id].gpu_info->thread_num = 1;
-	}
+	manager_nf_init(instance_id);
 
 	return 0;
 }

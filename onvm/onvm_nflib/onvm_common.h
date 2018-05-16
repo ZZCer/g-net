@@ -190,7 +190,7 @@ typedef struct gpu_packet_s {
  * stats from the clients.
  */
 struct client {
-	struct rte_ring *response_q[MAX_CPU_THREAD_NUM];
+	struct rte_ring *response_q[MAX_CONCURRENCY_NUM];
 	struct rte_ring *global_response_q;
 	struct onvm_nf_info *info;
 	uint16_t instance_id;
@@ -202,8 +202,8 @@ struct client {
 	double latency_us; /* latency in microseconds (us) */
 	unsigned int avg_pkt_len;
 	int nf_type; /* NF_BPS or NF_PPS */
-	CUstream stream[MAX_CPU_THREAD_NUM];
-	uint8_t sync[MAX_CPU_THREAD_NUM];
+	CUstream stream[MAX_CONCURRENCY_NUM];
+	uint8_t sync[MAX_CONCURRENCY_NUM];
 
 	double cost_time; /* Record the cost of GPU execution */
 
@@ -213,7 +213,6 @@ struct client {
 	uint32_t batch_size;
 
 	uint16_t init;
-	uint16_t worker_thread_num;
 	CUmodule module;
 	CUfunction function;
 	struct gpu_schedule_info *gpu_info;
@@ -292,6 +291,7 @@ struct nf_req {
 	volatile uint16_t type;
 	volatile uint16_t instance_id; 
 	volatile uint16_t thread_id;
+	volatile uint16_t stream_id;
 	volatile CUdeviceptr device_ptr;
 	volatile uint32_t host_offset;
 	volatile uint32_t size;
@@ -305,6 +305,7 @@ struct nf_rsp {
 	volatile int batch_size;
 	volatile int instance_id;
 	CUdeviceptr dev_ptr;
+	int stream_id;
 };
 
 #define MAX_PARA_NUM 16
@@ -349,6 +350,7 @@ struct gpu_schedule_info {
 #define REQ_GPU_SYNC				8
 #define REQ_GPU_MEMFREE				9
 #define REQ_GPU_MEMSET				10
+#define REQ_GPU_SYNC_STREAM			11
 
 #define RSP_HOST_MALLOC				0
 #define RSP_GPU_MALLOC				1
@@ -356,6 +358,7 @@ struct gpu_schedule_info {
 #define RSP_GPU_MEMCPY_DTOH_SYNC	3
 #define RSP_GPU_GLOBAL_SYNC			4
 #define RSP_GPU_KERNEL_SYNC			5
+#define RSP_GPU_SYNC_STREAM			6
 
 #define RSP_SUCCESS		0
 #define RSP_FAILURE		1
@@ -444,7 +447,7 @@ static inline int get_nf_type(int service_id)
 
 #define _NF_REQUEST_QUEUE_NAME "NF_REQUEST_QUEUE"
 #define _NF_RESPONSE_QUEUE_NAME "MProc_RSP_%u_%u"
-#define _NF_BUF_NAME "MProc_Buf_%u_%u"
+#define _NF_BUF_NAME "MProc_Buf_%u"
 
 
 #define _NF_REQUEST_MEMPOOL_NAME "NF_REQ_MEMPOOL"
@@ -511,9 +514,9 @@ get_rsp_queue_name(unsigned instance_id, unsigned thread_id) {
 }
 
 static inline const char *
-get_buf_name(unsigned instance_id, unsigned thread_id) {
+get_buf_name(unsigned instance_id) {
 	static char buffer[sizeof(_NF_BUF_NAME) + 2];
-	snprintf(buffer, sizeof(buffer) - 1, _NF_BUF_NAME, instance_id, thread_id);
+	snprintf(buffer, sizeof(buffer) - 1, _NF_BUF_NAME, instance_id);
 	return buffer;
 }
 

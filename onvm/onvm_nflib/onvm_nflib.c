@@ -103,8 +103,10 @@ struct rte_mempool *nf_response_mp;
 struct rte_ring *nf_request_queue;
 
 extern int NF_REQUIRED_LATENCY;
-extern int INIT_WORKER_THREAD_NUM;
-extern int INIT_WORKER_STREAM_NUM;
+extern int THREAD_NUM;
+extern int STREAM_NUM;
+
+extern pthread_key_t thread_local_key;
 
 /***********************Internal Functions Prototypes*************************/
 
@@ -278,6 +280,10 @@ onvm_nflib_init(int argc, char *argv[], const char *nf_tag, int service_id,
 	if (nf_request_queue == NULL)
 		rte_exit(EXIT_FAILURE, "Failed to get request ring\n");
 
+	/* Create thread local */
+	if (pthread_key_create(&thread_local_key, NULL) != 0)
+		rte_exit(EXIT_FAILURE, "Failed to create thread local key\n");
+
 	RTE_LOG(INFO, APP, "Finished Process Init.\n");
 	return retval_final;
 }
@@ -353,12 +359,12 @@ onvm_nflib_parse_args(int argc, char *argv[]) {
 				RTE_LOG(INFO, APP, "[ARG] NF required latency = %d microseconds (us)\n", NF_REQUIRED_LATENCY);
 				break;
 			case 'k':
-				INIT_WORKER_THREAD_NUM = (uint16_t) strtoul(optarg, NULL, 10);
-				RTE_LOG(INFO, APP, "[ARG] Initial worker thread number = %d\n", INIT_WORKER_THREAD_NUM);
+				THREAD_NUM = (uint16_t) strtoul(optarg, NULL, 10);
+				RTE_LOG(INFO, APP, "[ARG] Initial worker thread number = %d\n", THREAD_NUM);
 				break;
 			case 's':
-				INIT_WORKER_STREAM_NUM = (uint16_t) strtoul(optarg, NULL, 10);
-				RTE_LOG(INFO, APP, "[ARG] Initial worker stream number = %d\n", INIT_WORKER_STREAM_NUM);
+				STREAM_NUM = (uint16_t) strtoul(optarg, NULL, 10);
+				RTE_LOG(INFO, APP, "[ARG] Initial worker stream number = %d\n", STREAM_NUM);
 				break;
 			case '?':
 				onvm_nflib_usage(progname);

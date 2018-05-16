@@ -34,8 +34,7 @@ gpu_get_resource(int instance_id, double T0) {
 	struct client *cl = &(clients[instance_id]);
 	double k1, b1, k2, b2;
 	uint16_t L = cl->gpu_info->latency_us;
-	//unsigned int thread_num = cl->gpu_info->thread_num;
-	unsigned int stream_num = 1;  // todo: multiple streams
+	unsigned int stream_num = cl->gpu_info->stream_num;
 
 	printf("[%d] Current Resource Allocated: blk_num %d, batch_size %d, threads_per_blk %d\n",
 			instance_id, cl->blk_num, cl->batch_size, cl->threads_per_blk);
@@ -208,7 +207,7 @@ gpu_optimize_latency(double T0) {
 	double newL, oldL;
 	int B0, minB;
 	unsigned int stream_num, N;
-	
+
 	printf("\n");
 	RTE_LOG(INFO, APP, "Allocate SMs to further optimize the latency:\n");
 
@@ -217,7 +216,7 @@ gpu_optimize_latency(double T0) {
 
 		for (id = 0; id < MAX_CLIENTS; id ++) {
 			cl = &(clients[id]);
-			stream_num = cl->gpu_info->thread_num;
+			stream_num = cl->gpu_info->stream_num;
 
 			if (!onvm_nf_is_valid(cl) || (cl->info->service_id == NF_PKTGEN)
 					|| (cl->throughput_mpps == 0) || (stream_num == 0) || (cl->avg_pkt_len == 0))
@@ -287,7 +286,7 @@ gpu_optimize_latency(double T0) {
 		}
 
 		cl = &(clients[max_client_id]);
-		stream_num = cl->gpu_info->thread_num;
+		stream_num = cl->gpu_info->stream_num;
 
 		if (cl->nf_type == NF_BPS) {
 			for (i = 0; i < cl->gpu_info->para_num; i ++) {
@@ -344,8 +343,6 @@ schedule(void) {
 	struct timespec end;
 
 	clock_gettime(CLOCK_MONOTONIC, &end);
-
-	/* Calculate the allocated SMs */
 	allocated_sm_num = 0;
 	exausted = 0;
 
@@ -353,7 +350,7 @@ schedule(void) {
 	for (i = 0; i < MAX_CLIENTS; i ++) {
 		if (!onvm_nf_is_valid(&clients[i]))
 			continue;
-
+		//allocated_sm_num += clients[i].gpu_info->stream_num * clients[i].blk_num;
 		if (minT > clients[i].throughput_mpps)
 			minT = clients[i].throughput_mpps;
 	}
