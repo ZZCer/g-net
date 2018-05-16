@@ -309,6 +309,7 @@ onvm_framework_start_cpu(init_func_t user_init_buf_func, pre_func_t user_pre_fun
 		batch_set[i].buf_size = 0;
 		batch_set[i].buf_state = BUF_STATE_CPU_READY;
 		batch_set[i].user_buf = user_init_buf_func();
+		batch_set[i].pkt_ptr = calloc(MAX_BATCH_SIZE, sizeof(struct rte_mbuf *));
 	}
 	for (i = 0; i < THREAD_NUM; i ++) {
 		onvm_framework_spawn_thread(i);
