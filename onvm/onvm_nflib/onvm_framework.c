@@ -127,6 +127,7 @@ onvm_framework_cpu(int thread_id)
 	uint64_t starve_rx_counter = 0;
 	uint64_t starve_gpu_counter = 0;
 	struct timespec start, end;
+	double diff_us;
 
 	rx_q = cl->rx_q_new;
 
@@ -183,10 +184,15 @@ onvm_framework_cpu(int thread_id)
 			onvm_pkt_drop_batch(batch->pkt_ptr + sent_packets, cur_buf_size - sent_packets);
 		}
 
+		// record cpu proc end
+		clock_gettime(CLOCK_MONOTONIC, &end);
+		diff_us = (end.tv_sec - start.tv_sec) * 1000000.0 + (end.tv_nsec - start.tv_nsec) / 1000.0;
+
 		rte_spinlock_lock(&cl->stats.update_lock);
 		cl->stats.tx += sent_packets;
 		cl->stats.tx_drop += num_packets - sent_packets;
 		cl->stats.act_drop += cur_buf_size - num_packets;
+		cl->stats.cpu_time += diff_us;
 		rte_spinlock_unlock(&cl->stats.update_lock);
 
 		// rx
@@ -210,6 +216,9 @@ onvm_framework_cpu(int thread_id)
 		cur_buf_size = num_packets;
 		batch->buf_size = cur_buf_size;
 
+		// record cpu process start
+		clock_gettime(CLOCK_MONOTONIC, &start);
+
 		// pre-processing
 		uint64_t rx_datalen = 0;
 		for (i = 0; i < cur_buf_size; i++) {
@@ -219,8 +228,7 @@ onvm_framework_cpu(int thread_id)
 
 		// record cpu proc end
 		clock_gettime(CLOCK_MONOTONIC, &end);
-
-		double diff_us = (end.tv_sec - start.tv_sec) * 1000000.0 + (end.tv_nsec - start.tv_nsec) / 1000.0;
+		diff_us = (end.tv_sec - start.tv_sec) * 1000000.0 + (end.tv_nsec - start.tv_nsec) / 1000.0;
 
 		rte_spinlock_lock(&cl->stats.update_lock);
 		cl->stats.rx += cur_buf_size;		
