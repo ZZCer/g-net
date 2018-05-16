@@ -193,11 +193,11 @@ sync_stream_callback(CUstream cuda_stream, CUresult status, void *user_data)
 		checkCudaErrors( cuEventElapsedTime(&gpu_time_ms, cl->gpu_start[sid], cl->gpu_end[sid]) );
 		checkCudaErrors( cuEventElapsedTime(&kernel_time_ms, cl->kernel_start[sid], cl->kernel_end[sid]) );
 
-		rte_spinlock_lock(&cl->stats.update_lock);
+		//rte_spinlock_lock(&cl->stats.update_lock);
 		cl->stats.gpu_time += gpu_time_ms * 1000.0;
 		cl->stats.kernel_time += kernel_time_ms * 1000.0;
 		cl->stats.kernel_cnt ++;
-		rte_spinlock_unlock(&cl->stats.update_lock);
+		//rte_spinlock_unlock(&cl->stats.update_lock);
 	}
 
 	rte_mempool_put(nf_request_pool, req);
@@ -301,9 +301,9 @@ manager_thread_main(void *arg)
 				cl = &(clients[req->instance_id]);
 				mz = rte_memzone_lookup(get_buf_name(req->instance_id));
 				host_ptr = (char *)(mz->addr) + req->host_offset;
-				rte_spinlock_lock(&cl->stats.update_lock);
+				//rte_spinlock_lock(&cl->stats.update_lock);
 				cl->stats.htod_mem += req->size;
-				rte_spinlock_unlock(&cl->stats.update_lock);
+				//rte_spinlock_unlock(&cl->stats.update_lock);
 
 				checkCudaErrors( cuMemcpyHtoDAsync(req->device_ptr, host_ptr, req->size, cl->stream[req->stream_id]) );
 
@@ -316,9 +316,9 @@ manager_thread_main(void *arg)
 				cl = &(clients[req->instance_id]);
 				mz = rte_memzone_lookup(get_buf_name(req->instance_id));
 				host_ptr = (char *)(mz->addr) + req->host_offset;
-				rte_spinlock_lock(&cl->stats.update_lock);
+				//rte_spinlock_lock(&cl->stats.update_lock);
 				cl->stats.dtoh_mem += req->size;
-				rte_spinlock_unlock(&cl->stats.update_lock);
+				//rte_spinlock_unlock(&cl->stats.update_lock);
 
 				checkCudaErrors( cuMemcpyDtoHAsync(host_ptr, req->device_ptr, req->size, cl->stream[req->stream_id]) );
 

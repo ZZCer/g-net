@@ -115,7 +115,7 @@ onvm_stats_display_all(unsigned difftime) {
 
 void
 onvm_stats_clear_client(uint16_t i) {
-	rte_spinlock_lock(&clients[i].stats.update_lock);
+	//rte_spinlock_lock(&clients[i].stats.update_lock);
 	clock_gettime(CLOCK_MONOTONIC, &clients[i].stats.start);
 	clients[i].stats.rx = 0;
 	clients[i].stats.rx_datalen = 0;
@@ -132,9 +132,7 @@ onvm_stats_clear_client(uint16_t i) {
 	clients[i].stats.gpu_time = 0;
 	clients[i].stats.kernel_time = 0;
 	clients[i].stats.kernel_cnt = 0;
-
-	clients[i].stats.gpu_thread_cnt = 0;	
-	rte_spinlock_unlock(&clients[i].stats.update_lock);
+	//rte_spinlock_unlock(&clients[i].stats.update_lock);
 }
 
 void
@@ -232,8 +230,6 @@ onvm_stats_display_clients(void) {
 		double   gpu_time = clients[i].stats.gpu_time;
 		double   kernel_time = clients[i].stats.kernel_time;
 		uint64_t kernel_cnt = clients[i].stats.kernel_cnt;
-
-		uint64_t gpu_thread_cnt = clients[i].stats.gpu_thread_cnt;		
 		//rte_spinlock_unlock(&clients[i].stats.update_lock);
 
 		if (rx == 0) rx = 1;
@@ -256,10 +252,10 @@ onvm_stats_display_clients(void) {
 		if (clients[i].stats.batch_cnt == 0) {
 			printf("Kernel count is 0, no statistics\n");
 		} else {
-			printf("Avg HtoD = %ld bytes, DtoH = %ld bytes, GPU counted = %ld, CPU counted = %ld %ld\n",
+			printf("Avg HtoD = %ld bytes, DtoH = %ld bytes, GPU counted = %ld, CPU counted = %ld\n",
 					htod_mem/kernel_cnt,
 					dtoh_mem/kernel_cnt,
-					kernel_cnt, batch_cnt, gpu_thread_cnt);
+					kernel_cnt, batch_cnt);
 			printf("Kernal time = %f, GPU time = %f, CPU time = %f\n", kernel_time / kernel_cnt, gpu_time / kernel_cnt,
 				cpu_time / batch_cnt);
 		}

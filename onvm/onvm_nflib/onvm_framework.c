@@ -191,12 +191,12 @@ onvm_framework_cpu(int thread_id)
 		clock_gettime(CLOCK_MONOTONIC, &end);
 		diff_us = (end.tv_sec - start.tv_sec) * 1000000.0 + (end.tv_nsec - start.tv_nsec) / 1000.0;
 
-		rte_spinlock_lock(&cl->stats.update_lock);
+		//rte_spinlock_lock(&cl->stats.update_lock);
 		cl->stats.tx += sent_packets;
 		cl->stats.tx_drop += num_packets - sent_packets;
 		cl->stats.act_drop += cur_buf_size - num_packets;
 		cl->stats.cpu_time += diff_us;
-		rte_spinlock_unlock(&cl->stats.update_lock);
+		//rte_spinlock_unlock(&cl->stats.update_lock);
 
 		// rx
 		do {
@@ -233,13 +233,13 @@ onvm_framework_cpu(int thread_id)
 		clock_gettime(CLOCK_MONOTONIC, &end);
 		diff_us = (end.tv_sec - start.tv_sec) * 1000000.0 + (end.tv_nsec - start.tv_nsec) / 1000.0;
 
-		rte_spinlock_lock(&cl->stats.update_lock);
+		//rte_spinlock_lock(&cl->stats.update_lock);
 		cl->stats.rx += cur_buf_size;		
 		cl->stats.rx_datalen += rx_datalen;
 		cl->stats.cpu_time += diff_us;
 		cl->stats.batch_size += cur_buf_size;
 		cl->stats.batch_cnt ++;
-		rte_spinlock_unlock(&cl->stats.update_lock);
+		//rte_spinlock_unlock(&cl->stats.update_lock);
 
 		// launch kernel
 		batch->buf_state = BUF_STATE_GPU_READY;
@@ -387,7 +387,6 @@ onvm_framework_start_gpu(gpu_htod_t user_gpu_htod, gpu_dtoh_t user_gpu_dtoh, gpu
 			batch->buf_state = BUF_STATE_CPU_READY;
 			rte_spinlock_unlock(&batch->processing_lock);
 		}
-		cl->stats.gpu_thread_cnt++;
 
 		// find a batch
 		do {
