@@ -16,7 +16,7 @@ aes_ctr_sha1_kernel(
 			const uint16_t *length,
 			const uint8_t *aes_keys,
 			const uint8_t *hmac_keys,
-			const unsigned int num_flows,
+			const int num_flows,
 			uint8_t *checkbits)
 {
 	int idx = blockIdx.x * blockDim.x + threadIdx.x;

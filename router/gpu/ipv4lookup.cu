@@ -7,7 +7,7 @@
   <Routing Lookups in Hardware at Memory Access Speeds>
 ******************************************************************/
 extern "C" __global__ void ipv4lookup(const uint32_t *input_buf,
-			const uint64_t job_num,
+			const int job_num,
 			uint8_t *output_buf,
 			const uint16_t *tbl24)
 {
