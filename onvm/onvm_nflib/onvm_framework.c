@@ -394,7 +394,7 @@ void
 gcudaAllocSize(int size_per_thread, int size_global)
 {
 	int size;
-	size = size_per_thread * THREAD_NUM + size_global;
+	size = size_per_thread * (THREAD_NUM + STREAM_NUM) + size_global;
 
 	thread_local_t *local = (thread_local_t *)pthread_getspecific(thread_local_key);
 	int thread_id = (local ? local->thread_id : 0);
