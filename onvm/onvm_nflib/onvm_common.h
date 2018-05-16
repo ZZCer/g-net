@@ -248,6 +248,8 @@ struct client {
 		double gpu_time;
 		double kernel_time;
 		uint64_t kernel_cnt;
+
+		uint64_t gpu_thread_cnt;
 	} __attribute__ ((aligned (64))) stats;
 };
 

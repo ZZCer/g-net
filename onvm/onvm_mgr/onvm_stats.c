@@ -132,6 +132,8 @@ onvm_stats_clear_client(uint16_t i) {
 	clients[i].stats.gpu_time = 0;
 	clients[i].stats.kernel_time = 0;
 	clients[i].stats.kernel_cnt = 0;
+
+	clients[i].stats.gpu_thread_cnt = 0;	
 	rte_spinlock_unlock(&clients[i].stats.update_lock);
 }
 

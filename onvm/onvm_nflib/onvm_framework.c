@@ -239,9 +239,7 @@ onvm_framework_cpu(int thread_id)
 		rte_spinlock_unlock(&cl->stats.update_lock);
 
 		// launch kernel
-		if (cur_buf_size > 0) {
-			batch->buf_state = BUF_STATE_GPU_READY;
-		}
+		batch->buf_state = BUF_STATE_GPU_READY;
 	}
 
 	return 0;
@@ -382,6 +380,7 @@ onvm_framework_start_gpu(gpu_htod_t user_gpu_htod, gpu_dtoh_t user_gpu_dtoh, gpu
 		if (stream_ctx[stream_id].working != -1) {
 			batch_set[stream_ctx[stream_id].working].buf_state = BUF_STATE_CPU_READY;
 		}
+		cl->stats.gpu_thread_cnt++;
 
 		// find a batch
 		do {
