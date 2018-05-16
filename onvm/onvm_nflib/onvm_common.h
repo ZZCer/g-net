@@ -237,6 +237,7 @@ struct client {
 
 		uint64_t batch_size;
 		double cpu_time;
+		uint64_t batch_cnt;
 
 		// recorded by stats
 		struct timespec start;
@@ -246,7 +247,7 @@ struct client {
 		uint64_t dtoh_mem;
 		double gpu_time;
 		double kernel_time;
-		uint64_t batch_cnt;
+		uint64_t kernel_cnt;
 	} __attribute__ ((aligned (64))) stats;
 };
 

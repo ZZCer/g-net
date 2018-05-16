@@ -196,7 +196,7 @@ sync_stream_callback(CUstream cuda_stream, CUresult status, void *user_data)
 		rte_spinlock_lock(&cl->stats.update_lock);
 		cl->stats.gpu_time += gpu_time_ms * 1000.0;
 		cl->stats.kernel_time += kernel_time_ms * 1000.0;
-		cl->stats.batch_cnt ++;
+		cl->stats.kernel_cnt ++;
 		rte_spinlock_unlock(&cl->stats.update_lock);
 	}
 

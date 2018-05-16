@@ -125,12 +125,13 @@ onvm_stats_clear_client(uint16_t i) {
 
 	clients[i].stats.batch_size = 0;
 	clients[i].stats.cpu_time = 0;
+	clients[i].stats.batch_cnt = 0;
 
 	clients[i].stats.htod_mem = 0;
 	clients[i].stats.dtoh_mem = 0;
 	clients[i].stats.gpu_time = 0;
 	clients[i].stats.kernel_time = 0;
-	clients[i].stats.batch_cnt = 0;
+	clients[i].stats.kernel_cnt = 0;
 	rte_spinlock_unlock(&clients[i].stats.update_lock);
 }
 
@@ -221,13 +222,14 @@ onvm_stats_display_clients(void) {
 		uint64_t tx = clients[i].stats.tx;
 		uint64_t tx_drop = clients[i].stats.tx_drop;
 		uint64_t act_drop = clients[i].stats.act_drop;
+		double   cpu_time = clients[i].stats.cpu_time;
 		uint64_t batch_size = clients[i].stats.batch_size;
 		uint64_t batch_cnt = clients[i].stats.batch_cnt;
 		uint64_t htod_mem = clients[i].stats.htod_mem;
 		uint64_t dtoh_mem = clients[i].stats.dtoh_mem;
-		double   cpu_time = clients[i].stats.cpu_time;
 		double   gpu_time = clients[i].stats.gpu_time;
 		double   kernel_time = clients[i].stats.kernel_time;
+		uint64_t kernel_cnt = clients[i].stats.kernel_cnt;
 		//rte_spinlock_unlock(&clients[i].stats.update_lock);
 
 		if (rx == 0) rx = 1;
@@ -251,10 +253,10 @@ onvm_stats_display_clients(void) {
 			printf("Kernel count is 0, no statistics\n");
 		} else {
 			printf("Avg HtoD = %ld bytes, DtoH = %ld bytes, Batch count = %ld\n",
-					htod_mem/batch_cnt,
-					dtoh_mem/batch_cnt,
-					batch_cnt);
-			printf("Kernal time = %f, GPU time = %f, CPU time = %f\n", kernel_time / batch_cnt, gpu_time / batch_cnt,
+					htod_mem/kernel_cnt,
+					dtoh_mem/kernel_cnt,
+					kernel_cnt);
+			printf("Kernal time = %f, GPU time = %f, CPU time = %f\n", kernel_time / kernel_cnt, gpu_time / kernel_cnt,
 				cpu_time / batch_cnt);
 		}
 	}

@@ -227,6 +227,7 @@ onvm_framework_cpu(int thread_id)
 		cl->stats.rx_datalen += rx_datalen;
 		cl->stats.cpu_time += diff_us;
 		cl->stats.batch_size += cur_buf_size;
+		cl->stats.batch_cnt ++;
 		rte_spinlock_unlock(&cl->stats.update_lock);
 
 		// launch kernel
