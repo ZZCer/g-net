@@ -564,8 +564,8 @@ static void
 gcudaSyncStreamRequest(void)
 {
 	thread_local_t *local = (thread_local_t *)pthread_getspecific(thread_local_key);
-	int thread_id = (local ? local->stream_id : 0);
-	int stream_id = (local ? local->stream_id : 0);
+	int thread_id = local->thread_id;
+	int stream_id = local->stream_id;
 	assert(stream_id != -1);
 
 	struct nf_req *req;
@@ -590,7 +590,7 @@ static int
 handleSyncStreamResponse(void)
 {
 	thread_local_t *local = (thread_local_t *)pthread_getspecific(thread_local_key);
-	int thread_id = (local ? local->stream_id : 0);
+	int thread_id = local->thread_id;
 
 	struct nf_rsp *rsp;
 	if (0 == rte_ring_dequeue(cl->response_q[thread_id], (void **)&rsp))
