@@ -140,7 +140,7 @@ int main(int argc, char *argv[])
 	int arg_offset;
 
 	/* Initialize nflib */
-	if ((arg_offset = onvm_nflib_init(argc, argv, NF_TAG, NF_ROUTER), &(init_gpu_schedule)) < 0)
+	if ((arg_offset = onvm_nflib_init(argc, argv, NF_TAG, NF_ROUTER, &(init_gpu_schedule))) < 0)
 		return -1;
 	argc -= arg_offset;
 	argv += arg_offset;
