@@ -21,6 +21,7 @@ typedef struct nfv_batch_s
 
 	int buf_size;
 	volatile int buf_state;
+	rte_spinlock_t processing_lock;
 
 	int stream_id;
 } nfv_batch_t;

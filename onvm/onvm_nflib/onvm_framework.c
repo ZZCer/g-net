@@ -75,7 +75,10 @@ typedef struct thread_local_s {
 static inline int get_batch(int state) {
 	int i;
 	for (i = 0; i < THREAD_NUM + STREAM_NUM; i++) {
-			if (batch_set[i].buf_state == state) return i;
+		if (batch_set[i].buf_state == state) {
+			if (rte_spinlock_trylock(&batch_set[i].processing_lock))
+				return i;
+		}
 	}
 	return -1;
 }
@@ -240,6 +243,7 @@ onvm_framework_cpu(int thread_id)
 
 		// launch kernel
 		batch->buf_state = BUF_STATE_GPU_READY;
+		rte_spinlock_unlock(&batch->processing_lock);
 	}
 
 	return 0;
@@ -329,6 +333,7 @@ onvm_framework_start_cpu(init_func_t user_init_buf_func, pre_func_t user_pre_fun
 		batch_set[i].buf_state = BUF_STATE_CPU_READY;
 		batch_set[i].user_buf = user_init_buf_func();
 		batch_set[i].pkt_ptr = calloc(MAX_BATCH_SIZE, sizeof(struct rte_mbuf *));
+		rte_spinlock_init(&batch_set[i].processing_lock);
 	}
 	for (i = 0; i < THREAD_NUM; i ++) {
 		onvm_framework_spawn_thread(i);
@@ -378,7 +383,9 @@ onvm_framework_start_gpu(gpu_htod_t user_gpu_htod, gpu_dtoh_t user_gpu_dtoh, gpu
 
 		// set previous work to finished
 		if (stream_ctx[stream_id].working != -1) {
-			batch_set[stream_ctx[stream_id].working].buf_state = BUF_STATE_CPU_READY;
+			batch = &batch_set[stream_ctx[stream_id].working];
+			batch->buf_state = BUF_STATE_CPU_READY;
+			rte_spinlock_unlock(&batch->processing_lock);
 		}
 		cl->stats.gpu_thread_cnt++;
 
