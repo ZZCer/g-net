@@ -665,6 +665,7 @@ manager_thread_main(void *arg)
 			case REQ_GPU_SYNC_STREAM:
 				cl = &(clients[req->instance_id]);
 				tid = req->thread_id;
+				cl->sync[tid] = 0;
 				checkCudaErrors( cuStreamAddCallback(cl->stream[tid], stream_sync_callback, (void *)(req), 0) );
 			#if !defined(SYNC_MODE)
 				allocated_sm -= record_blk_num_thread[cl->instance_id][tid];
