@@ -380,6 +380,7 @@ onvm_framework_start_gpu(gpu_htod_t user_gpu_htod, gpu_dtoh_t user_gpu_dtoh, gpu
 		} while (gpu_buf_id == -1 && keep_running);
 		if (!keep_running) break;
 
+		stream_ctx[stream_id].working = gpu_buf_id;
 		batch = &batch_set[gpu_buf_id];
 
 		// go
