@@ -286,7 +286,6 @@ manager_thread_main(void *arg)
 				cl->stats.htod_mem += req->size;
 				rte_spinlock_unlock(&cl->stats.update_lock);
 
-				RTE_LOG(INFO, APP, "htod %d\n", req->stream_id);
 				checkCudaErrors( cuMemcpyHtoDAsync(req->device_ptr, host_ptr, req->size, cl->stream[req->stream_id]) );
 
 				rte_mempool_put(nf_request_pool, req);
