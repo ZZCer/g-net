@@ -252,10 +252,10 @@ onvm_stats_display_clients(void) {
 		if (clients[i].stats.batch_cnt == 0) {
 			printf("Kernel count is 0, no statistics\n");
 		} else {
-			printf("Avg HtoD = %ld bytes, DtoH = %ld bytes, Batch count = %ld\n",
+			printf("Avg HtoD = %ld bytes, DtoH = %ld bytes, GPU counted = %ld, CPU counted = %ld\n",
 					htod_mem/kernel_cnt,
 					dtoh_mem/kernel_cnt,
-					kernel_cnt);
+					kernel_cnt, batch_cnt);
 			printf("Kernal time = %f, GPU time = %f, CPU time = %f\n", kernel_time / kernel_cnt, gpu_time / kernel_cnt,
 				cpu_time / batch_cnt);
 		}
