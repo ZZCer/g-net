@@ -99,16 +99,16 @@ static inline void user_post_func(void *cur_buf, struct rte_mbuf *pkt, int pkt_i
 	}
 }
 
-static void user_gpu_htod(void *cur_buf, int job_num, unsigned int thread_id)
+static void user_gpu_htod(void *cur_buf, int job_num)
 {
 	buf_t *buf = (buf_t *)cur_buf;
-	gcudaMemcpyHtoD(buf->dev_pkt_fives, buf->host_pkt_fives, job_num * sizeof(struct pcktFive), ASYNC, thread_id);
+	gcudaMemcpyHtoD(buf->dev_pkt_fives, buf->host_pkt_fives, job_num * sizeof(struct pcktFive));
 }
 
-static void user_gpu_dtoh(void *cur_buf, int job_num, unsigned int thread_id)
+static void user_gpu_dtoh(void *cur_buf, int job_num)
 {
 	buf_t *buf = (buf_t *)cur_buf;
-	gcudaMemcpyDtoH(buf->host_res, buf->dev_res, job_num * 4 * sizeof(unsigned int), ASYNC, thread_id);
+	gcudaMemcpyDtoH(buf->host_res, buf->dev_res, job_num * 4 * sizeof(unsigned int));
 }
 
 static void user_gpu_set_arg(void *cur_buf, void *arg_buf, void *arg_info, int job_num)
@@ -173,8 +173,7 @@ static void init_main(void)
 			+ DES_ADDR_TRIE_SIZE * sizeof(struct trieAddrNode)
 			+ SRC_PORT_TREE_SIZE * sizeof(struct portTreeNode)
 			+ DES_PORT_TREE_SIZE * sizeof(struct portTreeNode)
-			+ PROTOCOL_HASH_SIZE * 4 * sizeof(int),
-			0);												// first time
+			+ PROTOCOL_HASH_SIZE * 4 * sizeof(int));
 
 
 	gcudaHostAlloc((void **)&(host_srcAddrTrie), SRC_ADDR_TRIE_SIZE * sizeof(struct trieAddrNode));
@@ -196,11 +195,11 @@ static void init_main(void)
 	gcudaMalloc(&(dev_protocolHash), PROTOCOL_HASH_SIZE * 4 * sizeof(int));
 
 	/* Transfer to GPU with the data in the shared memory */
-	gcudaMemcpyHtoD(dev_srcAddrTrie, host_srcAddrTrie, SRC_ADDR_TRIE_SIZE * sizeof(struct trieAddrNode), SYNC, 0);
-	gcudaMemcpyHtoD(dev_desAddrTrie, host_desAddrTrie, DES_ADDR_TRIE_SIZE * sizeof(struct trieAddrNode), SYNC, 0);
-	gcudaMemcpyHtoD(dev_srcPortTree, host_srcPortTree, SRC_PORT_TREE_SIZE * sizeof(struct portTreeNode), SYNC, 0);
-	gcudaMemcpyHtoD(dev_desPortTree, host_desPortTree, DES_PORT_TREE_SIZE * sizeof(struct portTreeNode), SYNC, 0);
-	gcudaMemcpyHtoD(dev_protocolHash, host_protocolHash, PROTOCOL_HASH_SIZE * 4 * sizeof(int), SYNC, 0);
+	gcudaMemcpyHtoD(dev_srcAddrTrie, host_srcAddrTrie, SRC_ADDR_TRIE_SIZE * sizeof(struct trieAddrNode));
+	gcudaMemcpyHtoD(dev_desAddrTrie, host_desAddrTrie, DES_ADDR_TRIE_SIZE * sizeof(struct trieAddrNode));
+	gcudaMemcpyHtoD(dev_srcPortTree, host_srcPortTree, SRC_PORT_TREE_SIZE * sizeof(struct portTreeNode));
+	gcudaMemcpyHtoD(dev_desPortTree, host_desPortTree, DES_PORT_TREE_SIZE * sizeof(struct portTreeNode));
+	gcudaMemcpyHtoD(dev_protocolHash, host_protocolHash, PROTOCOL_HASH_SIZE * 4 * sizeof(int));
 }
 
 static void init_gpu_schedule(void)
@@ -208,7 +207,7 @@ static void init_gpu_schedule(void)
 	/* Initialize the GPU info, onvm_framework_init should be performed before onvm_nflib_init */
 	const char *module_file = "../firewall/gpu/firewall.ptx";
 	const char *kernel_name = "firewall_gpu";
-	onvm_framework_init(module_file, kernel_name);
+	onvm_framework_init(module_file, kernel_name, &(init_host_buf));
 
 	double K1 = 0.136325;
 	double B1 = 15.241;
@@ -232,7 +231,7 @@ int main(int argc, char *argv[])
 	init_main();
 
 	/* Initialization is done, start threads */
-	onvm_framework_start_cpu(&(init_host_buf), &(user_batch_func), &(user_post_func));
+	onvm_framework_start_cpu(&(user_batch_func), &(user_post_func));
 
 	onvm_framework_start_gpu(&(user_gpu_htod), &(user_gpu_dtoh), &(user_gpu_set_arg));
 

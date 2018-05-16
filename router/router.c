@@ -61,16 +61,16 @@ static inline void user_post_func(void *cur_buf, struct rte_mbuf *pkt, int pkt_i
 	pkt->port = buf->host_out[pkt_idx];
 }
 
-static void user_gpu_htod(void *cur_buf, int job_num, unsigned int thread_id)
+static void user_gpu_htod(void *cur_buf, int job_num)
 {
 	buf_t *buf = (buf_t *)cur_buf;
-	gcudaMemcpyHtoD(buf->device_in, buf->host_in, job_num * sizeof(uint32_t), ASYNC, thread_id);
+	gcudaMemcpyHtoD(buf->device_in, buf->host_in, job_num * sizeof(uint32_t));
 }
 
-static void user_gpu_dtoh(void *cur_buf, int job_num, unsigned int thread_id)
+static void user_gpu_dtoh(void *cur_buf, int job_num)
 {
 	buf_t *buf = (buf_t *)cur_buf;
-	gcudaMemcpyDtoH(buf->host_out, buf->device_out, job_num * sizeof(uint8_t), ASYNC, thread_id);
+	gcudaMemcpyDtoH(buf->host_out, buf->device_out, job_num * sizeof(uint8_t));
 }
 
 static void user_gpu_set_arg(void *cur_buf, void *arg_buf, void *arg_info, int job_num)
@@ -107,8 +107,7 @@ static void init_main(void)
 	/* allocate the host memory */
 	gcudaAllocSize(MAX_BATCH_SIZE * sizeof(uint32_t)  // host_in
 			+ MAX_BATCH_SIZE * sizeof(uint8_t),       // host_out
-			table_item_num * sizeof(uint16_t),        // hash table
-			0);                                       // first time
+			table_item_num * sizeof(uint16_t));       // hash table
 
 	gcudaMalloc(&tbl24_d, table_item_num * sizeof(uint16_t));
 	gcudaHostAlloc((void **)&tbl24_h, table_item_num * sizeof(uint16_t));
@@ -118,7 +117,7 @@ static void init_main(void)
 		tbl24_h[i] = i & (0xffff);
 	}
 
-	gcudaMemcpyHtoD(tbl24_d, tbl24_h, table_item_num * sizeof(uint16_t), SYNC, 0);
+	gcudaMemcpyHtoD(tbl24_d, tbl24_h, table_item_num * sizeof(uint16_t));
 }
 
 static void init_gpu_schedule(void)
@@ -126,7 +125,7 @@ static void init_gpu_schedule(void)
 	/* Initialize the GPU info, onvm_framework_init should be performed before onvm_nflib_init */
 	const char *module_file = "../router/gpu/ipv4lookup.ptx";
 	const char *kernel_name = "ipv4lookup";
-	onvm_framework_init(module_file, kernel_name);
+	onvm_framework_init(module_file, kernel_name, init_host_buf);
 
 	double K1 = 0.00109625;
 	double B1 = 8.425;
@@ -151,7 +150,7 @@ int main(int argc, char *argv[])
 	init_main();
 
 	/* Initialization is done, start threads */
-	onvm_framework_start_cpu(&(init_host_buf), &(user_batch_func), &(user_post_func));
+	onvm_framework_start_cpu(&(user_batch_func), &(user_post_func));
 
 	onvm_framework_start_gpu(&(user_gpu_htod), &(user_gpu_dtoh), &(user_gpu_set_arg));
 
