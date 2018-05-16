@@ -34,8 +34,7 @@ gpu_get_resource(int instance_id, double T0) {
 	struct client *cl = &(clients[instance_id]);
 	double k1, b1, k2, b2;
 	uint16_t L = cl->gpu_info->latency_us;
-	//unsigned int thread_num = cl->gpu_info->thread_num;
-	unsigned int stream_num = 1;  // todo: multiple streams
+	unsigned int stream_num = cl->gpu_info->thread_num;
 
 	printf("[%d] Current Resource Allocated: blk_num %d, batch_size %d, threads_per_blk %d\n",
 			instance_id, cl->blk_num, cl->batch_size, cl->threads_per_blk);
