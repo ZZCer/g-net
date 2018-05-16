@@ -90,17 +90,17 @@ static inline void user_post_func(void *cur_buf, struct rte_mbuf *pkt, int pkt_i
 	}
 }
 
-static void user_gpu_htod(void *cur_buf, int job_num, unsigned int thread_id)
+static void user_gpu_htod(void *cur_buf, int job_num)
 {
 	buf_t *buf = (buf_t *)cur_buf;
-	gcudaMemcpyHtoD(buf->dev_pkt, buf->host_pkt, buf->host_pkt_offset[job_num], ASYNC, thread_id);
-	gcudaMemcpyHtoD(buf->dev_pkt_offset, buf->host_pkt_offset, (job_num + 1) * sizeof(uint32_t), ASYNC, thread_id);
+	gcudaMemcpyHtoD(buf->dev_pkt, buf->host_pkt, buf->host_pkt_offset[job_num]);
+	gcudaMemcpyHtoD(buf->dev_pkt_offset, buf->host_pkt_offset, (job_num + 1) * sizeof(uint32_t));
 }
 
-static void user_gpu_dtoh(void *cur_buf, int job_num, unsigned int thread_id)
+static void user_gpu_dtoh(void *cur_buf, int job_num)
 {
 	buf_t *buf = (buf_t *)cur_buf;
-	gcudaMemcpyDtoH(buf->host_res, buf->dev_res, job_num * sizeof(uint16_t), ASYNC, thread_id);
+	gcudaMemcpyDtoH(buf->host_res, buf->dev_res, job_num * sizeof(uint16_t));
 }
 
 static void user_gpu_set_arg(void *cur_buf, void *arg_buf, void *arg_info, int job_num)
@@ -146,8 +146,7 @@ static void init_main(void)
 	gcudaAllocSize(MAX_BATCH_SIZE * MAX_PKT_LEN * sizeof(char) // input buffer
 			+ (MAX_BATCH_SIZE + 1) * sizeof(uint32_t)  // input packet offset
 			+ MAX_BATCH_SIZE * sizeof(uint16_t), // output result
-			MAX_STATE * 257 * sizeof(uint16_t),  // state table
-			0);                                  // first time
+			MAX_STATE * 257 * sizeof(uint16_t)); // state table
 
 	void *host_acGPU;
 
@@ -158,7 +157,7 @@ static void init_main(void)
 	rte_memcpy(host_acGPU, rsr->acGPU, MAX_STATE * 257 * sizeof(uint16_t));
 
 	/* Transfer to GPU with the data in the shared memory */
-	gcudaMemcpyHtoD(dev_acGPU, host_acGPU, MAX_STATE * 257 * sizeof(uint16_t), SYNC, 0);
+	gcudaMemcpyHtoD(dev_acGPU, host_acGPU, MAX_STATE * 257 * sizeof(uint16_t));
 }
 
 static void init_gpu_schedule(void)
@@ -166,7 +165,7 @@ static void init_gpu_schedule(void)
 	/* Initialize the GPU info, onvm_framework_init should be performed before onvm_nflib_init */
 	const char *module_file = "../nids/gpu/nids.ptx";
 	const char *kernel_name = "match";
-	onvm_framework_init(module_file, kernel_name);
+	onvm_framework_init(module_file, kernel_name, &(init_host_buf));
 
 	unsigned int pkt_size[6] = {64, 128, 256, 512, 1024, 1518};
 	unsigned int line_start_batch[6] = {1024, 640, 550, 512, 512, 512};
@@ -193,7 +192,7 @@ int main(int argc, char *argv[])
 	init_main();
 
 	/* Initialization is done, start threads */
-	onvm_framework_start_cpu(&(init_host_buf), &(user_batch_func), &(user_post_func));
+	onvm_framework_start_cpu(&(user_batch_func), &(user_post_func));
 
 	onvm_framework_start_gpu(&(user_gpu_htod), &(user_gpu_dtoh), &(user_gpu_set_arg));
 

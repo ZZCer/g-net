@@ -107,20 +107,20 @@ static inline void user_post_func(void *cur_buf, struct rte_mbuf *pkt, int pkt_i
 	rte_memcpy(pkt_data, buf->host_out + buf->host_pkt_offset[pkt_idx], ((payload_len + 3) & (~0x03)) + HMAC_TAG_SIZE);
 }
 
-static void user_gpu_htod(void *cur_buf, int job_num, unsigned int thread_id)
+static void user_gpu_htod(void *cur_buf, int job_num)
 {
 	buf_t *buf = (buf_t *)cur_buf;
-	gcudaMemcpyHtoD(buf->dev_in, buf->host_in, buf->host_pkt_offset[job_num], ASYNC, thread_id);
-	gcudaMemcpyHtoD(buf->dev_aes_key, buf->host_aes_key, job_num * AES_KEY_SIZE, ASYNC, thread_id);
-	gcudaMemcpyHtoD(buf->dev_hmac_key, buf->host_hmac_key, job_num * HMAC_KEY_SIZE, ASYNC, thread_id);
-	gcudaMemcpyHtoD(buf->dev_pkt_offset, buf->host_pkt_offset, (job_num + 1) * sizeof(uint32_t), ASYNC, thread_id);
-	gcudaMemcpyHtoD(buf->dev_length, buf->host_length, job_num * PKT_LENGTH_SIZE, ASYNC, thread_id);
+	gcudaMemcpyHtoD(buf->dev_in, buf->host_in, buf->host_pkt_offset[job_num]);
+	gcudaMemcpyHtoD(buf->dev_aes_key, buf->host_aes_key, job_num * AES_KEY_SIZE);
+	gcudaMemcpyHtoD(buf->dev_hmac_key, buf->host_hmac_key, job_num * HMAC_KEY_SIZE);
+	gcudaMemcpyHtoD(buf->dev_pkt_offset, buf->host_pkt_offset, (job_num + 1) * sizeof(uint32_t));
+	gcudaMemcpyHtoD(buf->dev_length, buf->host_length, job_num * PKT_LENGTH_SIZE);
 }
 
-static void user_gpu_dtoh(void *cur_buf, int job_num, unsigned int thread_id)
+static void user_gpu_dtoh(void *cur_buf, int job_num)
 {
 	buf_t *buf = (buf_t *)cur_buf;
-	gcudaMemcpyDtoH(buf->host_out, buf->dev_out, buf->host_pkt_offset[job_num], ASYNC, thread_id);
+	gcudaMemcpyDtoH(buf->host_out, buf->dev_out, buf->host_pkt_offset[job_num]);
 }
 
 static void user_gpu_set_arg(void *cur_buf, void *arg_buf, void *arg_info, int job_num)
@@ -175,8 +175,7 @@ static void init_main(void)
 			+ MAX_BATCH_SIZE * AES_KEY_SIZE            // aes key
 			+ MAX_BATCH_SIZE * HMAC_KEY_SIZE             // aes iv
 			+ MAX_BATCH_SIZE * MAX_PKT_LEN * sizeof(uint8_t), // output
-			0,
-			0);                                  // first time
+			0);
 }
 
 static void init_gpu_schedule(void)
@@ -184,7 +183,7 @@ static void init_gpu_schedule(void)
 	/* Initialize the GPU info, onvm_framework_init should be performed before onvm_nflib_init */
 	const char *module_file = "../ipsec/gpu/crypto.ptx";
 	const char *kernel_name = "aes_ctr_sha1_kernel";
-	onvm_framework_init(module_file, kernel_name);
+	onvm_framework_init(module_file, kernel_name, &(init_host_buf));
 
 	unsigned int pkt_size[6] = {64, 128, 256, 512, 1024, 1518};
 	unsigned int line_start_batch[6] = {0, 0, 0, 0, 0, 0};
@@ -211,7 +210,7 @@ int main(int argc, char *argv[])
 	init_main();
 
 	/* Initialization is done, start threads */
-	onvm_framework_start_cpu(&(init_host_buf), &(user_batch_func), &(user_post_func));
+	onvm_framework_start_cpu(&(user_batch_func), &(user_post_func));
 
 	onvm_framework_start_gpu(&(user_gpu_htod), &(user_gpu_dtoh), &(user_gpu_set_arg));
 
