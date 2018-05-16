@@ -126,6 +126,7 @@ onvm_stats_clear_client(uint16_t i) {
 	clients[i].stats.dtoh_mem = 0;
 	clients[i].stats.batch_size = 0;
 	clients[i].stats.batch_cnt = 0;
+	clients[i].stats.cpu_time = 0;
 	clients[i].stats.gpu_time = 0;
 	clients[i].stats.kernel_time = 0;
 	clients[i].stats.kernel_cnt = 0;
@@ -246,8 +247,10 @@ onvm_stats_display_clients(void) {
 					clients[i].stats.batch_cnt);
 		}
 
-		printf("Average GPU execution time in NF: %.2lf us, batch count is %ld\n",
-				clients[i].stats.gpu_time/clients[i].stats.batch_cnt, clients[i].stats.batch_cnt);
+		printf("Average GPU execution time in NF: %.2lf us, CPU: %.2lf us, batch count is %ld\n",
+				clients[i].stats.gpu_time/clients[i].stats.batch_cnt,
+				clients[i].stats.cpu_time/clients[i].stats.batch_cnt,
+				clients[i].stats.batch_cnt);
 	}
 
 	printf("\n");

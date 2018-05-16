@@ -232,6 +232,7 @@ struct client {
 		uint64_t tx_drop;
 		uint64_t act_drop;
 
+		double   cpu_time;
 		double	 gpu_time;
 		uint64_t batch_size;
 		uint64_t batch_cnt;
