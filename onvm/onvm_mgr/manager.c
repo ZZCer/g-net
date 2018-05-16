@@ -519,6 +519,8 @@ manager_thread_main(void *arg)
 					arg_info[1 + i] = (uint64_t)((uint8_t *)args + offset);
 				}
 
+				RTE_LOG(INFO, APP, "launch: %p, %d, %d, %d, %p\n", cl->function,
+				             blk_num, threads_per_blk, cl->stream[tid], &(arg_info[1]));
 				checkCudaErrors( cuLaunchKernel(cl->function, 
 							blk_num, 1, 1,  // Nx1x1 blocks
 							threads_per_blk, 1, 1, // Mx1x1 threads
