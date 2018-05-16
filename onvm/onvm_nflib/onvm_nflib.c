@@ -348,7 +348,7 @@ onvm_nflib_parse_args(int argc, char *argv[]) {
 	int c;
 
 	opterr = 0;
-	while ((c = getopt (argc, argv, "n:l:k:")) != -1)
+	while ((c = getopt (argc, argv, "n:l:k:s:")) != -1)
 		switch (c) {
 			case 'n':
 				initial_instance_id = (uint16_t) strtoul(optarg, NULL, 10);
