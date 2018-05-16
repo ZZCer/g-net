@@ -203,7 +203,11 @@ struct client {
 	unsigned int avg_pkt_len;
 	int nf_type; /* NF_BPS or NF_PPS */
 	CUstream stream[MAX_CONCURRENCY_NUM];
-	uint8_t sync[MAX_CONCURRENCY_NUM];
+	int recording[MAX_CONCURRENCY_NUM];
+	CUevent gpu_start[MAX_CONCURRENCY_NUM];
+	CUevent gpu_end[MAX_CONCURRENCY_NUM];
+	CUevent kernel_start[MAX_CONCURRENCY_NUM];
+	CUevent kernel_end[MAX_CONCURRENCY_NUM];
 
 	double cost_time; /* Record the cost of GPU execution */
 
@@ -231,17 +235,18 @@ struct client {
 		uint64_t tx_drop;
 		uint64_t act_drop;
 
-		double	 gpu_time;
 		uint64_t batch_size;
-		uint64_t batch_cnt;
+		double cpu_time;
 
+		// recorded by stats
 		struct timespec start;
 
 		// updated by manager
 		uint64_t htod_mem;
 		uint64_t dtoh_mem;
+		double gpu_time;
 		double kernel_time;
-		uint64_t kernel_cnt;
+		uint64_t batch_cnt;
 	} __attribute__ ((aligned (64))) stats;
 };
 
@@ -351,6 +356,7 @@ struct gpu_schedule_info {
 #define REQ_GPU_MEMFREE				9
 #define REQ_GPU_MEMSET				10
 #define REQ_GPU_SYNC_STREAM			11
+#define REQ_GPU_RECORD_START		12
 
 #define RSP_HOST_MALLOC				0
 #define RSP_GPU_MALLOC				1

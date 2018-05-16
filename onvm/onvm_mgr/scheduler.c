@@ -109,7 +109,7 @@ gpu_get_resource(int instance_id, double T0) {
 	/* GPU time (kernel + PCIe + other costs) collected from clients */
 	double measured_gpu_time = cl->stats.gpu_time / batch_cnt;
 	/* Kernel execution time from Manager */
-	double measured_kernel_time = cl->stats.kernel_time / cl->stats.kernel_cnt;
+	double measured_kernel_time = cl->stats.kernel_time / batch_cnt;
 	/* Update cost time */
 	//cl->cost_time = measured_gpu_time - L0;
 	cl->cost_time = measured_gpu_time - L0 > cl->cost_time ? measured_gpu_time - L0 : cl->cost_time;

@@ -122,13 +122,15 @@ onvm_stats_clear_client(uint16_t i) {
 	clients[i].stats.tx = 0;
 	clients[i].stats.tx_drop = 0;
 	clients[i].stats.act_drop = 0;
+
+	clients[i].stats.batch_size = 0;
+	clients[i].stats.cpu_time = 0;
+
 	clients[i].stats.htod_mem = 0;
 	clients[i].stats.dtoh_mem = 0;
-	clients[i].stats.batch_size = 0;
-	clients[i].stats.batch_cnt = 0;
 	clients[i].stats.gpu_time = 0;
 	clients[i].stats.kernel_time = 0;
-	clients[i].stats.kernel_cnt = 0;
+	clients[i].stats.batch_cnt = 0;
 	rte_spinlock_unlock(&clients[i].stats.update_lock);
 }
 
@@ -213,6 +215,7 @@ onvm_stats_display_clients(void) {
 		diff = 1000000 * (end.tv_sec - clients[i].stats.start.tv_sec)
 			+ (end.tv_nsec - clients[i].stats.start.tv_nsec) / 1000;
 
+		//rte_spinlock_lock(&clients[i].stats.update_lock);
 		uint64_t rx = clients[i].stats.rx;
 		uint64_t rx_datalen = clients[i].stats.rx_datalen;
 		uint64_t tx = clients[i].stats.tx;
@@ -220,6 +223,12 @@ onvm_stats_display_clients(void) {
 		uint64_t act_drop = clients[i].stats.act_drop;
 		uint64_t batch_size = clients[i].stats.batch_size;
 		uint64_t batch_cnt = clients[i].stats.batch_cnt;
+		uint64_t htod_mem = clients[i].stats.htod_mem;
+		uint64_t dtoh_mem = clients[i].stats.dtoh_mem;
+		double   cpu_time = clients[i].stats.cpu_time;
+		double   gpu_time = clients[i].stats.gpu_time;
+		double   kernel_time = clients[i].stats.kernel_time;
+		//rte_spinlock_unlock(&clients[i].stats.update_lock);
 
 		if (rx == 0) rx = 1;
 
@@ -237,17 +246,17 @@ onvm_stats_display_clients(void) {
 				clients[i].throughput_mpps, approx_gbps, rx_datalen/rx);
 
 		printf("GPU: Avg. batch size = %.2lf, => %d\n", (double)batch_size/batch_cnt, clients[i].batch_size);
+
 		if (clients[i].stats.batch_cnt == 0) {
 			printf("Kernel count is 0, no statistics\n");
 		} else {
 			printf("Avg HtoD = %ld bytes, DtoH = %ld bytes, Batch count = %ld\n",
-					clients[i].stats.htod_mem/clients[i].stats.batch_cnt,
-					clients[i].stats.dtoh_mem/clients[i].stats.batch_cnt,
-					clients[i].stats.batch_cnt);
+					htod_mem/batch_cnt,
+					dtoh_mem/batch_cnt,
+					batch_cnt);
+			printf("Kernal time = %f, GPU time = %f, CPU time = %f\n", kernel_time / batch_cnt, gpu_time / batch_cnt,
+				cpu_time / batch_cnt);
 		}
-
-		printf("Average GPU execution time in NF: %.2lf us, batch count is %ld\n",
-				clients[i].stats.gpu_time/clients[i].stats.batch_cnt, clients[i].stats.batch_cnt);
 	}
 
 	printf("\n");

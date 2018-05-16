@@ -53,6 +53,7 @@ static struct {
 static int onvm_framework_cpu(int thread_id);
 static void gcudaSyncStreamRequest(void);
 static int handleSyncStreamResponse(void);
+static void gcudaRecordStart(void);
 
 static pthread_mutex_t lock;
 
@@ -125,6 +126,7 @@ onvm_framework_cpu(int thread_id)
 	struct rte_ring *rx_q, *tx_q;
 	uint64_t starve_rx_counter = 0;
 	uint64_t starve_gpu_counter = 0;
+	struct timespec start, end;
 
 	rx_q = cl->rx_q_new;
 
@@ -150,6 +152,9 @@ onvm_framework_cpu(int thread_id)
 		}
 		batch = &batch_set[buf_id];
 		cur_buf_size = batch->buf_size;
+
+		// record cpu process start
+		clock_gettime(CLOCK_MONOTONIC, &start);
 
 		// post-processing
 		for (i = 0; i < cur_buf_size; i++) {
@@ -212,9 +217,16 @@ onvm_framework_cpu(int thread_id)
 			PRE_FUNC(batch->user_buf, batch->pkt_ptr[i], i);
 		}
 
+		// record cpu proc end
+		clock_gettime(CLOCK_MONOTONIC, &end);
+
+		double diff_us = (end.tv_sec - start.tv_sec) * 1000000.0 + (end.tv_nsec - start.tv_nsec) / 1000.0;
+
 		rte_spinlock_lock(&cl->stats.update_lock);
 		cl->stats.rx += cur_buf_size;		
 		cl->stats.rx_datalen += rx_datalen;
+		cl->stats.cpu_time += diff_us;
+		cl->stats.batch_size += cur_buf_size;
 		rte_spinlock_unlock(&cl->stats.update_lock);
 
 		// launch kernel
@@ -360,14 +372,6 @@ onvm_framework_start_gpu(gpu_htod_t user_gpu_htod, gpu_dtoh_t user_gpu_dtoh, gpu
 		// set previous work to finished
 		if (stream_ctx[stream_id].working != -1) {
 			batch_set[stream_ctx[stream_id].working].buf_state = BUF_STATE_CPU_READY;
-
-			/*
-			rte_spinlock_lock(&cl->stats.update_lock);
-			cl->stats.batch_size += batch->buf_size;
-			cl->stats.gpu_time += diff;
-			cl->stats.batch_cnt++;
-			rte_spinlock_unlock(&cl->stats.update_lock);
-			*/
 		}
 
 		// find a batch
@@ -379,6 +383,7 @@ onvm_framework_start_gpu(gpu_htod_t user_gpu_htod, gpu_dtoh_t user_gpu_dtoh, gpu
 		batch = &batch_set[gpu_buf_id];
 
 		// go
+		gcudaRecordStart();
 		user_gpu_htod(batch->user_buf, batch->buf_size);
 		user_gpu_set_arg(batch->user_buf, gpu_info->args[stream_id], gpu_info->arg_info[stream_id], batch->buf_size);
 		gcudaLaunchKernel();
@@ -554,6 +559,28 @@ gcudaLaunchKernel(void)
 	req->stream_id = stream_id;
 
 	RTE_LOG(DEBUG, APP, "[G] cudaLaunchKernel\n");
+
+	if (rte_ring_enqueue(nf_request_queue, req) < 0) {
+		rte_mempool_put(nf_request_mp, req);
+		rte_exit(EXIT_FAILURE, "Cannot send request_info to scheduler\n");
+	}
+}
+
+static void
+gcudaRecordStart(void)
+{
+	thread_local_t *local = (thread_local_t *)pthread_getspecific(thread_local_key);
+	int stream_id = local->stream_id;
+	assert(stream_id != -1);
+
+	struct nf_req *req;
+	if (rte_mempool_get(nf_request_mp, (void **)&req) < 0) {
+		rte_exit(EXIT_FAILURE, "Failed to get resquest memory\n");
+	}
+
+	req->type = REQ_GPU_RECORD_START;
+	req->instance_id = nf_info->instance_id;
+	req->stream_id = stream_id;
 
 	if (rte_ring_enqueue(nf_request_queue, req) < 0) {
 		rte_mempool_put(nf_request_mp, req);

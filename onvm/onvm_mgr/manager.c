@@ -93,7 +93,12 @@ init_manager(void)
 			if (clients[i].response_q[j] == NULL)
 				rte_exit(EXIT_FAILURE, "Cannot create response ring queue for client %d\n", i);
 
+			clients[i].recording[j] = 0;
 			checkCudaErrors( cuStreamCreate(&(clients[i].stream[j]), CU_STREAM_NON_BLOCKING) );
+			checkCudaErrors( cuEventCreate(&(clients[i].kernel_start[j]), CU_EVENT_DEFAULT) );
+			checkCudaErrors( cuEventCreate(&(clients[i].kernel_end[j]), CU_EVENT_DEFAULT) );
+			checkCudaErrors( cuEventCreate(&(clients[i].gpu_start[j]), CU_EVENT_DEFAULT) );
+			checkCudaErrors( cuEventCreate(&(clients[i].gpu_end[j]), CU_EVENT_DEFAULT) );
 		}
 
 		clients[i].global_response_q = rte_ring_create(
@@ -166,6 +171,7 @@ sync_stream_callback(CUstream cuda_stream, CUresult status, void *user_data)
 	struct nf_rsp *rsp;
 	struct nf_req *req = (struct nf_req *)user_data;
 	struct client *cl = &(clients[req->instance_id]);
+	int sid = req->stream_id;
 
 	if (rte_mempool_get(nf_response_pool, (void **)&rsp) < 0)
 		rte_exit(EXIT_FAILURE, "Failed to get response memory\n");
@@ -173,12 +179,25 @@ sync_stream_callback(CUstream cuda_stream, CUresult status, void *user_data)
 		rte_exit(EXIT_FAILURE, "Response memory not allocated\n");
 
 	rsp->type = RSP_GPU_SYNC_STREAM;
-	rsp->stream_id = req->stream_id;
+	rsp->stream_id = sid;
 	rsp->states = RSP_SUCCESS;
 
 	if (rte_ring_enqueue(cl->response_q[req->thread_id], rsp) < 0) {
 		rte_mempool_put(nf_response_pool, rsp);
 		rte_exit(EXIT_FAILURE, "Cannot enqueue into global response queue");
+	}
+
+	if (cl->recording[sid]) {
+		/* update stats */
+		float gpu_time_ms, kernel_time_ms;
+		checkCudaErrors( cuEventElapsedTime(&gpu_time_ms, cl->gpu_start[sid], cl->gpu_end[sid]) );
+		checkCudaErrors( cuEventElapsedTime(&kernel_time_ms, cl->kernel_start[sid], cl->kernel_end[sid]) );
+
+		rte_spinlock_lock(&cl->stats.update_lock);
+		cl->stats.gpu_time += gpu_time_ms * 1000.0;
+		cl->stats.kernel_time += kernel_time_ms * 1000.0;
+		cl->stats.batch_cnt ++;
+		rte_spinlock_unlock(&cl->stats.update_lock);
 	}
 
 	rte_mempool_put(nf_request_pool, req);
@@ -331,10 +350,12 @@ manager_thread_main(void *arg)
 					arg_info[1 + i] = (uint64_t)((uint8_t *)args + offset);
 				}
 
+				checkCudaErrors( cuEventRecord(cl->kernel_start[req->stream_id], cl->stream[req->stream_id]) );
 				checkCudaErrors( cuLaunchKernel(cl->function, 
 							blk_num, 1, 1,  // Nx1x1 blocks
 							threads_per_blk, 1, 1, // Mx1x1 threads
 							0, cl->stream[sid], (void **)&(arg_info[1]), 0) );
+				checkCudaErrors( cuEventRecord(cl->kernel_end[req->stream_id], cl->stream[req->stream_id]) );
 
 				// will this be slow?
 				checkCudaErrors( cuStreamAddCallback(cl->stream[req->stream_id], release_sm, (void *)(intptr_t)blk_num, 0) );
@@ -344,8 +365,14 @@ manager_thread_main(void *arg)
 
 			case REQ_GPU_SYNC_STREAM:
 				cl = &(clients[req->instance_id]);
-
+				checkCudaErrors( cuEventRecord(cl->gpu_end[req->stream_id], cl->stream[req->stream_id]) );
 				checkCudaErrors( cuStreamAddCallback(cl->stream[req->stream_id], sync_stream_callback, (void *)req, 0) );
+				break;
+
+			case REQ_GPU_RECORD_START:
+				cl = &(clients[req->instance_id]);
+				cl->recording[req->stream_id] = 1;
+				checkCudaErrors( cuEventRecord(cl->gpu_start[req->stream_id], cl->stream[req->stream_id]) );
 				break;
 
 			case REQ_GPU_MEMFREE:
