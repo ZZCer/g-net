@@ -94,10 +94,10 @@ init_manager(void)
 				rte_exit(EXIT_FAILURE, "Cannot create response ring queue for client %d\n", i);
 
 			checkCudaErrors( cuStreamCreate(&(clients[i].stream[j]), CU_STREAM_DEFAULT) );
-			checkCudaErrors( cuEventCreate(&(clients[i].kern_start[j]), CU_EVENT_BLOCKING_SYNC) );
-			checkCudaErrors( cuEventCreate(&(clients[i].kern_end[j]), CU_EVENT_BLOCKING_SYNC) );
-			checkCudaErrors( cuEventCreate(&(clients[i].gpu_start[j]), CU_EVENT_BLOCKING_SYNC) );
-			checkCudaErrors( cuEventCreate(&(clients[i].gpu_end[j]), CU_EVENT_BLOCKING_SYNC) );
+			checkCudaErrors( cuEventCreate(&(clients[i].kern_start[j]), CU_EVENT_DEFAULT) );
+			checkCudaErrors( cuEventCreate(&(clients[i].kern_end[j]), CU_EVENT_DEFAULT) );
+			checkCudaErrors( cuEventCreate(&(clients[i].gpu_start[j]), CU_EVENT_DEFAULT) );
+			checkCudaErrors( cuEventCreate(&(clients[i].gpu_end[j]), CU_EVENT_DEFAULT) );
 		}
 
 		clients[i].global_response_q = rte_ring_create(
@@ -680,6 +680,7 @@ manager_thread_main(void *arg)
 				tid = req->thread_id;
 				cl->sync[tid] = 0;
 				checkCudaErrors( cuEventRecord(cl->gpu_end[tid], cl->stream[tid]) );
+				checkCudaErrors( cudaStreamWaitEvent(cl->stream[tid], cl->gpu_end[tid], 0) );
 				checkCudaErrors( cuStreamAddCallback(cl->stream[tid], stream_sync_callback, (void *)(req), 0) );
 			#if !defined(SYNC_MODE)
 				allocated_sm -= record_blk_num_thread[cl->instance_id][tid];
