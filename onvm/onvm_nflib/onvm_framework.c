@@ -323,8 +323,6 @@ onvm_framework_start_gpu(gpu_htod_t user_gpu_htod, gpu_dtoh_t user_gpu_dtoh, gpu
 	int gpu_buf_id;
 	int batch_id;
 	unsigned int i;
-	struct timespec start, end;
-	double diff;
 	nfv_batch_t *batch;
 
 	/* Listen for ^C and docker stop so we can exit gracefully */
