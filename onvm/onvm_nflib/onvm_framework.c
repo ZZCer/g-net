@@ -35,6 +35,7 @@ static pre_func_t  PRE_FUNC;
 static post_func_t POST_FUNC;
 
 static int onvm_framework_cpu(int thread_id);
+static void gcudaRecordStart(int thread_id);
 static void gcudaStreamSynchronize(int thread_id);
 
 static pthread_key_t my_batch;
@@ -363,31 +364,18 @@ onvm_framework_start_gpu(gpu_htod_t user_gpu_htod, gpu_dtoh_t user_gpu_dtoh, gpu
 		if (gpu_buf_id == -1) continue;
 		batch->gpu_buf_id = gpu_buf_id;
 
-		clock_gettime(CLOCK_MONOTONIC, &start);
-
 		/* 3. Launch kernel - USER DEFINED */
+		gcudaRecordStart(batch_id);
 		user_gpu_htod(batch->user_bufs[gpu_buf_id], batch->buf_size[gpu_buf_id], batch_id);
 		user_gpu_set_arg(batch->user_bufs[gpu_buf_id], gpu_info->args[batch_id], gpu_info->arg_info[batch_id], batch->buf_size[gpu_buf_id]);
 		gcudaLaunchKernel(batch_id);
 		user_gpu_dtoh(batch->user_bufs[gpu_buf_id], batch->buf_size[gpu_buf_id], batch_id);
-
 		gcudaStreamSynchronize(batch_id);
-
-		clock_gettime(CLOCK_MONOTONIC, &end);
-		diff = 1000000 * (end.tv_sec-start.tv_sec)+ (end.tv_nsec-start.tv_nsec)/1000;
 
 		rte_spinlock_lock(&cl->stats.update_lock);
 		cl->stats.batch_size += batch->buf_size[gpu_buf_id];
-		cl->stats.gpu_time += diff;
 		cl->stats.batch_cnt++;
 		rte_spinlock_unlock(&cl->stats.update_lock);
-
-		/* 5. Pass the results to CPU again for post processing */
-		batch->buf_state[gpu_buf_id] = BUF_STATE_CPU_READY;
-
-		RTE_LOG(DEBUG, APP, "Handle GPU processed results to sender\n");
-
-		// TODO: check the tx status & send requests to the Manager
 	}
 
 	onvm_nflib_stop(); // clean up
@@ -687,6 +675,24 @@ gcudaDeviceSynchronize(void)
 	gcudaWaitForSyncResponse();
 
 	RTE_LOG(DEBUG, APP, "[G] cudaDeviceSync finished\n");
+}
+
+static void
+gcudaRecordStart(int thread_id)
+{
+	struct nf_req *req;
+	if (rte_mempool_get(nf_request_mp, (void **)&req) < 0) {
+		rte_exit(EXIT_FAILURE, "Failed to get request memory\n");
+	}
+
+	req->type = REQ_GPU_RECORD_START;
+	req->instance_id = nf_info->instance_id;
+	req->thread_id = thread_id;
+
+	if (rte_ring_enqueue(nf_request_queue, req) < 0) {
+		rte_mempool_put(nf_request_mp, req);
+		rte_exit(EXIT_FAILURE, "Cannot send request_info to scheduler\n");
+	}
 }
 
 static void
