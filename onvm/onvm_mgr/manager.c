@@ -94,10 +94,10 @@ init_manager(void)
 				rte_exit(EXIT_FAILURE, "Cannot create response ring queue for client %d\n", i);
 
 			checkCudaErrors( cuStreamCreate(&(clients[i].stream[j]), CU_STREAM_DEFAULT) );
-			checkCudaErrors( cuEventCreate(&(clients[i].kern_start[j]), CU_EVENT_DEFAULT) );
-			checkCudaErrors( cuEventCreate(&(clients[i].kern_end[j]), CU_EVENT_DEFAULT) );
-			checkCudaErrors( cuEventCreate(&(clients[i].gpu_start[j]), CU_EVENT_DEFAULT) );
-			checkCudaErrors( cuEventCreate(&(clients[i].gpu_end[j]), CU_EVENT_DEFAULT) );
+			checkCudaErrors( cuEventCreate(&(clients[i].kern_start[j]), CU_EVENT_BLOCKING_SYNC) );
+			checkCudaErrors( cuEventCreate(&(clients[i].kern_end[j]), CU_EVENT_BLOCKING_SYNC) );
+			checkCudaErrors( cuEventCreate(&(clients[i].gpu_start[j]), CU_EVENT_BLOCKING_SYNC) );
+			checkCudaErrors( cuEventCreate(&(clients[i].gpu_end[j]), CU_EVENT_BLOCKING_SYNC) );
 		}
 
 		clients[i].global_response_q = rte_ring_create(
