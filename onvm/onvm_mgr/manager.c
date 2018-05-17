@@ -537,12 +537,12 @@ manager_thread_main(void *arg)
 					arg_info[1 + i] = (uint64_t)((uint8_t *)args + offset);
 				}
 
-				checkCudaErrors( cuEventRecord(cl->kern_start[tid], cl->stream[tid]) );
+				//checkCudaErrors( cuEventRecord(cl->kern_start[tid], cl->stream[tid]) );
 				checkCudaErrors( cuLaunchKernel(cl->function, 
 							blk_num, 1, 1,  // Nx1x1 blocks
 							threads_per_blk, 1, 1, // Mx1x1 threads
 							0, cl->stream[tid], (void **)&(arg_info[1]), 0) );
-				checkCudaErrors( cuEventRecord(cl->kern_end[tid], cl->stream[tid]) );
+				//checkCudaErrors( cuEventRecord(cl->kern_end[tid], cl->stream[tid]) );
 
 				rte_mempool_put(nf_request_pool, req);
 				break;
@@ -685,7 +685,7 @@ manager_thread_main(void *arg)
 				cl = &(clients[req->instance_id]);
 				tid = req->thread_id;
 				cl->sync[tid] = 0;
-				checkCudaErrors( cuEventRecord(cl->gpu_end[tid], cl->stream[tid]) );
+				//checkCudaErrors( cuEventRecord(cl->gpu_end[tid], cl->stream[tid]) );
 				checkCudaErrors( cuStreamAddCallback(cl->stream[tid], stream_sync_callback, (void *)(req), 0) );
 			#if !defined(SYNC_MODE)
 				allocated_sm -= record_blk_num_thread[cl->instance_id][tid];
@@ -696,7 +696,7 @@ manager_thread_main(void *arg)
 				cl = &(clients[req->instance_id]);
 				tid = req->thread_id;
 				RTE_LOG(INFO, APP, "start");
-				checkCudaErrors( cuEventRecord(cl->gpu_start[tid], cl->stream[tid]) );
+				//checkCudaErrors( cuEventRecord(cl->gpu_start[tid], cl->stream[tid]) );
 				rte_mempool_put(nf_request_pool, req);
 				break;
 
