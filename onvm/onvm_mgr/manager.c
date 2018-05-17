@@ -536,7 +536,7 @@ manager_thread_main(void *arg)
 					offset = arg_info[1 + i];
 					arg_info[1 + i] = (uint64_t)((uint8_t *)args + offset);
 				}
-
+				RTE_LOG(INFO, APP, "%p %d %d %d %p\n", cl->function, blk_num, threads_per_blk, tid, arg_info);
 				//checkCudaErrors( cuEventRecord(cl->kern_start[tid], cl->stream[tid]) );
 				checkCudaErrors( cuLaunchKernel(cl->function, 
 							blk_num, 1, 1,  // Nx1x1 blocks
