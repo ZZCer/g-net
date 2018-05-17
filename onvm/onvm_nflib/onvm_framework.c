@@ -688,4 +688,6 @@ gcudaStreamSynchronize(int thread_id)
 		rte_mempool_put(nf_request_mp, req);
 		rte_exit(EXIT_FAILURE, "Cannot send request_info to scheduler\n");
 	}
+
+	gcudaWaitForSyncResponse();
 }

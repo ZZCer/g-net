@@ -228,6 +228,23 @@ stream_sync_callback(CUstream cuda_stream, CUresult status, void *user_data)
 	cl->stats.kernel_cnt ++;
 */
 	cl->sync[tid] = 1;
+
+
+	struct nf_rsp *rsp;
+	if (rte_mempool_get(nf_response_pool, (void **)&rsp) < 0)
+		rte_exit(EXIT_FAILURE, "Failed to get response memory\n");
+	if (rsp == NULL)
+		rte_exit(EXIT_FAILURE, "Response memory not allocated\n");
+
+	rsp->type = RSP_GPU_GLOBAL_SYNC;
+	rsp->batch_size = cl->batch_size;
+
+	int res = rte_ring_enqueue(cl->global_response_q, rsp);
+	if (res < 0) {
+		rte_mempool_put(nf_response_pool, rsp);
+		rte_exit(EXIT_FAILURE, "Cannot enqueue into global response queue");
+	}
+
 	rte_mempool_put(nf_request_pool, req);
 }
 
