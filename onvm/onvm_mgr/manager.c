@@ -685,7 +685,6 @@ manager_thread_main(void *arg)
 				tid = req->thread_id;
 				cl->sync[tid] = 0;
 				checkCudaErrors( cuEventRecord(cl->gpu_end[tid], cl->stream[tid]) );
-				checkCudaErrors( cuStreamWaitEvent(cl->stream[tid], cl->gpu_end[tid], 0) );
 				checkCudaErrors( cuStreamAddCallback(cl->stream[tid], stream_sync_callback, (void *)(req), 0) );
 			#if !defined(SYNC_MODE)
 				allocated_sm -= record_blk_num_thread[cl->instance_id][tid];
@@ -695,6 +694,7 @@ manager_thread_main(void *arg)
 			case REQ_GPU_RECORD_START:
 				cl = &(clients[req->instance_id]);
 				tid = req->thread_id;
+				RTE_LOG(INFO, APP, "start");
 				checkCudaErrors( cuEventRecord(cl->gpu_start[tid], cl->stream[tid]) );
 				rte_mempool_put(nf_request_pool, req);
 				break;
