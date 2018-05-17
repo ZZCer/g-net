@@ -363,6 +363,7 @@ struct gpu_schedule_info {
 #define RSP_GPU_MEMCPY_DTOH_SYNC	3
 #define RSP_GPU_GLOBAL_SYNC			4
 #define RSP_GPU_KERNEL_SYNC			5
+#define RSP_GPU_SYNC_STREAM			6
 
 #define RSP_SUCCESS		0
 #define RSP_FAILURE		1

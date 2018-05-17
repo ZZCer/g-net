@@ -23,7 +23,7 @@ typedef struct nfv_batch_s
 	volatile int buf_state[NUM_BATCH_BUF];
 
 	int thread_id;
-	int gpu_buf_id;
+	volatile int gpu_buf_id;
 
 	void *host_mem_addr_base;
 	void *host_mem_addr_cur;

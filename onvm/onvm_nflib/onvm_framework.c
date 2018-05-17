@@ -37,6 +37,7 @@ static post_func_t POST_FUNC;
 static int onvm_framework_cpu(int thread_id);
 static void gcudaRecordStart(int thread_id);
 static void gcudaStreamSynchronize(int thread_id);
+static int gcudaPollForStreamSyncResponse(int thread_id);
 
 static pthread_key_t my_batch;
 static pthread_mutex_t lock;
@@ -334,21 +335,6 @@ onvm_framework_start_gpu(gpu_htod_t user_gpu_htod, gpu_dtoh_t user_gpu_dtoh, gpu
 
 	while (gpu_info->thread_num != (unsigned int)INIT_WORKER_THREAD_NUM && keep_running) ;
 
-	for (i = 0; i < gpu_info->thread_num; i++) {
-		gcudaStreamSynchronize(i);
-	}
-
-	while (keep_running) {
-		int all_synced = 1;
-		for (i = 0; i < gpu_info->thread_num; i++) {
-			if (!cl->sync[i]) {
-				all_synced = 0;
-				break;
-			}
-		}
-		if (all_synced) break;
-	}
-
 	unsigned cur_lcore = rte_lcore_id();
 	RTE_LOG(INFO, APP, "GPU thread is running on lcore %u\n", cur_lcore);
 	printf("[Press Ctrl-C to quit ...]\n\n");
@@ -360,9 +346,10 @@ onvm_framework_start_gpu(gpu_htod_t user_gpu_htod, gpu_dtoh_t user_gpu_dtoh, gpu
 
 		for (i = 0; i < gpu_info->thread_num; i++) {
 			batch = &batch_set[i];
-			if (batch->gpu_buf_id != -1 && cl->sync[i] == 1) {
-				batch->buf_state[batch->gpu_buf_id] = BUF_STATE_CPU_READY;
+			if (batch->gpu_buf_id != -1 && gcudaPollForStreamSyncResponse(i)) {
+				gpu_buf_id = batch->gpu_buf_id;
 				batch->gpu_buf_id = -1;
+				batch->buf_state[gpu_buf_id] = BUF_STATE_CPU_READY;
 			}
 		}
 
@@ -688,6 +675,21 @@ gcudaStreamSynchronize(int thread_id)
 		rte_mempool_put(nf_request_mp, req);
 		rte_exit(EXIT_FAILURE, "Cannot send request_info to scheduler\n");
 	}
+}
 
-	gcudaWaitForSyncResponse();
+static int
+gcudaPollForStreamSyncResponse(int thread_id)
+{
+	struct rte_ring *nf_response_ring = cl->response_q[thread_id];
+
+	struct nf_rsp *rsp;
+	if (rte_ring_dequeue(nf_response_ring, (void **)&rsp) != 0)
+		return 0;
+
+	if (rsp->type != RSP_GPU_SYNC_STREAM)
+		rte_exit(EXIT_FAILURE, "Wrong response type %d\n", rsp->type);
+
+	rte_mempool_put(nf_response_mp, rsp);
+
+	return 1;
 }
