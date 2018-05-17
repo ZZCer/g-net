@@ -194,6 +194,10 @@ onvm_framework_cpu(int thread_id)
 
 		// rx
 		do {
+			if (BATCH_SIZE != cl->batch_size) {
+				BATCH_SIZE = cl->batch_size;
+				RTE_LOG(INFO, APP, "Batch size changed to %d\n", BATCH_SIZE);
+			}
 			num_packets = rte_ring_dequeue_bulk(rx_q, (void **)batch->pkt_ptr[buf_id], BATCH_SIZE, NULL);
 			if (num_packets == 0) {
 				starve_rx_counter++;
