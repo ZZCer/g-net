@@ -50,7 +50,8 @@ init_manager(void)
 
 	// get compute capabilities and the devicename
 	int major = 0, minor = 0;
-	checkCudaErrors( cuDeviceComputeCapability(&major, &minor, device) );
+	checkCudaErrors( cuDeviceGetAttribute(&major, CU_DEVICE_ATTRIBUTE_COMPUTE_CAPABILITY_MAJOR, device) );
+	checkCudaErrors( cuDeviceGetAttribute(&minor, CU_DEVICE_ATTRIBUTE_COMPUTE_CAPABILITY_MINOR, device) );
 	printf("> GPU Device has SM %d.%d compute capability\n", major, minor);
 
 	size_t totalGlobalMem;
@@ -93,7 +94,7 @@ init_manager(void)
 			if (clients[i].response_q[j] == NULL)
 				rte_exit(EXIT_FAILURE, "Cannot create response ring queue for client %d\n", i);
 
-			checkCudaErrors( cuStreamCreate(&(clients[i].stream[j]), CU_STREAM_DEFAULT) );
+			checkCudaErrors( cuStreamCreate(&(clients[i].stream[j]), CU_STREAM_NON_BLOCKING) );
 			checkCudaErrors( cuEventCreate(&(clients[i].kern_start[j]), CU_EVENT_DEFAULT) );
 			checkCudaErrors( cuEventCreate(&(clients[i].kern_end[j]), CU_EVENT_DEFAULT) );
 			checkCudaErrors( cuEventCreate(&(clients[i].gpu_start[j]), CU_EVENT_DEFAULT) );
