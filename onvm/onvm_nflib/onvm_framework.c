@@ -334,6 +334,21 @@ onvm_framework_start_gpu(gpu_htod_t user_gpu_htod, gpu_dtoh_t user_gpu_dtoh, gpu
 
 	while (gpu_info->thread_num != (unsigned int)INIT_WORKER_THREAD_NUM && keep_running) ;
 
+	for (i = 0; i < gpu_info->thread_num; i++) {
+		gcudaStreamSynchronize(i);
+	}
+
+	while (keep_running) {
+		int all_synced = 1;
+		for (i = 0; i < gpu_info->thread_num; i++) {
+			if (!cl->sync[i]) {
+				all_synced = 0;
+				break;
+			}
+		}
+		if (all_synced) break;
+	}
+
 	unsigned cur_lcore = rte_lcore_id();
 	RTE_LOG(INFO, APP, "GPU thread is running on lcore %u\n", cur_lcore);
 	printf("[Press Ctrl-C to quit ...]\n\n");
@@ -491,23 +506,16 @@ gcudaHostAlloc(void **p, int size)
 void
 gcudaMemcpyHtoD(CUdeviceptr dst, void *src, int size, int sync, int thread_id)
 {
+	UNUSED(sync);
 	nfv_batch_t *batch = &(batch_set[thread_id]);
 	assert(batch->thread_id == thread_id);
-
-#if defined(GRAPH_TIME) || defined(SYNC_MODE)
-	sync = SYNC;
-#endif
 
 	struct nf_req *req;
 	if (rte_mempool_get(nf_request_mp, (void **)&req) < 0) {
 		rte_exit(EXIT_FAILURE, "Failed to get resquest memory\n");
 	}
 
-	if (sync == SYNC) {
-		req->type = REQ_GPU_MEMCPY_HTOD_SYNC;
-	} else {
-		req->type = REQ_GPU_MEMCPY_HTOD_ASYNC;
-	}
+	req->type = REQ_GPU_MEMCPY_HTOD_ASYNC;
 	req->device_ptr = dst;
 	req->host_offset = (char *)src - (char *)(batch->host_mem_addr_base);
 	req->instance_id = nf_info->instance_id;
@@ -521,40 +529,21 @@ gcudaMemcpyHtoD(CUdeviceptr dst, void *src, int size, int sync, int thread_id)
 		rte_mempool_put(nf_request_mp, req);
 		rte_exit(EXIT_FAILURE, "Cannot send request_info to scheduler\n");
 	}
-
-	if (sync == SYNC) {
-		struct rte_ring *nf_response_ring = rte_ring_lookup(get_rsp_queue_name(nf_info->instance_id, thread_id));
-		if (nf_response_ring == NULL)
-			rte_exit(EXIT_FAILURE, "Failed to get response ring\n");
-
-		struct nf_rsp *rsp;
-		while (rte_ring_dequeue(nf_response_ring, (void **)&rsp) != 0 && keep_running) ;
-		assert((rsp->type == RSP_GPU_MEMCPY_HTOD_SYNC) & (rsp->states == RSP_SUCCESS));
-
-		rte_mempool_put(nf_response_mp, rsp);
-	}
 }
 
 void
 gcudaMemcpyDtoH(void *dst, CUdeviceptr src, int size, int sync, int thread_id)
 {
+	UNUSED(sync);
 	nfv_batch_t *batch = &(batch_set[thread_id]);
 	assert(batch->thread_id == thread_id);
-
-#if defined(GRAPH_TIME) || defined(SYNC_MODE)
-	sync = SYNC;
-#endif
 
 	struct nf_req *req;
 	if (rte_mempool_get(nf_request_mp, (void **)&req) < 0) {
 		rte_exit(EXIT_FAILURE, "Failed to get resquest memory\n");
 	}
 
-	if (sync == SYNC) {
-		req->type = REQ_GPU_MEMCPY_DTOH_SYNC;
-	} else if (sync == ASYNC) {
-		req->type = REQ_GPU_MEMCPY_DTOH_ASYNC;
-	}
+	req->type = REQ_GPU_MEMCPY_DTOH_ASYNC;
 	req->device_ptr = src;
 	req->host_offset = (char *)dst - (char *)(batch->host_mem_addr_base);
 	req->instance_id = nf_info->instance_id;
@@ -567,18 +556,6 @@ gcudaMemcpyDtoH(void *dst, CUdeviceptr src, int size, int sync, int thread_id)
 	if (rte_ring_enqueue(nf_request_queue, req) < 0) {
 		rte_mempool_put(nf_request_mp, req);
 		rte_exit(EXIT_FAILURE, "Cannot send request_info to scheduler\n");
-	}
-
-	if (sync == SYNC) {
-		struct rte_ring *nf_response_ring = rte_ring_lookup(get_rsp_queue_name(nf_info->instance_id, thread_id));
-		if (nf_response_ring == NULL)
-			rte_exit(EXIT_FAILURE, "Failed to get response ring\n");
-
-		struct nf_rsp *rsp;
-		while (rte_ring_dequeue(nf_response_ring, (void **)&rsp) != 0 && keep_running) ;
-		assert((rsp->type == RSP_GPU_MEMCPY_DTOH_SYNC) & (rsp->states == RSP_SUCCESS));
-
-		rte_mempool_put(nf_response_mp, rsp);
 	}
 }
 
