@@ -236,10 +236,9 @@ stream_sync_callback(CUstream cuda_stream, CUresult status, void *user_data)
 	if (rsp == NULL)
 		rte_exit(EXIT_FAILURE, "Response memory not allocated\n");
 
-	rsp->type = RSP_GPU_GLOBAL_SYNC;
-	rsp->batch_size = cl->batch_size;
+	rsp->type = RSP_GPU_SYNC_STREAM;
 
-	int res = rte_ring_enqueue(cl->global_response_q, rsp);
+	int res = rte_ring_enqueue(cl->response_q[tid], rsp);
 	if (res < 0) {
 		rte_mempool_put(nf_response_pool, rsp);
 		rte_exit(EXIT_FAILURE, "Cannot enqueue into global response queue");
