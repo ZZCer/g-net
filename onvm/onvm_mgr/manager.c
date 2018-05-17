@@ -214,6 +214,11 @@ stream_sync_callback(CUstream cuda_stream, CUresult status, void *user_data)
 	struct client *cl = &(clients[req->instance_id]);
 	int tid = req->thread_id;
 
+	checkCudaErrors( cuEventQuery(cl->kern_start[tid]) );
+	checkCudaErrors( cuEventQuery(cl->kern_end[tid]) );
+	checkCudaErrors( cuEventQuery(cl->gpu_start[tid]) );
+	checkCudaErrors( cuEventQuery(cl->gpu_end[tid]) );
+
 	float diff_ms;
 	checkCudaErrors( cuEventElapsedTime(&diff_ms, cl->kern_start[tid], cl->kern_end[tid]) );
 	cl->stats.kernel_time += diff_ms * 1000.0;
