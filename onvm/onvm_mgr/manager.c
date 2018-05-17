@@ -680,7 +680,7 @@ manager_thread_main(void *arg)
 				tid = req->thread_id;
 				cl->sync[tid] = 0;
 				checkCudaErrors( cuEventRecord(cl->gpu_end[tid], cl->stream[tid]) );
-				checkCudaErrors( cudaStreamWaitEvent(cl->stream[tid], cl->gpu_end[tid], 0) );
+				checkCudaErrors( cuStreamWaitEvent(cl->stream[tid], cl->gpu_end[tid], 0) );
 				checkCudaErrors( cuStreamAddCallback(cl->stream[tid], stream_sync_callback, (void *)(req), 0) );
 			#if !defined(SYNC_MODE)
 				allocated_sm -= record_blk_num_thread[cl->instance_id][tid];
