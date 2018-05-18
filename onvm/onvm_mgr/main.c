@@ -61,8 +61,52 @@
 extern struct onvm_service_chain *default_chain;
 extern struct rx_perf rx_stats[ONVM_NUM_RX_THREADS]; 
 extern struct port_info *ports;
+extern CUdeviceptr gpu_pkts_buf;
+extern CUdeviceptr gpu_pkts_head;
+extern rte_spinlock_t gpu_pkts_lock;
+extern CUcontext context;
 
 /*******************************Worker threads********************************/
+
+static size_t load_packet(uint8_t *buffer, struct rte_mbuf *pkt) {
+       gpu_packet_t *gpkt = (gpu_packet_t *) buffer;
+       uint8_t *datastart, *dataend;
+       struct ipv4_hdr* ipv4 = onvm_pkt_ipv4_hdr(pkt);
+       if (!ipv4) {
+               gpkt->proto_id = 0xFF;
+               return sizeof(gpu_packet_t);
+       }
+       gpkt->src_addr = ipv4->src_addr;
+       gpkt->dst_addr = ipv4->dst_addr;
+       gpkt->proto_id = ipv4->next_proto_id;
+       if (ipv4->next_proto_id == IPPROTO_TCP) {
+               struct tcp_hdr *tcp = onvm_pkt_tcp_hdr(pkt);
+               gpkt->tcp_flags = tcp->tcp_flags;
+               gpkt->src_port = rte_be_to_cpu_16(tcp->src_port);
+               gpkt->dst_port = rte_be_to_cpu_16(tcp->dst_port);
+               gpkt->sent_seq = rte_be_to_cpu_32(tcp->sent_seq);
+               gpkt->recv_ack = rte_be_to_cpu_32(tcp->recv_ack);
+               datastart = (uint8_t *)tcp + (tcp->data_off >> 2);
+               dataend = (uint8_t *)ipv4 + rte_be_to_cpu_16(ipv4->total_length);
+               gpkt->payload_size = dataend - datastart;
+       } else if (ipv4->next_proto_id == IPPROTO_UDP) {
+               struct udp_hdr *udp = onvm_pkt_udp_hdr(pkt);
+               gpkt->src_port = rte_be_to_cpu_16(udp->src_port);
+               gpkt->dst_port = rte_be_to_cpu_16(udp->dst_port);
+               datastart = (uint8_t *)udp + 8;
+               gpkt->payload_size = rte_be_to_cpu_16(udp->dgram_len) - 8;
+       } else {
+               gpkt->payload_size = 0;
+       }
+       if (gpkt->payload_size) {
+               memcpy(&gpkt->payload, datastart, gpkt->payload_size);
+       }
+       size_t bsz = sizeof(gpu_packet_t) + gpkt->payload_size;
+       if (bsz % 16 != 0) {
+               bsz += 16 - (bsz % 16);
+       }
+       return bsz;
+}
 
 /*
  * Function to receive packets from the NIC
@@ -72,9 +116,20 @@ static int
 rx_thread_main(void *arg) {
 	unsigned i, j, rx_count;
 	struct rte_mbuf *pkts[PACKET_READ_SIZE];
+	struct rte_mbuf **gpu_batching;
+	uint8_t *batch_buffer;
 	struct thread_info *rx = (struct thread_info*)arg;
 	unsigned int core_id = rte_lcore_id();
 	uint64_t starve_rx_counter = 0;	
+
+	size_t num_gpu_batch = 0;
+	size_t queued;
+
+	checkCudaErrors( cuInit(0) );
+	checkCudaErrors( cuCtxSetCurrent(context) );
+
+	gpu_batching = rte_calloc("rx gpu batch", RX_GPU_BATCH_SIZE, sizeof(struct rte_mbuf *), 0);
+	checkCudaErrors( cuMemAllocHost((void **)&batch_buffer, RX_GPU_BATCH_SIZE * GPU_PKT_LEN) );
 
 	RTE_LOG(INFO, APP, "Core %d: Running RX thread for RX queue %d\n", core_id, rx->queue_id);
 	

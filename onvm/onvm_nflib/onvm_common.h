@@ -76,13 +76,17 @@
 #define MAX_PKT_LEN 1514
 
 typedef struct gpu_packet_s {
-       struct ipv4_hdr ipv4_hdr_data;
-       union {
-               struct tcp_hdr tcp_hdr_data;
-               struct udp_hdr udp_hdr_data;
-       };
-       uint16_t payload_size;
-       uint8_t payload[MAX_PKT_LEN];
+	uint8_t  proto_id;
+	uint8_t  tcp_flags;     /**< TCP flags if present */
+	uint16_t payload_size;
+	uint32_t src_addr;              /**< source address */
+	uint32_t dst_addr;              /**< destination address */
+	uint16_t src_port;      /**< source port. */
+	uint16_t dst_port;      /**< destination port. */
+	uint32_t sent_seq;      /**< TCP TX data sequence number. */
+	uint32_t recv_ack;      /**< TCP RX data acknowledgement sequence number. */
+	uint8_t  __padding[8];
+	uint8_t  payload[0];
 } __attribute__((aligned(16))) gpu_packet_t;
 
 #define RX_GPU_QUEUE "rx_gpu_q"

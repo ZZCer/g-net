@@ -19,7 +19,7 @@ struct rte_mempool *nf_request_pool, *nf_response_pool;
 struct rte_ring *nf_request_queue;
 
 static int allocated_sm = 0;
-static CUcontext context;
+CUcontext context;
 
 #define checkCudaErrors(err) __checkCudaErrors(err, __FILE__, __LINE__)
 static inline void __checkCudaErrors( CUresult err, const char *file, const int line )
