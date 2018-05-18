@@ -25,8 +25,7 @@ static CUdeviceptr tbl24_d;
 
 typedef struct my_buf_s {
 	/* Stores real data */
-	uint64_t job_num;
-	uint32_t *host_in;
+	CUdeviceptr *host_in;
 	uint8_t *host_out;
 	CUdeviceptr device_in;
 	CUdeviceptr device_out;
@@ -36,7 +35,7 @@ static void *init_host_buf(void)
 {
 	buf_t *buf = malloc(sizeof(buf_t));
 
-	gcudaHostAlloc((void **)&(buf->host_in), MAX_BATCH_SIZE * sizeof(uint32_t));
+	gcudaHostAlloc((void **)&(buf->host_in), MAX_BATCH_SIZE * sizeof(CUdeviceptr));
 	gcudaHostAlloc((void **)&(buf->host_out), MAX_BATCH_SIZE * sizeof(uint8_t));
 
 	gcudaMalloc(&(buf->device_in), MAX_BATCH_SIZE * sizeof(uint32_t));
@@ -49,8 +48,7 @@ static inline void user_batch_func(void *cur_buf, struct rte_mbuf *pkt, int pkt_
 {
 	buf_t *buf = (buf_t *)cur_buf;
 
-	struct ipv4_hdr *ipv4 = (struct ipv4_hdr*)(rte_pktmbuf_mtod(pkt, uint8_t*) + sizeof(struct ether_hdr));
-	buf->host_in[pkt_idx] = ipv4->dst_addr;
+	buf->host_in[pkt_idx] = onvm_pkt_gpu_ptr(pkt);
 }
 
 static inline void user_post_func(void *cur_buf, struct rte_mbuf *pkt, int pkt_idx)
@@ -64,7 +62,7 @@ static inline void user_post_func(void *cur_buf, struct rte_mbuf *pkt, int pkt_i
 static void user_gpu_htod(void *cur_buf, int job_num, unsigned int thread_id)
 {
 	buf_t *buf = (buf_t *)cur_buf;
-	gcudaMemcpyHtoD(buf->device_in, buf->host_in, job_num * sizeof(uint32_t), ASYNC, thread_id);
+	gcudaMemcpyHtoD(buf->device_in, buf->host_in, job_num * sizeof(CUdeviceptr), ASYNC, thread_id);
 }
 
 static void user_gpu_dtoh(void *cur_buf, int job_num, unsigned int thread_id)
@@ -105,7 +103,7 @@ static void init_main(void)
 	int table_item_num = 1 << 24;
 
 	/* allocate the host memory */
-	gcudaAllocSize(MAX_BATCH_SIZE * sizeof(uint32_t)  // host_in
+	gcudaAllocSize(MAX_BATCH_SIZE * sizeof(CUdeviceptr)  // host_in
 			+ MAX_BATCH_SIZE * sizeof(uint8_t),       // host_out
 			table_item_num * sizeof(uint16_t),        // hash table
 			0);                                       // first time
