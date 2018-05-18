@@ -116,19 +116,19 @@ static int
 rx_thread_main(void *arg) {
 	unsigned i, j, rx_count;
 	struct rte_mbuf *pkts[PACKET_READ_SIZE];
-	//struct rte_mbuf **gpu_batching;
+	struct rte_mbuf **gpu_batching;
 	uint8_t *batch_buffer;
 	struct thread_info *rx = (struct thread_info*)arg;
 	unsigned int core_id = rte_lcore_id();
 	uint64_t starve_rx_counter = 0;	
 
-	//size_t num_gpu_batch = 0;
-	//size_t queued;
+	size_t num_gpu_batch = 0;
+	size_t queued;
 
 	checkCudaErrors( cuInit(0) );
 	checkCudaErrors( cuCtxSetCurrent(context) );
 
-	//gpu_batching = rte_calloc("rx gpu batch", RX_GPU_BATCH_SIZE, sizeof(struct rte_mbuf *), 0);
+	gpu_batching = rte_calloc("rx gpu batch", RX_GPU_BATCH_SIZE, sizeof(struct rte_mbuf *), 0);
 	checkCudaErrors( cuMemAllocHost((void **)&batch_buffer, RX_GPU_BATCH_SIZE * GPU_PKT_LEN) );
 
 	RTE_LOG(INFO, APP, "Core %d: Running RX thread for RX queue %d\n", core_id, rx->queue_id);
@@ -150,6 +150,46 @@ rx_thread_main(void *arg) {
 
 
 	for (;;) {
+		if (CUDA_SUCCESS == cuEventQuery(gpu_state)) { // available
+			if (likely(num_gpu_batch > 0)) {
+				if (unlikely(rx_q_new == NULL)) {
+					if (nf_per_service_count[first_service_id] > 0) {
+						rx_q_new = clients[services[first_service_id][0]].rx_q_new;
+					}
+				}
+				if (likely(rx_q_new != NULL)) {
+					queued = rte_ring_enqueue_burst(rx_q_new, (void **)gpu_batching, num_gpu_batch, NULL);
+					if (unlikely(queued < num_gpu_batch)) {
+						onvm_pkt_drop_batch(gpu_batching + queued, num_gpu_batch - queued);
+					}
+				} else {
+					onvm_pkt_drop_batch(gpu_batching, num_gpu_batch);
+				}
+			}
+			num_gpu_batch = rte_ring_dequeue_bulk(gpu_q, (void **)gpu_batching, RX_GPU_BATCH_SIZE, NULL);
+			if (num_gpu_batch > 0) {
+				size_t buf_sz = 0, cur_sz;
+				for (i = 0; i < num_gpu_batch; i++) {
+					cur_sz = load_packet(batch_buffer + buf_sz, gpu_batching[i]);
+					onvm_pkt_gpu_ptr(gpu_batching[i]) = cur_sz;
+					buf_sz += cur_sz;
+				}
+				CUdeviceptr head;
+				rte_spinlock_lock(&gpu_pkts_lock);
+				head = gpu_pkts_head;
+				if (head + buf_sz > gpu_pkts_buf + GPU_BUF_SIZE * GPU_PKT_LEN) {
+					head = gpu_pkts_buf;
+				}
+				gpu_pkts_head = head + buf_sz;
+				rte_spinlock_unlock(&gpu_pkts_lock);
+				//checkCudaErrors( cuMemcpyHtoDAsync(head, batch_buffer, buf_sz, stream) );
+				checkCudaErrors( cuEventRecord(gpu_state, stream) );
+				for (i = 0; i < num_gpu_batch; i++) {
+					onvm_pkt_gpu_ptr(gpu_batching[i]) += head;
+				}
+			}
+		}
+
 		/* Read ports */
 		for (i = 0; i < ports->num_ports; i++) {
 			rx_count = rte_eth_rx_burst(ports->id[i], rx->queue_id, pkts, PACKET_READ_SIZE);
@@ -158,24 +198,14 @@ rx_thread_main(void *arg) {
 			/* Now process the NIC packets read */
 			if (likely(rx_count > 0)) {
 				starve_rx_counter = 0;
-				if (unlikely(rx_q_new == NULL)) {
-					if (nf_per_service_count[first_service_id] > 0) {
-						rx_q_new = clients[services[first_service_id][0]].rx_q_new;
-					}
+				for (j = 0; j < rx_count; j++) {
+					// workaround: mark not to drop the packet
+					struct onvm_pkt_meta *meta = onvm_get_pkt_meta(pkts[j]);
+					meta->action = ONVM_NF_ACTION_TONF;
 				}
-				if (likely(rx_q_new != NULL)) {
-					for (j = 0; j < rx_count; j++) {
-						// workaround: mark not to drop the packet
-						struct onvm_pkt_meta *meta = onvm_get_pkt_meta(pkts[j]);
-						meta->action = ONVM_NF_ACTION_TONF;
-					}
-					size_t queued;
-					queued = rte_ring_enqueue_burst(rx_q_new, (void **)pkts, rx_count, NULL);
-					if (unlikely(queued < rx_count)) {
-						onvm_pkt_drop_batch(pkts + queued, rx_count - queued);
-					}
-				} else {
-						onvm_pkt_drop_batch(pkts, rx_count);
+				queued = rte_ring_enqueue_burst(gpu_q, (void **)pkts, rx_count, NULL);
+				if (unlikely(queued < rx_count)) {
+					onvm_pkt_drop_batch(pkts + queued, rx_count - queued);
 				}
 			} else {
 				starve_rx_counter++;
