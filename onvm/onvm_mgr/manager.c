@@ -21,16 +21,6 @@ struct rte_ring *nf_request_queue;
 static int allocated_sm = 0;
 CUcontext context;
 
-#define checkCudaErrors(err) __checkCudaErrors(err, __FILE__, __LINE__)
-static inline void __checkCudaErrors( CUresult err, const char *file, const int line )
-{
-	if (CUDA_SUCCESS != err) {
-		fprintf(stderr, "CUDA Driver API error = %04d  \"%s\" from file <%s>, line %i.\n",
-				err, getCudaDrvErrorString(err), file, line );
-		exit(-1);
-	}
-}
-
 void
 init_manager(void)
 {

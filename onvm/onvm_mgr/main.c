@@ -51,12 +51,12 @@
 // CLEAR: 1
 
 #include "onvm_mgr.h"
-#include "onvm_pkt.h"
 #include "onvm_nf.h"
 #include "onvm_stats.h"
 #include "onvm_init.h"
 #include "manager.h"
 #include "scheduler.h"
+#include "onvm_pkt_helper.h"
 
 extern struct onvm_service_chain *default_chain;
 extern struct rx_perf rx_stats[ONVM_NUM_RX_THREADS]; 
@@ -116,19 +116,19 @@ static int
 rx_thread_main(void *arg) {
 	unsigned i, j, rx_count;
 	struct rte_mbuf *pkts[PACKET_READ_SIZE];
-	struct rte_mbuf **gpu_batching;
+	//struct rte_mbuf **gpu_batching;
 	uint8_t *batch_buffer;
 	struct thread_info *rx = (struct thread_info*)arg;
 	unsigned int core_id = rte_lcore_id();
 	uint64_t starve_rx_counter = 0;	
 
-	size_t num_gpu_batch = 0;
-	size_t queued;
+	//size_t num_gpu_batch = 0;
+	//size_t queued;
 
 	checkCudaErrors( cuInit(0) );
 	checkCudaErrors( cuCtxSetCurrent(context) );
 
-	gpu_batching = rte_calloc("rx gpu batch", RX_GPU_BATCH_SIZE, sizeof(struct rte_mbuf *), 0);
+	//gpu_batching = rte_calloc("rx gpu batch", RX_GPU_BATCH_SIZE, sizeof(struct rte_mbuf *), 0);
 	checkCudaErrors( cuMemAllocHost((void **)&batch_buffer, RX_GPU_BATCH_SIZE * GPU_PKT_LEN) );
 
 	RTE_LOG(INFO, APP, "Core %d: Running RX thread for RX queue %d\n", core_id, rx->queue_id);
