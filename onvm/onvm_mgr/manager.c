@@ -8,6 +8,10 @@
 
 extern struct onvm_service_chain *default_chain;
 
+CUdeviceptr gpu_pkts_buf, gpu_pkts_head;
+rte_spinlock_t gpu_pkts_lock;
+
+
 static pthread_mutex_t lock;
 static struct nf_req *pending_req_header = NULL, *pending_req_tail = NULL;
 
@@ -129,6 +133,11 @@ init_manager(void)
 			sizeof(struct nf_rsp), 0, 0, NULL, NULL, NULL, NULL, rte_socket_id(), NO_FLAGS);
 	if (nf_response_pool == NULL)
 		rte_exit(EXIT_FAILURE, "Fail to create nf_response_pool\n");
+
+	rte_ring_create(RX_GPU_QUEUE, MAX_BATCH_SIZE * BATCH_QUEUE_FACTOR, rte_socket_id(), NO_FLAGS);
+	checkCudaErrors( cuMemAlloc(&gpu_pkts_buf, GPU_BUF_SIZE * GPU_PKT_LEN) );
+	gpu_pkts_head = gpu_pkts_buf;
+	rte_spinlock_init(&gpu_pkts_lock);
 }
 
 void
