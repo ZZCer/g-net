@@ -67,6 +67,10 @@
 #define BATCH_QUEUE_FACTOR 4
 #define STARVE_THRESHOLD 1000000
 
+#define RX_GPU_BATCH_SIZE 512
+#define GPU_BUF_SIZE 16384
+#define GPU_PKT_LEN 1600
+
 #define MZ_CLIENTS "MProc_clients"
 
 #define MAX_PKT_LEN 1514
@@ -81,6 +85,7 @@ typedef struct gpu_packet_s {
        uint8_t payload[MAX_PKT_LEN];
 } __attribute__((aligned(16))) gpu_packet_t;
 
+#define RX_GPU_QUEUE "rx_gpu_q"
 #define PORT_TX_QUEUE "port_tx_q_%u"
 
 /*****************************Original Below**********************************/
