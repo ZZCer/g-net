@@ -140,6 +140,14 @@ rx_thread_main(void *arg) {
 			rte_exit(EXIT_FAILURE, "Failed to find first nf");
 	uint16_t first_service_id = default_chain->sc[1].destination;
 
+	struct rte_ring *gpu_q = rte_ring_lookup(RX_GPU_QUEUE);
+	if (!gpu_q)
+		rte_exit(EXIT_FAILURE, "RX_GPU_Q not found");
+	CUstream stream;
+	checkCudaErrors( cuStreamCreate(&stream, CU_STREAM_NON_BLOCKING) );
+	CUevent gpu_state;
+	checkCudaErrors( cuEventCreate(&gpu_state, CU_EVENT_DEFAULT) );
+
 
 	for (;;) {
 		/* Read ports */
