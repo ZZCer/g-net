@@ -82,8 +82,8 @@
 /***********************************Macros************************************/
 
 
-#define PACKET_READ_SIZE ((uint16_t)32)
-#define PACKET_WRITE_SIZE ((uint16_t)512)
+#define PACKET_READ_SIZE ((uint16_t)64)
+#define PACKET_WRITE_SIZE ((uint16_t)128)
 
 #define TO_PORT 0
 #define TO_CLIENT 1
