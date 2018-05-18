@@ -135,6 +135,6 @@ onvm_pkt_drop_batch(struct rte_mbuf **pkts, uint16_t size) {
                onvm_pkt_drop(pkts[i]);
 }
 
-#define onvm_pkt_gpu_ptr(pkt) (*(CUdeviceptr *)&pkt->buf_physaddr)
+#define onvm_pkt_gpu_ptr(pkt) (*((CUdeviceptr *)&(pkt->hash)))
 
 #endif  // _ONVM_PKT_HELPER_H_"

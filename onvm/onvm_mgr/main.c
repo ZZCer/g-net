@@ -128,7 +128,7 @@ rx_thread_main(void *arg) {
 	checkCudaErrors( cuInit(0) );
 	checkCudaErrors( cuCtxSetCurrent(context) );
 
-	gpu_batching = rte_calloc("rx gpu batch", RX_GPU_BATCH_SIZE, sizeof(struct rte_mbuf *), 0);
+	gpu_batching = rte_calloc("rx gpu batch", RX_GPU_BATCH_SIZE * 2, sizeof(struct rte_mbuf *), 0);
 	checkCudaErrors( cuMemAllocHost((void **)&batch_buffer, RX_GPU_BATCH_SIZE * GPU_PKT_LEN) );
 
 	RTE_LOG(INFO, APP, "Core %d: Running RX thread for RX queue %d\n", core_id, rx->queue_id);
@@ -177,13 +177,13 @@ rx_thread_main(void *arg) {
 				CUdeviceptr head;
 				rte_spinlock_lock(&gpu_pkts_lock);
 				head = gpu_pkts_head;
-				if (head + buf_sz > gpu_pkts_buf + GPU_BUF_SIZE * GPU_PKT_LEN) {
+				if ((int64_t)(gpu_pkts_buf + GPU_BUF_SIZE * GPU_PKT_LEN - head - buf_sz) < 0) {
 					head = gpu_pkts_buf;
 				}
 				gpu_pkts_head = head + buf_sz;
 				rte_spinlock_unlock(&gpu_pkts_lock);
-				//checkCudaErrors( cuMemcpyHtoDAsync(head, batch_buffer, buf_sz, stream) );
-				//checkCudaErrors( cuEventRecord(gpu_state, stream) );
+				checkCudaErrors( cuMemcpyHtoDAsync(head, batch_buffer, buf_sz, stream) );
+				checkCudaErrors( cuEventRecord(gpu_state, stream) );
 				for (i = 0; i < num_gpu_batch; i++) {
 					onvm_pkt_gpu_ptr(gpu_batching[i]) += head;
 				}
