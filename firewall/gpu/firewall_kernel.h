@@ -59,14 +59,6 @@ struct fwFive {
     int protocol;
 };
 
-struct pcktFive {
-    unsigned int srcAddr;
-    unsigned int desAddr;  
-    unsigned int srcPort;
-    unsigned int desPort;
-    int protocol;
-};
-
 struct fwRule {
     struct fwFive rule;
     int order;

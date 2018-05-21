@@ -1,6 +1,0 @@
-objs/firewall_kernel.o: firewall_kernel.cu firewall_kernel.h
-
-firewall_kernel.h:
-objs/firewall_rules.o: firewall_rules.c firewall_kernel.h
-
-firewall_kernel.h:

@@ -84,7 +84,7 @@ static inline void user_post_func(void *cur_buf, struct rte_mbuf *pkt, int pkt_i
 static void user_gpu_htod(void *cur_buf, int job_num, unsigned int thread_id)
 {
 	buf_t *buf = (buf_t *)cur_buf;
-	gcudaMemcpyHtoD(buf->dev_pkt_ptrs, buf->host_pkt_ptrs, job_num * sizeof(struct pcktFive), ASYNC, thread_id);
+	gcudaMemcpyHtoD(buf->dev_pkt_ptrs, buf->host_pkt_ptrs, job_num * sizeof(CUdeviceptr), ASYNC, thread_id);
 }
 
 static void user_gpu_dtoh(void *cur_buf, int job_num, unsigned int thread_id)
@@ -149,7 +149,7 @@ static void init_main(void)
 	unsigned int *host_protocolHash;
 
 	/* allocate the host memory */
-	gcudaAllocSize(MAX_BATCH_SIZE * sizeof(struct pcktFive) // input buffer
+	gcudaAllocSize(MAX_BATCH_SIZE * sizeof(CUdeviceptr) // input buffer
 			+ MAX_BATCH_SIZE * 4 * sizeof(unsigned int), 				// output result
 			SRC_ADDR_TRIE_SIZE * sizeof(struct trieAddrNode)
 			+ DES_ADDR_TRIE_SIZE * sizeof(struct trieAddrNode)
