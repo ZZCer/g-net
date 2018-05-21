@@ -102,8 +102,8 @@ static size_t load_packet(uint8_t *buffer, struct rte_mbuf *pkt) {
                memcpy(&gpkt->payload, datastart, gpkt->payload_size);
        }
        size_t bsz = sizeof(gpu_packet_t) + gpkt->payload_size;
-       if (bsz % 16 != 0) {
-               bsz += 16 - (bsz % 16);
+       if (bsz % GPU_PKT_ALIGN != 0) {
+               bsz += GPU_PKT_ALIGN - (bsz % GPU_PKT_ALIGN);
        }
        return bsz;
 }
@@ -129,7 +129,7 @@ rx_thread_main(void *arg) {
 	checkCudaErrors( cuCtxSetCurrent(context) );
 
 	gpu_batching = rte_calloc("rx gpu batch", RX_GPU_BATCH_SIZE * 2, sizeof(struct rte_mbuf *), 0);
-	checkCudaErrors( cuMemAllocHost((void **)&batch_buffer, RX_GPU_BATCH_SIZE * GPU_PKT_LEN) );
+	checkCudaErrors( cuMemAllocHost((void **)&batch_buffer, RX_GPU_BATCH_SIZE * GPU_MAX_PKT_LEN) );
 
 	RTE_LOG(INFO, APP, "Core %d: Running RX thread for RX queue %d\n", core_id, rx->queue_id);
 	
@@ -177,7 +177,7 @@ rx_thread_main(void *arg) {
 				CUdeviceptr head;
 				rte_spinlock_lock(&gpu_pkts_lock);
 				head = gpu_pkts_head;
-				if ((int64_t)(gpu_pkts_buf + GPU_BUF_SIZE * GPU_PKT_LEN - head - buf_sz) < 0) {
+				if ((int64_t)(gpu_pkts_buf + GPU_BUF_SIZE * GPU_MAX_PKT_LEN - head - buf_sz) < 0) {
 					head = gpu_pkts_buf;
 				}
 				gpu_pkts_head = head + buf_sz;

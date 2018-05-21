@@ -125,7 +125,7 @@ init_manager(void)
 		rte_exit(EXIT_FAILURE, "Fail to create nf_response_pool\n");
 
 	rte_ring_create(RX_GPU_QUEUE, MAX_BATCH_SIZE * BATCH_QUEUE_FACTOR, rte_socket_id(), NO_FLAGS);
-	checkCudaErrors( cuMemAlloc(&gpu_pkts_buf, GPU_BUF_SIZE * GPU_PKT_LEN) );
+	checkCudaErrors( cuMemAlloc(&gpu_pkts_buf, GPU_BUF_SIZE * GPU_MAX_PKT_LEN) );
 	gpu_pkts_head = gpu_pkts_buf;
 	rte_spinlock_init(&gpu_pkts_lock);
 }

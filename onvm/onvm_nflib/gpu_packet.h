@@ -3,6 +3,9 @@
 
 #include <inttypes.h>
 
+#define GPU_MAX_PKT_LEN 1600
+#define GPU_PKT_ALIGN 16
+
 typedef struct gpu_packet_s {
 	uint8_t  proto_id;
 	uint8_t  tcp_flags;     /**< TCP flags if present */

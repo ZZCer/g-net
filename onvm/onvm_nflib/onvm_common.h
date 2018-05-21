@@ -69,7 +69,6 @@
 
 #define RX_GPU_BATCH_SIZE 512
 #define GPU_BUF_SIZE 16384
-#define GPU_PKT_LEN 1600
 
 #define MZ_CLIENTS "MProc_clients"
 
