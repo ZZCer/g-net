@@ -28,13 +28,13 @@ CUDA_PATH       ?= /usr/local/cuda
 CUDA_INC_PATH   ?= $(CUDA_PATH)/include
 CUDA_BIN_PATH   ?= $(CUDA_PATH)/bin
 ifneq ($(DARWIN),)
-  CUDA_LIB_PATH  ?= $(CUDA_PATH)/lib
+	CUDA_LIB_PATH  ?= $(CUDA_PATH)/lib
 else
-  ifeq ($(OS_SIZE),32)
-    CUDA_LIB_PATH  ?= $(CUDA_PATH)/lib
-  else
-    CUDA_LIB_PATH  ?= $(CUDA_PATH)/lib64
-  endif
+	ifeq ($(OS_SIZE),32)
+		CUDA_LIB_PATH  ?= $(CUDA_PATH)/lib
+	else
+		CUDA_LIB_PATH  ?= $(CUDA_PATH)/lib64
+	endif
 endif
 
 # Common binaries
@@ -43,40 +43,42 @@ GCC             := gcc
 
 # OS-specific build flags
 ifneq ($(DARWIN),) 
-      LDFLAGS   := -Xlinker -rpath $(CUDA_LIB_PATH) -L$(CUDA_LIB_PATH) -lcudart
-      CCFLAGS   := -arch $(OS_ARCH) 
+		LDFLAGS   := -Xlinker -rpath $(CUDA_LIB_PATH) -L$(CUDA_LIB_PATH) -lcudart
+		CCFLAGS   := -arch $(OS_ARCH) 
 else
-  ifeq ($(OS_SIZE),32)
-      LDFLAGS   := -L$(CUDA_LIB_PATH) -lcudart
-      CCFLAGS   := -m32
-  else
-      LDFLAGS   := -L$(CUDA_LIB_PATH) -lcudart
-      CCFLAGS   := -m64
-  endif
+	ifeq ($(OS_SIZE),32)
+		LDFLAGS   := -L$(CUDA_LIB_PATH) -lcudart
+		CCFLAGS   := -m32
+	else
+		LDFLAGS   := -L$(CUDA_LIB_PATH) -lcudart
+		CCFLAGS   := -m64
+	endif
 endif
 
 # OS-architecture specific flags
 ifeq ($(OS_SIZE),32)
-      NVCCFLAGS := -m32
+		NVCCFLAGS := -m32
 else
-      NVCCFLAGS := -m64
+		NVCCFLAGS := -m64
 endif
 
 # Debug build flags
 ifeq ($(dbg),1)
-      CCFLAGS   += -g
-      NVCCFLAGS += -g -G
-      TARGET    := debug
+		CCFLAGS   += -g
+		NVCCFLAGS += -g -G
+		TARGET    := debug
 else
-      TARGET    := release
+		TARGET    := release
 endif
 
 
 # Common includes and paths for CUDA
-NVCCINCLUDES      := -I$(CUDA_INC_PATH) -I. -I$(CUDA_PATH)/samples/common/inc/ -I../../onvm/onvm_nflib
+NVCCINCLUDES      := -I$(CUDA_INC_PATH) -I. -I$(CUDA_PATH)/samples/common/inc/
 
 ####################################################
 
+CCFLAGS += -I../../onvm/onvm_nflib
+NVCCFLAGS += -I../../onvm/onvm_nflib
 
 OBJS_DIR = objs
 TARGET_DIR = lib
@@ -91,15 +93,16 @@ HEADER_FILES = $(wildcard *.h) $(wildcard *.h)
 
 SRC_FILES = $(CU_SRC_FILES) $(CC_SRC_FILES)
 OBJS_FILE = $(CU_SRC_FILES:.cu=.o) $(CC_SRC_FILES:.c=.o)
+PTXS_FILE = $(CU_SRC_FILES:.cu=.ptx)
 
 OBJS = $(addprefix $(OBJS_DIR)/, $(OBJS_FILE))
+PTXS = $(PTXS_FILE)
 DEPS = Makefile.dep
 
 all: $(TARGET) 
 
-$(TARGET): $(DEPS) $(OBJS_DIR) $(OBJS) | $(TARGET_DIR)
+$(TARGET): $(DEPS) $(OBJS_DIR) $(OBJS) $(PTXS) | $(TARGET_DIR)
 	ar rcs $@ $(OBJS)
-	nvcc --ptx ipv4lookup.cu
 
 $(TARGET_DIR):
 	mkdir $(TARGET_DIR)
@@ -113,11 +116,14 @@ $(DEPS): $(SRC_FILES) $(HEADER_FILES)
 $(OBJS_DIR)/%.o : %.cu
 	$(NVCC) $(NVCCFLAGS) $(NVCCINCLUDES) -c $< -o $@
 
+%.ptx : %.cu
+	$(NVCC) $(NVCCFLAGS) $(NVCCINCLUDES) --ptx $< -o $@
+
 .PHONY : clean
 
 
 clean:
-	rm -f $(TARGET) $(OBJS) $(DEPS)
+	rm -f $(TARGET) $(OBJS) $(PTXS) $(DEPS)
 
 ifneq ($(MAKECMDGOALS), clean)
 -include $(DEPS)
