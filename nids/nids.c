@@ -117,8 +117,7 @@ static void init_main(void)
 	RuleSetRoot *rsr = listroot->TcpListRoot->prmGeneric->rsr;
 
 	/* allocate the host memory */
-	gcudaAllocSize(MAX_BATCH_SIZE * MAX_PKT_LEN * sizeof(char) // input buffer
-			+ (MAX_BATCH_SIZE + 1) * sizeof(uint32_t)  // input packet offset
+	gcudaAllocSize(MAX_BATCH_SIZE * sizeof(CUdeviceptr) // input buffer
 			+ MAX_BATCH_SIZE * sizeof(uint16_t), // output result
 			MAX_STATE * 257 * sizeof(uint16_t),  // state table
 			0);                                  // first time
