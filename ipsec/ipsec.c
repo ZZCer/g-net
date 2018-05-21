@@ -46,7 +46,7 @@ static void *init_host_buf(void)
 	gcudaMalloc(&(buf->dev_in), MAX_BATCH_SIZE * sizeof(CUdeviceptr));
 	gcudaMalloc(&(buf->dev_aes_key), MAX_BATCH_SIZE * AES_KEY_SIZE);
 	gcudaMalloc(&(buf->dev_hmac_key), MAX_BATCH_SIZE * HMAC_KEY_SIZE);
-	gcudaMalloc(&(buf->dev_work), MAX_BATCH_SIZE * MAX_PKT_LEN);
+	gcudaMalloc(&(buf->dev_work), MAX_BATCH_SIZE * GPU_PKT_LEN);
 
 	return buf;
 }

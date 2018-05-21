@@ -9,8 +9,6 @@
 
 #include <gpu_packet.h>
 
-#define MAX_PKT_LEN 1514
-
 /* AES counter mode + HMAC SHA-1, 
    the encryption of each block in AES counter mode is not parallelized in this implementation */
 extern "C" __global__ void
@@ -70,7 +68,7 @@ aes_ctr_sha1_kernel(
 
 		/* Locate data */
 		uint8_t *in        = input_buf[idx]->payload;
-		uint8_t *out       = output_buf + MAX_PKT_LEN * idx;
+		uint8_t *out       = output_buf + GPU_PKT_LEN * idx;
 		const uint8_t *key = idx * AES_KEY_SIZE + aes_keys;
 
 		/* Encrypt using cbc mode */
