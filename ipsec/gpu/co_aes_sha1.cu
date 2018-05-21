@@ -64,10 +64,11 @@ aes_ctr_sha1_kernel(
 
 		/* ============================== AES CTR =============================== */
 		uint64_t counter[2] = {0, 0};
+		uint8_t  output_buf[AES_BLOCK_SIZE];
 
 		/* Locate data */
 		uint8_t *in        = input_buf[idx]->payload;
-		uint8_t *out       = output_buf + GPU_MAX_PKT_LEN * idx;
+		uint8_t *out       = output_buf;
 		const uint8_t *key = idx * AES_KEY_SIZE + aes_keys;
 
 		/* Encrypt using cbc mode */
@@ -86,7 +87,6 @@ aes_ctr_sha1_kernel(
 
 			len -= AES_BLOCK_SIZE;
 			in  += AES_BLOCK_SIZE;
-			out += AES_BLOCK_SIZE;
 		}
 
 
