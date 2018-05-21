@@ -101,7 +101,7 @@ DEPS = Makefile.dep
 
 all: $(TARGET) 
 
-$(TARGET): $(DEPS) $(OBJS_DIR) $(OBJS) | $(TARGET_DIR)
+$(TARGET): $(DEPS) $(OBJS_DIR) $(OBJS) $(PTXS) | $(TARGET_DIR)
 	ar rcs $@ $(OBJS)
 
 $(TARGET_DIR):
