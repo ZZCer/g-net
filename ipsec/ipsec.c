@@ -119,12 +119,9 @@ static void user_gpu_set_arg(void *cur_buf, void *arg_buf, void *arg_info, int j
 static void init_main(void)
 {
 	/* allocate the host memory */
-	gcudaAllocSize(MAX_BATCH_SIZE * MAX_PKT_LEN * sizeof(uint8_t) // input buffer
-			+ (MAX_BATCH_SIZE + 1) * sizeof(uint32_t)  // input packet offset
-			+ MAX_BATCH_SIZE * PKT_LENGTH_SIZE            // pkt length key
+	gcudaAllocSize(MAX_BATCH_SIZE * sizeof(CUdeviceptr) // input buffer
 			+ MAX_BATCH_SIZE * AES_KEY_SIZE            // aes key
-			+ MAX_BATCH_SIZE * HMAC_KEY_SIZE             // aes iv
-			+ MAX_BATCH_SIZE * MAX_PKT_LEN * sizeof(uint8_t), // output
+			+ MAX_BATCH_SIZE * HMAC_KEY_SIZE,             // aes iv
 			0,
 			0);                                  // first time
 }
