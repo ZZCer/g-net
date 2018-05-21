@@ -5,15 +5,18 @@
 #include "aes_core.h"
 #include "sha1.h"
 #include "crypto_size.h"
+#include <inttypes.h>
+
+#include <gpu_packet.h>
+
+#define MAX_PKT_LEN 1514
 
 /* AES counter mode + HMAC SHA-1, 
    the encryption of each block in AES counter mode is not parallelized in this implementation */
 extern "C" __global__ void
 aes_ctr_sha1_kernel(
-			const uint8_t	*input_buf,
+			gpu_packet_t **input_buf,
 			uint8_t *output_buf,
-			const uint32_t *pkt_offset,
-			const uint16_t *length,
 			const uint8_t *aes_keys,
 			const uint8_t *hmac_keys,
 			const unsigned int num_flows,
@@ -66,12 +69,12 @@ aes_ctr_sha1_kernel(
 		uint64_t counter[2] = {0, 0};
 
 		/* Locate data */
-		const uint8_t *in  = pkt_offset[idx] + input_buf;
-		uint8_t *out       = pkt_offset[idx] + output_buf;
+		uint8_t *in        = input_buf[idx]->payload;
+		uint8_t *out       = output_buf + MAX_PKT_LEN * idx;
 		const uint8_t *key = idx * AES_KEY_SIZE + aes_keys;
 
 		/* Encrypt using cbc mode */
-		len = length[idx];
+		len = input_buf[idx]->payload_size;
 
 		while (len >= AES_BLOCK_SIZE) {
 			/* Update counter for each block */
@@ -110,16 +113,9 @@ aes_ctr_sha1_kernel(
 
 		uint32_t *w = w_register;
 		hash_digest_t h;
-		uint32_t offset = pkt_offset[idx];
-		len = length[idx];
+		len = input_buf[idx]->payload_size;
 		uint16_t sha1_output_pos = (len + 3) & ~0x03;
-		//printf("len %d, pad_len %d, sha1_output_pos %d\n", len, pkt_offset[idx+1]-pkt_offset[idx], sha1_output_pos);
-		if (sha1_output_pos > pkt_offset[idx+1] - pkt_offset[idx] - HMAC_TAG_SIZE) {
-			printf("ERROR: Sha1 output position exceeds the packet boundary! len %d, output %d, pad_len %d, hmac %d\n",
-					len, sha1_output_pos, pkt_offset[idx+1] - pkt_offset[idx], HMAC_TAG_SIZE);
-			return;
-		}
-		uint32_t *sha1_out = (uint32_t *)(input_buf + offset + sha1_output_pos);
+		uint32_t *sha1_out = (uint32_t *)(input_buf[idx]->payload + sha1_output_pos);
 
 		for (unsigned i = 0; i < 16; i++)
 			w[i] = 0x36363636;
@@ -135,9 +131,9 @@ aes_ctr_sha1_kernel(
 		computeSHA1Block((char*)w, w, 0, 64, h);
 
 		//SHA1 compute on message
-		unsigned num_iter = (pkt_offset[idx+1] - pkt_offset[idx]) / 64;
+		unsigned num_iter = (input_buf[idx]->payload_size + 63) / 64;
 		for (unsigned i = 0; i < num_iter; i ++)
-			computeSHA1Block((char *)(input_buf + offset), w, i * 64, len, h);
+			computeSHA1Block((char *)(input_buf[idx]->payload), w, i * 64, len, h);
 
 		/* In SRTP, sha1_out has only 80 bits output 32+32+16 = 80 */
 		*(sha1_out)   = swap(h.h1);
@@ -169,31 +165,15 @@ aes_ctr_sha1_kernel(
 		*(sha1_out+3) = swap(h.h4);
 		*(sha1_out+4) = swap(h.h5);
 
+		// copy back
+		for (unsigned i = 0; i < len / 16; ++i) {
+			((float4 *) in)[i] = ((float4 *) out)[i];
+		}
+		for (unsigned i = len / 16 * 16; i < len; ++i) {
+			in[i] = out[i];
+		}
+
 		__syncthreads();
 	}
 	return;
 }
-
-extern "C" void co_aes_sha1_gpu(
-			const uint8_t		*in,
-			uint8_t				*out,
-			const uint32_t		*pkt_offset,
-			const uint16_t		*actual_length,
-			const uint8_t		*aes_keys,
-			const uint8_t		*hmac_keys,
-			const unsigned int 	num_flows,
-			uint8_t				*checkbits,
-			const unsigned int	threads_per_blk,
-			const unsigned int	num_blks,
-			cudaStream_t stream)
-{
-	//printf("stream=%d, threads_per_blk =%d, num_blks = %d\n", stream, threads_per_blk, num_blks);
-	if (stream == 0) {
-		aes_ctr_sha1_kernel<<<num_blks, threads_per_blk>>>(
-		       in, out, pkt_offset, actual_length, aes_keys, hmac_keys, num_flows, checkbits);
-	} else  {
-		aes_ctr_sha1_kernel<<<num_blks, threads_per_blk, 0, stream>>>(
-		       in, out, pkt_offset, actual_length, aes_keys, hmac_keys, num_flows, checkbits);
-	}
-}
-

@@ -77,6 +77,8 @@ NVCCINCLUDES      := -I$(CUDA_INC_PATH) -I. -I$(CUDA_PATH)/samples/common/inc/
 
 ####################################################
 
+CCFLAGS += -I../../onvm/onvm_nflib
+NVCCFLAGS += -I../../onvm/onvm_nflib
 
 OBJS_DIR = objs
 TARGET_DIR = lib
@@ -91,15 +93,16 @@ HEADER_FILES = $(wildcard *.h) $(wildcard *.h)
 
 SRC_FILES = $(CU_SRC_FILES) $(CC_SRC_FILES)
 OBJS_FILE = $(CU_SRC_FILES:.cu=.o) $(CC_SRC_FILES:.c=.o)
+PTXS_FILE = $(CU_SRC_FILES:.cu=.ptx)
 
 OBJS = $(addprefix $(OBJS_DIR)/, $(OBJS_FILE))
+PTXS = $(PTXS_FILE)
 DEPS = Makefile.dep
 
 all: $(TARGET) 
 
-$(TARGET): $(DEPS) $(OBJS_DIR) $(OBJS) | $(TARGET_DIR)
+$(TARGET): $(DEPS) $(OBJS_DIR) $(OBJS) $(PTXS) | $(TARGET_DIR)
 	ar rcs $@ $(OBJS)
-	nvcc --ptx co_aes_sha1.cu
 	mv co_aes_sha1.ptx crypto.ptx
 
 $(TARGET_DIR):
@@ -114,11 +117,14 @@ $(DEPS): $(SRC_FILES) $(HEADER_FILES)
 $(OBJS_DIR)/%.o : %.cu
 	$(NVCC) $(NVCCFLAGS) $(NVCCINCLUDES) -c $< -o $@
 
+%.ptx : %.cu
+	$(NVCC) $(NVCCFLAGS) $(NVCCINCLUDES) --ptx $< -o $@
+
 .PHONY : clean
 
 
 clean:
-	rm -f $(TARGET) $(OBJS) $(DEPS)
+	rm -f $(TARGET) $(OBJS) $(PTXS) $(DEPS)
 
 ifneq ($(MAKECMDGOALS), clean)
 -include $(DEPS)

@@ -26,37 +26,27 @@
 typedef struct my_buf_s {
 	/* Stores real data */
 	uint64_t job_num;
-	uint8_t *host_in;
-	uint32_t *host_pkt_offset;
-	uint16_t *host_length;
+	CUdeviceptr *host_in;
 	uint8_t *host_aes_key;
 	uint8_t *host_hmac_key;
-	uint8_t *host_out;
 	CUdeviceptr dev_in;
-	CUdeviceptr dev_pkt_offset;
-	CUdeviceptr dev_length;
 	CUdeviceptr dev_aes_key;
 	CUdeviceptr dev_hmac_key;
-	CUdeviceptr dev_out;
+	CUdeviceptr dev_work;
 } buf_t;
 
 static void *init_host_buf(void)
 {
 	buf_t *buf = malloc(sizeof(buf_t));
 
-	gcudaHostAlloc((void **)&(buf->host_in), MAX_BATCH_SIZE * MAX_PKT_LEN * sizeof(uint8_t));
-	gcudaHostAlloc((void **)&(buf->host_pkt_offset), (MAX_BATCH_SIZE + 1) * sizeof(uint32_t));
-	gcudaHostAlloc((void **)&(buf->host_length), MAX_BATCH_SIZE * PKT_LENGTH_SIZE);
+	gcudaHostAlloc((void **)&(buf->host_in), MAX_BATCH_SIZE * sizeof(CUdeviceptr));
 	gcudaHostAlloc((void **)&(buf->host_aes_key), MAX_BATCH_SIZE * AES_KEY_SIZE);
 	gcudaHostAlloc((void **)&(buf->host_hmac_key), MAX_BATCH_SIZE * HMAC_KEY_SIZE);
-	gcudaHostAlloc((void **)&(buf->host_out), MAX_BATCH_SIZE * MAX_PKT_LEN * sizeof(uint8_t));
 
-	gcudaMalloc(&(buf->dev_in), MAX_BATCH_SIZE * MAX_PKT_LEN * sizeof(uint8_t));
-	gcudaMalloc(&(buf->dev_pkt_offset), (MAX_BATCH_SIZE + 1) * sizeof(uint32_t));
-	gcudaMalloc(&(buf->dev_length), MAX_BATCH_SIZE * PKT_LENGTH_SIZE);
+	gcudaMalloc(&(buf->dev_in), MAX_BATCH_SIZE * sizeof(CUdeviceptr));
 	gcudaMalloc(&(buf->dev_aes_key), MAX_BATCH_SIZE * AES_KEY_SIZE);
 	gcudaMalloc(&(buf->dev_hmac_key), MAX_BATCH_SIZE * HMAC_KEY_SIZE);
-	gcudaMalloc(&(buf->dev_out), MAX_BATCH_SIZE * MAX_PKT_LEN * sizeof(uint8_t));
+	gcudaMalloc(&(buf->dev_work), MAX_BATCH_SIZE * MAX_PKT_LEN);
 
 	return buf;
 }
@@ -65,62 +55,30 @@ static inline void user_batch_func(void *cur_buf, struct rte_mbuf *pkt, int pkt_
 {
 	buf_t *buf = (buf_t *)cur_buf;
 
-	struct udp_hdr *udp = onvm_pkt_udp_hdr(pkt);
-	if (udp == NULL) {
-		rte_exit(EXIT_FAILURE, "UDP is NULL");
-	}
-
-	/* Paylod */
-	uint8_t *pkt_data = (uint8_t *)udp + sizeof(struct udp_hdr);
-	uint16_t payload_len = rte_be_to_cpu_16(udp->dgram_len) - 8; /* 8 byte udp header size */
-	uint16_t pad_len = (((payload_len + 3) & (~0x03)) + 63 + HMAC_TAG_SIZE) & (~0x03f);
-
-	/* Batch in the buf */
-	buf->host_length[pkt_idx] = payload_len;
-	if (pkt_idx == 0) {
-		buf->host_pkt_offset[pkt_idx] = 0;
-	}
-	buf->host_pkt_offset[pkt_idx + 1] = buf->host_pkt_offset[pkt_idx] + pad_len;
-	if (pkt_idx == MAX_BATCH_SIZE) {
-		/* FIXME: bug when max batch size is reached */
-		printf("%d, %u, %u\n", pkt_idx, buf->host_pkt_offset[pkt_idx + 1], buf->host_pkt_offset[pkt_idx]);
-	}
-
-	/*
-	int i;
-	for (i = payload_len; i < pad_len; i ++) {
-		*(buf->host_in + buf->host_pkt_offset[pkt_idx] + i) = 0;
-	}*/
-
-	rte_memcpy(buf->host_in + buf->host_pkt_offset[pkt_idx], pkt_data, payload_len);
+	buf->host_in[pkt_idx] = onvm_pkt_gpu_ptr(pkt);
 }
 
 static inline void user_post_func(void *cur_buf, struct rte_mbuf *pkt, int pkt_idx)
 {
-	buf_t *buf = (buf_t *)cur_buf;
-
-	/* TODO: update packet length with hmac tag */
-	struct udp_hdr *udp = onvm_pkt_udp_hdr(pkt);
-	uint8_t *pkt_data = (uint8_t *)udp + sizeof(struct udp_hdr);
-	uint16_t payload_len = rte_be_to_cpu_16(udp->dgram_len) - 8;
-
-	rte_memcpy(pkt_data, buf->host_out + buf->host_pkt_offset[pkt_idx], ((payload_len + 3) & (~0x03)) + HMAC_TAG_SIZE);
+	/* No sync with gpu data */
+	UNUSED(cur_buf);
+	UNUSED(pkt);
+	UNUSED(pkt_idx);
 }
 
 static void user_gpu_htod(void *cur_buf, int job_num, unsigned int thread_id)
 {
 	buf_t *buf = (buf_t *)cur_buf;
-	gcudaMemcpyHtoD(buf->dev_in, buf->host_in, buf->host_pkt_offset[job_num], ASYNC, thread_id);
+	gcudaMemcpyHtoD(buf->dev_in, buf->host_in, job_num * sizeof(CUdeviceptr), ASYNC, thread_id);
 	gcudaMemcpyHtoD(buf->dev_aes_key, buf->host_aes_key, job_num * AES_KEY_SIZE, ASYNC, thread_id);
 	gcudaMemcpyHtoD(buf->dev_hmac_key, buf->host_hmac_key, job_num * HMAC_KEY_SIZE, ASYNC, thread_id);
-	gcudaMemcpyHtoD(buf->dev_pkt_offset, buf->host_pkt_offset, (job_num + 1) * sizeof(uint32_t), ASYNC, thread_id);
-	gcudaMemcpyHtoD(buf->dev_length, buf->host_length, job_num * PKT_LENGTH_SIZE, ASYNC, thread_id);
 }
 
 static void user_gpu_dtoh(void *cur_buf, int job_num, unsigned int thread_id)
 {
-	buf_t *buf = (buf_t *)cur_buf;
-	gcudaMemcpyDtoH(buf->host_out, buf->dev_out, buf->host_pkt_offset[job_num], ASYNC, thread_id);
+	UNUSED(cur_buf);
+	UNUSED(job_num);
+	UNUSED(thread_id);
 }
 
 static void user_gpu_set_arg(void *cur_buf, void *arg_buf, void *arg_info, int job_num)
@@ -137,18 +95,10 @@ static void user_gpu_set_arg(void *cur_buf, void *arg_buf, void *arg_info, int j
 	rte_memcpy((uint8_t *)arg_buf + offset, &(buf->dev_in), sizeof(buf->dev_in));
 	offset += sizeof(buf->dev_in);
 
-	info[2] = offset;
-	rte_memcpy((uint8_t *)arg_buf + offset, &(buf->dev_out), sizeof(buf->dev_out));
-	offset += sizeof(buf->dev_out);
+	info[1] = offset;
+	rte_memcpy((uint8_t *)arg_buf + offset, &(buf->dev_work), sizeof(buf->dev_work));
+	offset += sizeof(buf->dev_work);
 
-	info[3] = offset;
-	rte_memcpy((uint8_t *)arg_buf + offset, &(buf->dev_pkt_offset), sizeof(buf->dev_pkt_offset));
-	offset += sizeof(buf->dev_pkt_offset);
-	
-	info[4] = offset;
-	rte_memcpy((uint8_t *)arg_buf + offset, &(buf->dev_length), sizeof(buf->dev_length));
-	offset += sizeof(buf->dev_length);
-	
 	info[5] = offset;
 	rte_memcpy((uint8_t *)arg_buf + offset, &(buf->dev_aes_key), sizeof(buf->dev_aes_key));
 	offset += sizeof(buf->dev_aes_key);
