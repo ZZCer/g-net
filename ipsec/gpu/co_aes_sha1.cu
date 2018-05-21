@@ -14,7 +14,6 @@
 extern "C" __global__ void
 aes_ctr_sha1_kernel(
 			gpu_packet_t **input_buf,
-			uint8_t *output_buf,
 			const uint8_t *aes_keys,
 			const uint8_t *hmac_keys,
 			const unsigned int num_flows,
