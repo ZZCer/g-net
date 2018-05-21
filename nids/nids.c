@@ -86,7 +86,7 @@ static void user_gpu_set_arg(void *cur_buf, void *arg_buf, void *arg_info, int j
 	uint64_t *info = (uint64_t *)arg_info;
 	buf_t *buf = (buf_t *)cur_buf;
 
-	uint64_t arg_num = 5;
+	uint64_t arg_num = 4;
 	uint64_t offset = 0;
 
 	info[0] = arg_num;
@@ -99,11 +99,11 @@ static void user_gpu_set_arg(void *cur_buf, void *arg_buf, void *arg_info, int j
 	rte_memcpy((uint8_t *)arg_buf + offset, &(buf->dev_pkt), sizeof(buf->dev_pkt));
 	offset += sizeof(buf->dev_pkt);
 
-	info[4] = offset;
+	info[3] = offset;
 	rte_memcpy((uint8_t *)arg_buf + offset, &(buf->dev_res), sizeof(buf->dev_res));
 	offset += sizeof(buf->dev_res);
 	
-	info[5] = offset;
+	info[4] = offset;
 	rte_memcpy((uint8_t *)arg_buf + offset, &job_num, sizeof(job_num));
 	offset += sizeof(job_num);
 }
