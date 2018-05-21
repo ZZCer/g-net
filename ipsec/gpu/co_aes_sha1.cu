@@ -163,14 +163,6 @@ aes_ctr_sha1_kernel(
 		*(sha1_out+3) = swap(h.h4);
 		*(sha1_out+4) = swap(h.h5);
 
-		// copy back
-		for (unsigned i = 0; i < len / 16; ++i) {
-			((float4 *) in)[i] = ((float4 *) out)[i];
-		}
-		for (unsigned i = len / 16 * 16; i < len; ++i) {
-			in[i] = out[i];
-		}
-
 		__syncthreads();
 	}
 	return;
