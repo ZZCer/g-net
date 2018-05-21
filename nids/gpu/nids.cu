@@ -1,30 +1,29 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include "rules.h"
+#include <gpu_packet.h>
 
 extern "C" __global__ void match(const uint16_t *acArray,
-						char *pkt_in,
-						const uint32_t *pkt_offset,
+						gpu_packet_t **pkt_in,
 						uint16_t *result,
 						const int batch_size)
 {
 	uint32_t len;
 	int i, state = 0;
 	char content;
-	int start, mark;
+	int mark;
 
 	int tid = blockIdx.x * blockDim.x + threadIdx.x;
 	int step = ceil(((float)batch_size) / (blockDim.x * gridDim.x));
 	tid = tid * step;
 
 	for (unsigned j = 0; (j < step) && (tid < batch_size); j++, tid++) {
-		len = pkt_offset[tid + 1] - pkt_offset[tid];
-		start = pkt_offset[tid];
+		len = pkt_in[tid]->payload_size;
 
 		mark = 0;
 
 		for (i = 0; i < len; i ++) {
-			content = pkt_in[start + i];
+			content = pkt_in[tid]->payload[i];
 
 #if 1
 			while (acArray[257 * state + ((int)content - 0)] == 0 && acArray[257 * state + 256] != 0) {
@@ -60,10 +59,3 @@ extern "C" __global__ void match(const uint16_t *acArray,
 	}
 }
 
-extern "C"
-void gpumatch(const int block_num, const int thread_per_block, const int batch_size, const uint16_t *acGPU, char *pkt_in, const uint32_t *pkt_offset, uint16_t *res)
-{
-	match<<<block_num, thread_per_block>>>(acGPU, pkt_in, pkt_offset, res, batch_size);
-
-	return;
-}
