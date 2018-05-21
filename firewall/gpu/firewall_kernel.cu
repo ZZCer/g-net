@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include <cuda_runtime.h>
 #include "firewall_kernel.h"
+#include <gpu_packet.h>
 
 extern struct portTreeNode *dev_srcPortTree;
 extern struct portTreeNode *dev_desPortTree;
@@ -10,7 +11,7 @@ extern unsigned int *dev_protocolHash;
 
 extern "C" __global__ void firewall_gpu(struct trieAddrNode *srcAddrTrie, struct trieAddrNode *desAddrTrie, unsigned int *protocolHash, 
 				struct portTreeNode *srcPortTree, struct portTreeNode *desPortTree,
-				unsigned int *res, struct pcktFive *pcktFwFives, int pcktCount)
+				unsigned int *res, gpu_packet_t **pkts, int pcktCount)
 {
 	int tid = threadIdx.x +  blockIdx.x * blockDim.x;
 
@@ -25,7 +26,7 @@ extern "C" __global__ void firewall_gpu(struct trieAddrNode *srcAddrTrie, struct
 		//***********
 		//for srcAddr
 		for (int i = 1; i <= 32; i++) {
-			unsigned int tmp = pcktFwFives[tid].srcAddr;
+			unsigned int tmp = pkts[tid]->src_addr;
 			tmp = tmp >> (32-i);
 
 			res[resid] = (res[resid] | srcAddrTrie[idx].matchRules[0]);
@@ -53,7 +54,7 @@ extern "C" __global__ void firewall_gpu(struct trieAddrNode *srcAddrTrie, struct
 		idx = 0;
 		int resDesAddr[4] = {0};
 		for (int i = 1; i <= 32; i++) {
-			unsigned int tmp = pcktFwFives[tid].desAddr;
+			unsigned int tmp = pkts[tid]->dst_addr;
 			tmp = tmp >> (32-i);
 			resDesAddr[0] = (resDesAddr[0] | desAddrTrie[idx].matchRules[0]);
 			resDesAddr[1] = (resDesAddr[1] | desAddrTrie[idx].matchRules[1]);
@@ -82,10 +83,10 @@ extern "C" __global__ void firewall_gpu(struct trieAddrNode *srcAddrTrie, struct
 
 		//************
 		//for protocol
-		res[resid] = (res[resid] & protocolHash[pcktFwFives[tid].protocol]);
-		res[resid+1] = (res[resid+1] & protocolHash[pcktFwFives[tid].protocol+4]);
-		res[resid+2] = (res[resid+2] & protocolHash[pcktFwFives[tid].protocol+8]);
-		res[resid+3] = (res[resid+3] & protocolHash[pcktFwFives[tid].protocol+12]);
+		res[resid] = (res[resid] & protocolHash[pkts[tid]->proto_id]);
+		res[resid+1] = (res[resid+1] & protocolHash[pkts[tid]->proto_id+4]);
+		res[resid+2] = (res[resid+2] & protocolHash[pkts[tid]->proto_id+8]);
+		res[resid+3] = (res[resid+3] & protocolHash[pkts[tid]->proto_id+12]);
 
 		//************
 		//for src port
@@ -102,15 +103,15 @@ extern "C" __global__ void firewall_gpu(struct trieAddrNode *srcAddrTrie, struct
 		while((tailSrc-headSrc) > 0) {   //when size > 0, same as queue is not empty,
 			//same as there are node to be deal with.
 			//headSrc is the node we are dealing with.
-			if (pcktFwFives[tid].srcPort > srcPortTree[srcPortQueue[headSrc]].max) {
+			if (pkts[tid]->src_port > srcPortTree[srcPortQueue[headSrc]].max) {
 				headSrc++;
-			} else if (pcktFwFives[tid].srcPort < srcPortTree[srcPortQueue[headSrc]].startPort) {
+			} else if (pkts[tid]->src_port < srcPortTree[srcPortQueue[headSrc]].startPort) {
 				if (srcPortTree[srcPortQueue[headSrc]].leftChild != 0) {
 					srcPortQueue[tailSrc++] = srcPortTree[srcPortQueue[headSrc]].leftChild;
 				}
 
 				headSrc++;
-			} else if (pcktFwFives[tid].srcPort <= srcPortTree[srcPortQueue[headSrc]].endPort) {
+			} else if (pkts[tid]->src_port <= srcPortTree[srcPortQueue[headSrc]].endPort) {
 				resSrcPort[0] = resSrcPort[0] | srcPortTree[srcPortQueue[headSrc]].matchRules[0];
 				resSrcPort[1] = resSrcPort[1] | srcPortTree[srcPortQueue[headSrc]].matchRules[1];
 				resSrcPort[2] = resSrcPort[2] | srcPortTree[srcPortQueue[headSrc]].matchRules[2];
@@ -158,15 +159,15 @@ extern "C" __global__ void firewall_gpu(struct trieAddrNode *srcAddrTrie, struct
 		while((tailDes-headDes) > 0) {   //when size > 0, same as queue is not empty,
 			//same as there are node to be deal with.
 			//headDes is the node we are dealing with.
-			if (pcktFwFives[tid].desPort > desPortTree[desPortQueue[headDes]].max) {
+			if (pkts[tid]->dst_port > desPortTree[desPortQueue[headDes]].max) {
 				headDes++;
-			} else if (pcktFwFives[tid].desPort < desPortTree[desPortQueue[headDes]].startPort) {
+			} else if (pkts[tid]->dst_port < desPortTree[desPortQueue[headDes]].startPort) {
 				if (desPortTree[desPortQueue[headDes]].leftChild != 0) {
 					desPortQueue[tailDes++] = desPortTree[desPortQueue[headDes]].leftChild;
 				}
 
 				headDes++;
-			} else if (pcktFwFives[tid].desPort <= desPortTree[desPortQueue[headDes]].endPort) {
+			} else if (pkts[tid]->dst_port <= desPortTree[desPortQueue[headDes]].endPort) {
 				resDesPort[0] = resDesPort[0] | desPortTree[desPortQueue[headDes]].matchRules[0];
 				resDesPort[1] = resDesPort[1] | desPortTree[desPortQueue[headDes]].matchRules[1];
 				resDesPort[2] = resDesPort[2] | desPortTree[desPortQueue[headDes]].matchRules[2];
@@ -197,61 +198,4 @@ extern "C" __global__ void firewall_gpu(struct trieAddrNode *srcAddrTrie, struct
 		res[resid+2] = (res[resid+2] & resDesPort[2]);
 		res[resid+3] = (res[resid+3] & resDesPort[3]);
 	}
-}
-
-extern "C" void firewall_kernel(struct pcktFive *dev_pcktFwFives, unsigned int *dev_res, int pcktCount, int block_num, int threads_per_blk)
-{
-	firewall_gpu<<<block_num, threads_per_blk>>>(dev_srcAddrTrie, dev_desAddrTrie, dev_protocolHash, dev_srcPortTree, dev_desPortTree, dev_res, dev_pcktFwFives, pcktCount);
-
-/*
-	for (int i = 0; i < N; i++) {
-		//deal with res to know which rule(s) is matched
-		int flag = 0;
-		for (int j = 0; (j < 32) && (flag != 1) ; j++) {
-			unsigned int tmp = res[i] >> (31-j);
-
-			if ((tmp % 2) == 1) {
-				printf("packet %d matches rule %d  \n", i, j);
-				flag = 1;
-				break;
-			} else {
-				//		printf("packet %d %d\n", i, pcktFwFives[i].desPort);
-			}
-		}
-		for (int j = 32; (j < 64) && (flag != 1); j++) {
-			unsigned int tmp = res[i+N] >> (63-j);
-			if ((tmp % 2) == 1) {   
-
-				printf("packet %d matches rule %d\n", i, j);
-				flag = 1;
-				break;
-
-			} else {
-				//printf("packet %d pack port end %d not\n", i, pcktFwFives[i].desPort);
-			}
-
-		}
-		for (int j = 64; (j < 96) && (flag != 1); j++) {
-			unsigned int tmp = res[i+N+N] >> (95-j);
-			if ((tmp % 2) == 1) {
-				printf("packet %d matches rule %d \n", i, j);
-				flag = 1;
-				break;
-			} else {
-				//printf("packet %d %d\n", i, pcktFwFives[i].desPort);
-			}
-		}
-		for (int j = 96; (j < 128) && (flag != 1) ; j++) {
-			unsigned int tmp = res[i+N+N+N] >> (127-j);
-			if ((tmp % 2) == 1) {
-				printf("packet %d matches rule %d \n", i, j);
-				flag = 1;
-				break;
-			} else {
-				//		printf("packet %d %d\n", i, pcktFwFives[i].srcPort);
-			}
-		}
-	}
-*/
-	return ;
 }

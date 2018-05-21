@@ -6,17 +6,17 @@ dep_firewall.o = /home/swordfeng/Documents/lab/nfv/g-net/firewall/firewall.c \
  /usr/include/gnu/stubs.h /usr/include/gnu/stubs-64.h \
  /usr/include/bits/posix_opt.h /usr/include/bits/environments.h \
  /usr/include/bits/types.h /usr/include/bits/typesizes.h \
- /usr/lib/gcc/x86_64-pc-linux-gnu/7.3.1/include/stddef.h \
+ /usr/lib/gcc/x86_64-pc-linux-gnu/8.1.0/include/stddef.h \
  /usr/include/bits/confname.h /usr/include/bits/getopt_posix.h \
  /usr/include/bits/getopt_core.h \
- /usr/lib/gcc/x86_64-pc-linux-gnu/7.3.1/include/stdint.h \
+ /usr/lib/gcc/x86_64-pc-linux-gnu/8.1.0/include/stdint.h \
  /usr/include/stdint.h /usr/include/bits/libc-header-start.h \
  /usr/include/bits/wchar.h /usr/include/bits/stdint-intn.h \
  /usr/include/bits/stdint-uintn.h /usr/include/stdio.h \
  /usr/include/bits/types/__FILE.h /usr/include/bits/types/FILE.h \
  /usr/include/bits/libio.h /usr/include/bits/_G_config.h \
  /usr/include/bits/types/__mbstate_t.h \
- /usr/lib/gcc/x86_64-pc-linux-gnu/7.3.1/include/stdarg.h \
+ /usr/lib/gcc/x86_64-pc-linux-gnu/8.1.0/include/stdarg.h \
  /usr/include/bits/stdio_lim.h /usr/include/bits/sys_errlist.h \
  /usr/include/inttypes.h /usr/include/errno.h /usr/include/bits/errno.h \
  /usr/include/linux/errno.h /usr/include/asm/errno.h \
@@ -42,8 +42,8 @@ dep_firewall.o = /home/swordfeng/Documents/lab/nfv/g-net/firewall/firewall.c \
  /usr/include/strings.h \
  /home/swordfeng/Documents/lab/nfv/g-net/dpdk/x86_64-native-linuxapp-gcc/include/rte_common.h \
  /usr/include/ctype.h \
- /usr/lib/gcc/x86_64-pc-linux-gnu/7.3.1/include-fixed/limits.h \
- /usr/lib/gcc/x86_64-pc-linux-gnu/7.3.1/include-fixed/syslimits.h \
+ /usr/lib/gcc/x86_64-pc-linux-gnu/8.1.0/include-fixed/limits.h \
+ /usr/lib/gcc/x86_64-pc-linux-gnu/8.1.0/include-fixed/syslimits.h \
  /usr/include/limits.h /usr/include/bits/posix1_lim.h \
  /usr/include/bits/local_lim.h /usr/include/linux/limits.h \
  /usr/include/bits/posix2_lim.h \
@@ -65,10 +65,10 @@ dep_firewall.o = /home/swordfeng/Documents/lab/nfv/g-net/firewall/firewall.c \
  /home/swordfeng/Documents/lab/nfv/g-net/dpdk/x86_64-native-linuxapp-gcc/include/rte_launch.h \
  /home/swordfeng/Documents/lab/nfv/g-net/dpdk/x86_64-native-linuxapp-gcc/include/rte_pause.h \
  /home/swordfeng/Documents/lab/nfv/g-net/dpdk/x86_64-native-linuxapp-gcc/include/generic/rte_pause.h \
- /usr/lib/gcc/x86_64-pc-linux-gnu/7.3.1/include/emmintrin.h \
- /usr/lib/gcc/x86_64-pc-linux-gnu/7.3.1/include/xmmintrin.h \
- /usr/lib/gcc/x86_64-pc-linux-gnu/7.3.1/include/mmintrin.h \
- /usr/lib/gcc/x86_64-pc-linux-gnu/7.3.1/include/mm_malloc.h \
+ /usr/lib/gcc/x86_64-pc-linux-gnu/8.1.0/include/emmintrin.h \
+ /usr/lib/gcc/x86_64-pc-linux-gnu/8.1.0/include/xmmintrin.h \
+ /usr/lib/gcc/x86_64-pc-linux-gnu/8.1.0/include/mmintrin.h \
+ /usr/lib/gcc/x86_64-pc-linux-gnu/8.1.0/include/mm_malloc.h \
  /home/swordfeng/Documents/lab/nfv/g-net/dpdk/x86_64-native-linuxapp-gcc/include/rte_rtm.h \
  /home/swordfeng/Documents/lab/nfv/g-net/dpdk/x86_64-native-linuxapp-gcc/include/rte_cpuflags.h \
  /home/swordfeng/Documents/lab/nfv/g-net/dpdk/x86_64-native-linuxapp-gcc/include/generic/rte_cpuflags.h \
@@ -87,60 +87,73 @@ dep_firewall.o = /home/swordfeng/Documents/lab/nfv/g-net/firewall/firewall.c \
  /home/swordfeng/Documents/lab/nfv/g-net/dpdk/x86_64-native-linuxapp-gcc/include/rte_memcpy.h \
  /home/swordfeng/Documents/lab/nfv/g-net/dpdk/x86_64-native-linuxapp-gcc/include/rte_vect.h \
  /home/swordfeng/Documents/lab/nfv/g-net/dpdk/x86_64-native-linuxapp-gcc/include/generic/rte_vect.h \
- /usr/lib/gcc/x86_64-pc-linux-gnu/7.3.1/include/x86intrin.h \
- /usr/lib/gcc/x86_64-pc-linux-gnu/7.3.1/include/ia32intrin.h \
- /usr/lib/gcc/x86_64-pc-linux-gnu/7.3.1/include/pmmintrin.h \
- /usr/lib/gcc/x86_64-pc-linux-gnu/7.3.1/include/tmmintrin.h \
- /usr/lib/gcc/x86_64-pc-linux-gnu/7.3.1/include/ammintrin.h \
- /usr/lib/gcc/x86_64-pc-linux-gnu/7.3.1/include/smmintrin.h \
- /usr/lib/gcc/x86_64-pc-linux-gnu/7.3.1/include/popcntintrin.h \
- /usr/lib/gcc/x86_64-pc-linux-gnu/7.3.1/include/wmmintrin.h \
- /usr/lib/gcc/x86_64-pc-linux-gnu/7.3.1/include/immintrin.h \
- /usr/lib/gcc/x86_64-pc-linux-gnu/7.3.1/include/avxintrin.h \
- /usr/lib/gcc/x86_64-pc-linux-gnu/7.3.1/include/avx2intrin.h \
- /usr/lib/gcc/x86_64-pc-linux-gnu/7.3.1/include/avx512fintrin.h \
- /usr/lib/gcc/x86_64-pc-linux-gnu/7.3.1/include/avx512erintrin.h \
- /usr/lib/gcc/x86_64-pc-linux-gnu/7.3.1/include/avx512pfintrin.h \
- /usr/lib/gcc/x86_64-pc-linux-gnu/7.3.1/include/avx512cdintrin.h \
- /usr/lib/gcc/x86_64-pc-linux-gnu/7.3.1/include/avx512vlintrin.h \
- /usr/lib/gcc/x86_64-pc-linux-gnu/7.3.1/include/avx512bwintrin.h \
- /usr/lib/gcc/x86_64-pc-linux-gnu/7.3.1/include/avx512dqintrin.h \
- /usr/lib/gcc/x86_64-pc-linux-gnu/7.3.1/include/avx512vlbwintrin.h \
- /usr/lib/gcc/x86_64-pc-linux-gnu/7.3.1/include/avx512vldqintrin.h \
- /usr/lib/gcc/x86_64-pc-linux-gnu/7.3.1/include/avx512ifmaintrin.h \
- /usr/lib/gcc/x86_64-pc-linux-gnu/7.3.1/include/avx512ifmavlintrin.h \
- /usr/lib/gcc/x86_64-pc-linux-gnu/7.3.1/include/avx512vbmiintrin.h \
- /usr/lib/gcc/x86_64-pc-linux-gnu/7.3.1/include/avx512vbmivlintrin.h \
- /usr/lib/gcc/x86_64-pc-linux-gnu/7.3.1/include/avx5124fmapsintrin.h \
- /usr/lib/gcc/x86_64-pc-linux-gnu/7.3.1/include/avx5124vnniwintrin.h \
- /usr/lib/gcc/x86_64-pc-linux-gnu/7.3.1/include/avx512vpopcntdqintrin.h \
- /usr/lib/gcc/x86_64-pc-linux-gnu/7.3.1/include/shaintrin.h \
- /usr/lib/gcc/x86_64-pc-linux-gnu/7.3.1/include/lzcntintrin.h \
- /usr/lib/gcc/x86_64-pc-linux-gnu/7.3.1/include/bmiintrin.h \
- /usr/lib/gcc/x86_64-pc-linux-gnu/7.3.1/include/bmi2intrin.h \
- /usr/lib/gcc/x86_64-pc-linux-gnu/7.3.1/include/fmaintrin.h \
- /usr/lib/gcc/x86_64-pc-linux-gnu/7.3.1/include/f16cintrin.h \
- /usr/lib/gcc/x86_64-pc-linux-gnu/7.3.1/include/rtmintrin.h \
- /usr/lib/gcc/x86_64-pc-linux-gnu/7.3.1/include/xtestintrin.h \
- /usr/lib/gcc/x86_64-pc-linux-gnu/7.3.1/include/mm3dnow.h \
- /usr/lib/gcc/x86_64-pc-linux-gnu/7.3.1/include/prfchwintrin.h \
- /usr/lib/gcc/x86_64-pc-linux-gnu/7.3.1/include/fma4intrin.h \
- /usr/lib/gcc/x86_64-pc-linux-gnu/7.3.1/include/xopintrin.h \
- /usr/lib/gcc/x86_64-pc-linux-gnu/7.3.1/include/lwpintrin.h \
- /usr/lib/gcc/x86_64-pc-linux-gnu/7.3.1/include/tbmintrin.h \
- /usr/lib/gcc/x86_64-pc-linux-gnu/7.3.1/include/rdseedintrin.h \
- /usr/lib/gcc/x86_64-pc-linux-gnu/7.3.1/include/fxsrintrin.h \
- /usr/lib/gcc/x86_64-pc-linux-gnu/7.3.1/include/xsaveintrin.h \
- /usr/lib/gcc/x86_64-pc-linux-gnu/7.3.1/include/xsaveoptintrin.h \
- /usr/lib/gcc/x86_64-pc-linux-gnu/7.3.1/include/sgxintrin.h \
- /usr/lib/gcc/x86_64-pc-linux-gnu/7.3.1/include/adxintrin.h \
- /usr/lib/gcc/x86_64-pc-linux-gnu/7.3.1/include/clwbintrin.h \
- /usr/lib/gcc/x86_64-pc-linux-gnu/7.3.1/include/clflushoptintrin.h \
- /usr/lib/gcc/x86_64-pc-linux-gnu/7.3.1/include/xsavesintrin.h \
- /usr/lib/gcc/x86_64-pc-linux-gnu/7.3.1/include/xsavecintrin.h \
- /usr/lib/gcc/x86_64-pc-linux-gnu/7.3.1/include/mwaitxintrin.h \
- /usr/lib/gcc/x86_64-pc-linux-gnu/7.3.1/include/clzerointrin.h \
- /usr/lib/gcc/x86_64-pc-linux-gnu/7.3.1/include/pkuintrin.h \
+ /usr/lib/gcc/x86_64-pc-linux-gnu/8.1.0/include/x86intrin.h \
+ /usr/lib/gcc/x86_64-pc-linux-gnu/8.1.0/include/ia32intrin.h \
+ /usr/lib/gcc/x86_64-pc-linux-gnu/8.1.0/include/pmmintrin.h \
+ /usr/lib/gcc/x86_64-pc-linux-gnu/8.1.0/include/tmmintrin.h \
+ /usr/lib/gcc/x86_64-pc-linux-gnu/8.1.0/include/ammintrin.h \
+ /usr/lib/gcc/x86_64-pc-linux-gnu/8.1.0/include/smmintrin.h \
+ /usr/lib/gcc/x86_64-pc-linux-gnu/8.1.0/include/popcntintrin.h \
+ /usr/lib/gcc/x86_64-pc-linux-gnu/8.1.0/include/wmmintrin.h \
+ /usr/lib/gcc/x86_64-pc-linux-gnu/8.1.0/include/immintrin.h \
+ /usr/lib/gcc/x86_64-pc-linux-gnu/8.1.0/include/avxintrin.h \
+ /usr/lib/gcc/x86_64-pc-linux-gnu/8.1.0/include/avx2intrin.h \
+ /usr/lib/gcc/x86_64-pc-linux-gnu/8.1.0/include/avx512fintrin.h \
+ /usr/lib/gcc/x86_64-pc-linux-gnu/8.1.0/include/avx512erintrin.h \
+ /usr/lib/gcc/x86_64-pc-linux-gnu/8.1.0/include/avx512pfintrin.h \
+ /usr/lib/gcc/x86_64-pc-linux-gnu/8.1.0/include/avx512cdintrin.h \
+ /usr/lib/gcc/x86_64-pc-linux-gnu/8.1.0/include/avx512vlintrin.h \
+ /usr/lib/gcc/x86_64-pc-linux-gnu/8.1.0/include/avx512bwintrin.h \
+ /usr/lib/gcc/x86_64-pc-linux-gnu/8.1.0/include/avx512dqintrin.h \
+ /usr/lib/gcc/x86_64-pc-linux-gnu/8.1.0/include/avx512vlbwintrin.h \
+ /usr/lib/gcc/x86_64-pc-linux-gnu/8.1.0/include/avx512vldqintrin.h \
+ /usr/lib/gcc/x86_64-pc-linux-gnu/8.1.0/include/avx512ifmaintrin.h \
+ /usr/lib/gcc/x86_64-pc-linux-gnu/8.1.0/include/avx512ifmavlintrin.h \
+ /usr/lib/gcc/x86_64-pc-linux-gnu/8.1.0/include/avx512vbmiintrin.h \
+ /usr/lib/gcc/x86_64-pc-linux-gnu/8.1.0/include/avx512vbmivlintrin.h \
+ /usr/lib/gcc/x86_64-pc-linux-gnu/8.1.0/include/avx5124fmapsintrin.h \
+ /usr/lib/gcc/x86_64-pc-linux-gnu/8.1.0/include/avx5124vnniwintrin.h \
+ /usr/lib/gcc/x86_64-pc-linux-gnu/8.1.0/include/avx512vpopcntdqintrin.h \
+ /usr/lib/gcc/x86_64-pc-linux-gnu/8.1.0/include/avx512vbmi2intrin.h \
+ /usr/lib/gcc/x86_64-pc-linux-gnu/8.1.0/include/avx512vbmi2vlintrin.h \
+ /usr/lib/gcc/x86_64-pc-linux-gnu/8.1.0/include/avx512vnniintrin.h \
+ /usr/lib/gcc/x86_64-pc-linux-gnu/8.1.0/include/avx512vnnivlintrin.h \
+ /usr/lib/gcc/x86_64-pc-linux-gnu/8.1.0/include/avx512vpopcntdqvlintrin.h \
+ /usr/lib/gcc/x86_64-pc-linux-gnu/8.1.0/include/avx512bitalgintrin.h \
+ /usr/lib/gcc/x86_64-pc-linux-gnu/8.1.0/include/shaintrin.h \
+ /usr/lib/gcc/x86_64-pc-linux-gnu/8.1.0/include/lzcntintrin.h \
+ /usr/lib/gcc/x86_64-pc-linux-gnu/8.1.0/include/bmiintrin.h \
+ /usr/lib/gcc/x86_64-pc-linux-gnu/8.1.0/include/bmi2intrin.h \
+ /usr/lib/gcc/x86_64-pc-linux-gnu/8.1.0/include/fmaintrin.h \
+ /usr/lib/gcc/x86_64-pc-linux-gnu/8.1.0/include/f16cintrin.h \
+ /usr/lib/gcc/x86_64-pc-linux-gnu/8.1.0/include/rtmintrin.h \
+ /usr/lib/gcc/x86_64-pc-linux-gnu/8.1.0/include/xtestintrin.h \
+ /usr/lib/gcc/x86_64-pc-linux-gnu/8.1.0/include/cetintrin.h \
+ /usr/lib/gcc/x86_64-pc-linux-gnu/8.1.0/include/gfniintrin.h \
+ /usr/lib/gcc/x86_64-pc-linux-gnu/8.1.0/include/vaesintrin.h \
+ /usr/lib/gcc/x86_64-pc-linux-gnu/8.1.0/include/vpclmulqdqintrin.h \
+ /usr/lib/gcc/x86_64-pc-linux-gnu/8.1.0/include/movdirintrin.h \
+ /usr/lib/gcc/x86_64-pc-linux-gnu/8.1.0/include/mm3dnow.h \
+ /usr/lib/gcc/x86_64-pc-linux-gnu/8.1.0/include/prfchwintrin.h \
+ /usr/lib/gcc/x86_64-pc-linux-gnu/8.1.0/include/fma4intrin.h \
+ /usr/lib/gcc/x86_64-pc-linux-gnu/8.1.0/include/xopintrin.h \
+ /usr/lib/gcc/x86_64-pc-linux-gnu/8.1.0/include/lwpintrin.h \
+ /usr/lib/gcc/x86_64-pc-linux-gnu/8.1.0/include/tbmintrin.h \
+ /usr/lib/gcc/x86_64-pc-linux-gnu/8.1.0/include/rdseedintrin.h \
+ /usr/lib/gcc/x86_64-pc-linux-gnu/8.1.0/include/fxsrintrin.h \
+ /usr/lib/gcc/x86_64-pc-linux-gnu/8.1.0/include/xsaveintrin.h \
+ /usr/lib/gcc/x86_64-pc-linux-gnu/8.1.0/include/xsaveoptintrin.h \
+ /usr/lib/gcc/x86_64-pc-linux-gnu/8.1.0/include/sgxintrin.h \
+ /usr/lib/gcc/x86_64-pc-linux-gnu/8.1.0/include/pconfigintrin.h \
+ /usr/lib/gcc/x86_64-pc-linux-gnu/8.1.0/include/adxintrin.h \
+ /usr/lib/gcc/x86_64-pc-linux-gnu/8.1.0/include/clwbintrin.h \
+ /usr/lib/gcc/x86_64-pc-linux-gnu/8.1.0/include/clflushoptintrin.h \
+ /usr/lib/gcc/x86_64-pc-linux-gnu/8.1.0/include/xsavesintrin.h \
+ /usr/lib/gcc/x86_64-pc-linux-gnu/8.1.0/include/xsavecintrin.h \
+ /usr/lib/gcc/x86_64-pc-linux-gnu/8.1.0/include/mwaitxintrin.h \
+ /usr/lib/gcc/x86_64-pc-linux-gnu/8.1.0/include/clzerointrin.h \
+ /usr/lib/gcc/x86_64-pc-linux-gnu/8.1.0/include/wbnoinvdintrin.h \
+ /usr/lib/gcc/x86_64-pc-linux-gnu/8.1.0/include/pkuintrin.h \
  /home/swordfeng/Documents/lab/nfv/g-net/dpdk/x86_64-native-linuxapp-gcc/include/rte_prefetch.h \
  /home/swordfeng/Documents/lab/nfv/g-net/dpdk/x86_64-native-linuxapp-gcc/include/generic/rte_prefetch.h \
  /home/swordfeng/Documents/lab/nfv/g-net/dpdk/x86_64-native-linuxapp-gcc/include/rte_mbuf_ptype.h \
@@ -161,6 +174,7 @@ dep_firewall.o = /home/swordfeng/Documents/lab/nfv/g-net/firewall/firewall.c \
  /home/swordfeng/Documents/lab/nfv/g-net/firewall/../onvm/onvm_nflib/onvm_nflib.h \
  /home/swordfeng/Documents/lab/nfv/g-net/firewall/../onvm/onvm_nflib/onvm_common.h \
  /usr/include/assert.h /opt/cuda/include/cuda.h \
+ /home/swordfeng/Documents/lab/nfv/g-net/firewall/../onvm/onvm_nflib/gpu_packet.h \
  /home/swordfeng/Documents/lab/nfv/g-net/firewall/../onvm/onvm_nflib/onvm_pkt_helper.h \
  /home/swordfeng/Documents/lab/nfv/g-net/firewall/../onvm/onvm_nflib/onvm_framework.h \
  /home/swordfeng/Documents/lab/nfv/g-net/dpdk/x86_64-native-linuxapp-gcc/include/rte_config.h \
