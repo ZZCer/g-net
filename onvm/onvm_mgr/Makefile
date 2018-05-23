@@ -58,9 +58,9 @@ SRCS-y := main.c onvm_init.c onvm_args.c onvm_stats.c onvm_nf.c manager.c schedu
 
 INC :=
 
-WERROR_FLAGS += -Wno-error=unused-function
+WERROR_FLAGS += -Wno-error=unused-function -Wno-error=maybe-uninitialized
 
-CFLAGS += $(WERROR_FLAGS) -g -rdynamic $(USER_FLAGS)
+CFLAGS += $(WERROR_FLAGS) -O3 -rdynamic $(USER_FLAGS)
 
 CFLAGS += -I$(SRCDIR)/../onvm_nflib
 LDFLAGS += -L$(SRCDIR)/../onvm_nflib/$(RTE_TARGET)/lib -lonvm
