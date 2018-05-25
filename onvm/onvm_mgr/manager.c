@@ -21,6 +21,9 @@ struct rte_ring *nf_request_queue;
 static int allocated_sm = 0;
 CUcontext context;
 
+CUmodule tx_copyback_mod;
+CUfunction tx_copyback;
+
 void
 init_manager(void)
 {
@@ -37,7 +40,7 @@ init_manager(void)
 	}
 
 	// get first CUDA device
-	checkCudaErrors(cuDeviceGet(&device, 0));
+	checkCudaErrors(cuDeviceGet(&device, 1));
 	char name[100];
 	cuDeviceGetName(name, 100, device);
 	printf("> Using device 0: %s\n", name);
@@ -128,6 +131,9 @@ init_manager(void)
 	checkCudaErrors( cuMemAlloc(&gpu_pkts_buf, GPU_BUF_SIZE * GPU_MAX_PKT_LEN) );
 	gpu_pkts_head = gpu_pkts_buf;
 	rte_spinlock_init(&gpu_pkts_lock);
+
+	checkCudaErrors( cuModuleLoad(&tx_copyback_mod, "onvm_mgr/tx_copyback.ptx") );
+	checkCudaErrors( cuModuleGetFunction(&tx_copyback, tx_copyback_mod, "tx_copyback") );
 }
 
 void

@@ -143,7 +143,7 @@ init(int argc, char *argv[]) {
 
 
 	/* Choose service chain, copy one and paste out of "if 0" to use it */
-	const int service_chain[MAX_SERVICES] = {NF_ROUTER, NF_END};
+	const int service_chain[MAX_SERVICES] = {NF_END};
 
 #if 0
 	/* 1 NF */
@@ -268,7 +268,7 @@ init_port(uint8_t port_num) {
 		},
 	};
 
-	const uint16_t rx_rings = ONVM_NUM_RX_THREADS, tx_rings = 1;
+	const uint16_t rx_rings = ONVM_NUM_RX_THREADS, tx_rings = ONVM_NUM_TX_THREADS_PER_PORT;
 	const uint16_t rx_ring_size = RTE_MP_RX_DESC_DEFAULT;
 	const uint16_t tx_ring_size = RTE_MP_TX_DESC_DEFAULT;
 
@@ -306,6 +306,11 @@ init_port(uint8_t port_num) {
 	if (retval < 0) return retval;
 
 	ports->tx_q_new[port_num] = rte_ring_create(get_port_tx_queue_name(port_num),
+			BATCH_QUEUE_FACTOR * MAX_BATCH_SIZE, rte_socket_id(), NO_FLAGS);
+	if (!ports->tx_q_new[port_num])
+		return -1;
+
+	ports->tx_q_gpu[port_num] = rte_ring_create(get_port_tx_gpu_queue_name(port_num),
 			BATCH_QUEUE_FACTOR * MAX_BATCH_SIZE, rte_socket_id(), NO_FLAGS);
 	if (!ports->tx_q_new[port_num])
 		return -1;

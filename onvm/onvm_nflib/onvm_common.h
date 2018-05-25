@@ -68,6 +68,8 @@
 #define STARVE_THRESHOLD 1000000
 
 #define RX_GPU_BATCH_SIZE 512
+#define TX_GPU_BATCH_SIZE 2048
+#define TX_GPU_BUF_SIZE (256*1024)
 #define GPU_BUF_SIZE 16384
 
 #define MZ_CLIENTS "MProc_clients"
@@ -82,6 +84,7 @@
 /*****************************Original Below**********************************/
 
 #define ONVM_NUM_RX_THREADS	8 /* Should be the same with the number of worker threads in a NF --- what??? rx threads are matched to the num of NICs*/
+#define ONVM_NUM_TX_THREADS_PER_PORT 4
 #define BQUEUE_SWITCH	1      /* Use BQueue to transfer packets */
 //#define MEASURE_LATENCY	1     /* Measure the latency of each NF */
 
@@ -535,6 +538,12 @@ get_port_tx_queue_name(uint16_t port_id) {
        return buffer;
 }
 
+static inline const char *
+get_port_tx_gpu_queue_name(uint16_t port_id) {
+       static char buffer[sizeof(PORT_TX_QUEUE) + 3];
+       snprintf(buffer, sizeof(buffer) - 1, PORT_TX_QUEUE "G", port_id);
+       return buffer;
+}
 #define RTE_LOGTYPE_APP RTE_LOGTYPE_USER1
 
 #endif  // _COMMON_H_
