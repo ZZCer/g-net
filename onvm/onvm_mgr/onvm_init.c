@@ -143,7 +143,7 @@ init(int argc, char *argv[]) {
 
 
 	/* Choose service chain, copy one and paste out of "if 0" to use it */
-	const int service_chain[MAX_SERVICES] = {NF_END};
+	const int service_chain[MAX_SERVICES] = {NF_ROUTER, NF_END};
 
 #if 0
 	/* 1 NF */
