@@ -1,0 +1,13 @@
+objs/sha1.o: sha1.cu sha1.h
+
+sha1.h:
+objs/co_aes_sha1.o: co_aes_sha1.cu aes_core.h sha1.h crypto_size.h
+
+aes_core.h:
+
+sha1.h:
+
+crypto_size.h:
+objs/aes.o: aes.cu aes_core.h
+
+aes_core.h:

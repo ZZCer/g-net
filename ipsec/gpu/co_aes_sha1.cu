@@ -132,6 +132,7 @@ aes_ctr_sha1_kernel(
 		for (unsigned i = 0; i < num_iter; i ++)
 			computeSHA1Block((char *)(input_buf[idx]->payload), w, i * 64, len, h);
 
+#if 0 // do not write sha1 output as it overwrites some info
 		/* In SRTP, sha1_out has only 80 bits output 32+32+16 = 80 */
 		*(sha1_out)   = swap(h.h1);
 		*(sha1_out+1) = swap(h.h2);
@@ -161,7 +162,7 @@ aes_ctr_sha1_kernel(
 		*(sha1_out+2) = swap(h.h3);
 		*(sha1_out+3) = swap(h.h4);
 		*(sha1_out+4) = swap(h.h5);
-
+#endif
 		__syncthreads();
 	}
 	return;
