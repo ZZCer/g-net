@@ -60,7 +60,8 @@ init_manager(void)
 
 	// get compute capabilities and the devicename
 	int major = 0, minor = 0;
-	checkCudaErrors( cuDeviceComputeCapability(&major, &minor, device) );
+    checkCudaErrors( cuDeviceGetAttribute(&major, CU_DEVICE_ATTRIBUTE_COMPUTE_CAPABILITY_MAJOR, device) );
+    checkCudaErrors( cuDeviceGetAttribute(&minor, CU_DEVICE_ATTRIBUTE_COMPUTE_CAPABILITY_MINOR, device) );
 	printf("> GPU Device has SM %d.%d compute capability\n", major, minor);
 
 	size_t totalGlobalMem;

@@ -219,24 +219,13 @@ cpu_thread(void *arg)
 }
 
 static void 
-onvm_framework_spawn_thread(int thread_id)
+onvm_framework_spawn_thread(int thread_id, unsigned core_id)
 {
 	struct thread_arg *arg = (struct thread_arg *)malloc(sizeof(struct thread_arg));
 	arg->thread_id = thread_id;
 
-#if 0
-	pthread_t tid;
-	pthread_attr_t attr;
-	pthread_attr_init(&attr);
-
-	if (pthread_create(&tid, &attr, cpu_thread, (void *)arg) != 0)
-		rte_exit(EXIT_FAILURE, "pthread_create error!\n");
-#endif
-
-	unsigned cur_lcore = rte_lcore_id() + thread_id;
-	cur_lcore =	rte_get_next_lcore(cur_lcore, 1, 1);
-	if (rte_eal_remote_launch(cpu_thread, (void *)arg, cur_lcore) == -EBUSY) {
-		rte_exit(EXIT_FAILURE, "Core %d is busy, cannot allocate to run threads\n", cur_lcore);
+	if (rte_eal_remote_launch(cpu_thread, (void *)arg, core_id) == -EBUSY) {
+		rte_exit(EXIT_FAILURE, "Core %d is busy, cannot allocate to run threads\n", core_id);
 	}
 }
 
@@ -523,10 +512,12 @@ onvm_framework_start_cpu(void *(*user_init_buf_func)(void),
 	POST_FUNC = user_post_func;
 
 	int i;
+    unsigned cur_lcore = rte_lcore_id();
 	for (i = 0; i < INIT_WORKER_THREAD_NUM; i ++) {
 		/* Better to wait for a while between launching two threads, don't know why */
 		sleep(1);
-		onvm_framework_spawn_thread(i);
+        cur_lcore =	rte_get_next_lcore(cur_lcore, 1, 1);
+		onvm_framework_spawn_thread(i, cur_lcore);
 	}
 }
 
