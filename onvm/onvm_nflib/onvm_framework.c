@@ -351,9 +351,19 @@ onvm_framework_start_gpu(gpu_htod_t user_gpu_htod, gpu_dtoh_t user_gpu_dtoh, gpu
 		for (i = 0; i < gpu_info->thread_num; i++) {
 			batch = &batch_set[i];
 			if (batch->gpu_buf_id != -1 && gcudaPollForStreamSyncResponse(i)) {
-				gpu_buf_id = batch->gpu_buf_id;
-				batch->gpu_buf_id = -1;
-				batch->buf_state[gpu_buf_id] = BUF_STATE_CPU_READY;
+				if (batch->gpu_state == 1) {
+					user_gpu_dtoh(batch->user_bufs[batch->gpu_buf_id], batch->buf_size[batch->gpu_buf_id], i);
+					gcudaStreamSynchronize(i);
+					rte_spinlock_lock(&cl->stats.update_lock);
+					cl->stats.batch_size += batch->buf_size[gpu_buf_id];
+					cl->stats.batch_cnt++;
+					rte_spinlock_unlock(&cl->stats.update_lock);
+					batch->gpu_state = 0;
+				} else {
+					gpu_buf_id = batch->gpu_buf_id;
+					batch->gpu_buf_id = -1;
+					batch->buf_state[gpu_buf_id] = BUF_STATE_CPU_READY;
+				}
 			}
 		}
 
@@ -373,13 +383,7 @@ onvm_framework_start_gpu(gpu_htod_t user_gpu_htod, gpu_dtoh_t user_gpu_dtoh, gpu
 		user_gpu_htod(batch->user_bufs[gpu_buf_id], batch->buf_size[gpu_buf_id], batch_id);
 		user_gpu_set_arg(batch->user_bufs[gpu_buf_id], gpu_info->args[batch_id], gpu_info->arg_info[batch_id], batch->buf_size[gpu_buf_id]);
 		gcudaLaunchKernel(batch_id);
-		user_gpu_dtoh(batch->user_bufs[gpu_buf_id], batch->buf_size[gpu_buf_id], batch_id);
-		gcudaStreamSynchronize(batch_id);
-
-		rte_spinlock_lock(&cl->stats.update_lock);
-		cl->stats.batch_size += batch->buf_size[gpu_buf_id];
-		cl->stats.batch_cnt++;
-		rte_spinlock_unlock(&cl->stats.update_lock);
+		batch->gpu_state = 1;
 	}
 
 	onvm_nflib_stop(); // clean up

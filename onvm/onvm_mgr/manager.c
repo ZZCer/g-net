@@ -250,6 +250,32 @@ stream_sync_callback(CUstream cuda_stream, CUresult status, void *user_data)
 }
 
 static void
+kernel_callback(CUstream cuda_stream, CUresult status, void *user_data)
+{
+	UNUSED(cuda_stream);
+	checkCudaErrors(status);
+	struct nf_req *req = (struct nf_req *)user_data;
+	struct client *cl = &(clients[req->instance_id]);
+	int tid = req->thread_id;
+
+	struct nf_rsp *rsp;
+	if (rte_mempool_get(nf_response_pool, (void **)&rsp) < 0)
+		rte_exit(EXIT_FAILURE, "Failed to get response memory\n");
+	if (rsp == NULL)
+		rte_exit(EXIT_FAILURE, "Response memory not allocated\n");
+
+	rsp->type = RSP_GPU_SYNC_STREAM;
+
+	int res = rte_ring_enqueue(cl->response_q[tid], rsp);
+	if (res < 0) {
+		rte_mempool_put(nf_response_pool, rsp);
+		rte_exit(EXIT_FAILURE, "Cannot enqueue into global response queue");
+	}
+
+	rte_mempool_put(nf_request_pool, req);
+}
+
+static void
 memcpy_callback(CUstream cuda_stream, CUresult status, void *user_data)
 {
 	UNUSED(cuda_stream);
@@ -566,8 +592,7 @@ manager_thread_main(void *arg)
 							threads_per_blk, 1, 1, // Mx1x1 threads
 							0, cl->stream[tid], (void **)&(arg_info[1]), 0) );
 				checkCudaErrors( cuEventRecord(cl->kern_end[tid], cl->stream[tid]) );
-
-				rte_mempool_put(nf_request_pool, req);
+				checkCudaErrors( cuStreamAddCallback(cl->stream[tid], kernel_callback, (void *)(req), 0) );
 				break;
 
 			case REQ_GPU_LAUNCH_ALL_STREAM:
