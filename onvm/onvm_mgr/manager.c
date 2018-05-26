@@ -538,6 +538,11 @@ manager_thread_main(void *arg)
 				if (blk_num <= 0 || threads_per_blk < 128 || threads_per_blk > 1024) {
 					rte_exit(EXIT_FAILURE, "instance id %d, blk_num %d, threads_per_blk %d\n", cl->instance_id, blk_num, threads_per_blk);
 				}
+                int minGridSize, maxBlockSize;
+                checkCudaErrors( cuOccupancyMaxPotentialBlockSize(&minGridSize, &maxBlockSize, cl->function, 0, 0, 0) );
+                if (threads_per_blk > maxBlockSize) {
+                    threads_per_blk = maxBlockSize;
+                }
 
 				if (blk_num > SM_TOTAL_NUM - allocated_sm) {
 					rte_exit(EXIT_FAILURE, "There should always have available SMs\n");
