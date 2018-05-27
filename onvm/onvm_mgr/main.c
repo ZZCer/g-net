@@ -187,44 +187,41 @@ rx_thread_main(void *arg) {
     checkCudaErrors( cuStreamCreate(&stream, CU_STREAM_NON_BLOCKING) );
 
     for (;;) {
-        if (CUDA_SUCCESS == cuStreamQuery(stream)) { // available
-            if (likely(num_gpu_batch > 0)) {
-                if (unlikely(rx_q_new == NULL)) {
-                    if (nf_per_service_count[first_service_id] > 0) {
-                        rx_q_new = clients[services[first_service_id][0]].rx_q_new;
-                    }
-                }
-                if (likely(rx_q_new != NULL)) {
-                    queued = rte_ring_enqueue_burst(rx_q_new, (void **)gpu_batching, num_gpu_batch, NULL);
-                    if (unlikely(queued < num_gpu_batch)) {
-                        onvm_pkt_drop_batch(gpu_batching + queued, num_gpu_batch - queued);
-                    }
-                } else {
-                    onvm_pkt_drop_batch(gpu_batching, num_gpu_batch);
+        num_gpu_batch = rte_ring_dequeue_bulk(gpu_q, (void **)gpu_batching, RX_GPU_BATCH_SIZE, NULL);
+        if (num_gpu_batch > 0) {
+            size_t buf_sz = 0, cur_sz;
+            for (i = 0; i < num_gpu_batch; i++) {
+                cur_sz = load_packet(batch_buffer + buf_sz, gpu_batching[i]);
+                onvm_pkt_gpu_ptr(gpu_batching[i]) = cur_sz;
+                buf_sz += cur_sz;
+            }
+            CUdeviceptr head;
+            rte_spinlock_lock(&gpu_pkts_lock);
+            head = gpu_pkts_head;
+            if ((int64_t)(gpu_pkts_buf + GPU_BUF_SIZE * GPU_MAX_PKT_LEN - head - buf_sz) < 0) {
+                head = gpu_pkts_buf;
+            }
+            gpu_pkts_head = head + buf_sz;
+            rte_spinlock_unlock(&gpu_pkts_lock);
+            checkCudaErrors( cuMemcpyHtoDAsync(head, batch_buffer, buf_sz, stream) );
+            for (i = 0; i < num_gpu_batch; i++) {
+                onvm_pkt_gpu_ptr(gpu_batching[i]) += head;
+            }
+            if (unlikely(rx_q_new == NULL)) {
+                if (nf_per_service_count[first_service_id] > 0) {
+                    rx_q_new = clients[services[first_service_id][0]].rx_q_new;
                 }
             }
-            num_gpu_batch = rte_ring_dequeue_bulk(gpu_q, (void **)gpu_batching, RX_GPU_BATCH_SIZE, NULL);
-            if (num_gpu_batch > 0) {
-                size_t buf_sz = 0, cur_sz;
-                for (i = 0; i < num_gpu_batch; i++) {
-					cur_sz = load_packet(batch_buffer + buf_sz, gpu_batching[i]);
-					onvm_pkt_gpu_ptr(gpu_batching[i]) = cur_sz;
-					buf_sz += cur_sz;
-				}
-				CUdeviceptr head;
-				rte_spinlock_lock(&gpu_pkts_lock);
-				head = gpu_pkts_head;
-				if ((int64_t)(gpu_pkts_buf + GPU_BUF_SIZE * GPU_MAX_PKT_LEN - head - buf_sz) < 0) {
-					head = gpu_pkts_buf;
-				}
-				gpu_pkts_head = head + buf_sz;
-				rte_spinlock_unlock(&gpu_pkts_lock);
-				checkCudaErrors( cuMemcpyHtoDAsync(head, batch_buffer, buf_sz, stream) );
-				for (i = 0; i < num_gpu_batch; i++) {
-					onvm_pkt_gpu_ptr(gpu_batching[i]) += head;
-				}
-			}
-		}
+            checkCudaErrors( cuStreamSynchronize(stream) );
+            if (likely(rx_q_new != NULL)) {
+                queued = rte_ring_enqueue_burst(rx_q_new, (void **)gpu_batching, num_gpu_batch, NULL);
+                if (unlikely(queued < num_gpu_batch)) {
+                    onvm_pkt_drop_batch(gpu_batching + queued, num_gpu_batch - queued);
+                }
+            } else {
+                onvm_pkt_drop_batch(gpu_batching, num_gpu_batch);
+            }
+        }
 
 		/* Read ports */
 		for (i = 0; i < ports->num_ports; i++) {
