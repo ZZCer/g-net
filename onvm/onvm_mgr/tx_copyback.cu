@@ -10,7 +10,7 @@ extern "C"
 __global__ void tx_copyback(gpu_packet_t **gpkts, unsigned pktcnt, uint8_t *buffer, unsigned *unload_cnt) {
     __shared__ uint16_t buf_sz[TX_GPU_BATCH_SIZE];
     __shared__ unsigned start_off[TX_GPU_BATCH_SIZE];
-    __shared__ unsigned seg_sz[TX_GPU_BATCH_SIZE / TX_GPU_KERN_SEG_SIZE];
+    __shared__ unsigned seg_sz[TX_GPU_BATCH_SIZE / TX_GPU_KERN_SEG_SIZE + 1];
     __shared__ unsigned max;
     const unsigned tid = threadIdx.x;
     const unsigned step = blockDim.x;
@@ -42,7 +42,7 @@ __global__ void tx_copyback(gpu_packet_t **gpkts, unsigned pktcnt, uint8_t *buff
             cur_off += cur_ssz;
         }
         max = i;
-        *unload_cnt = i * seglen;
+        *unload_cnt = (i * seglen < pktcnt ? i * seglen : pktcnt);
     }
     __syncthreads();
     if (tid < segnum && tid < max) {
