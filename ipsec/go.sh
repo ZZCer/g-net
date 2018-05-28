@@ -14,7 +14,7 @@ thread_num=$2
 cpu_list=$cpu
 for k in $(seq 1 $thread_num)
 do
-        new=$(expr $cpu + $k)
+    new=$(expr $cpu + $((k*2)))
         cpu_list="$cpu_list","$new"
 done
 
