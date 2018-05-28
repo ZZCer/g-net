@@ -7,7 +7,7 @@ cpu_num=$(expr $1 - 1)
 cpu="0"
 for k in $( seq 1 $cpu_num)
 do
-        cpu="$cpu","$k"
+    cpu="$cpu","$((k*2))"
 done
 ports=1
 
