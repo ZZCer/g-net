@@ -212,6 +212,7 @@ rx_thread_main(void *arg) {
                     rx_q_new = clients[services[first_service_id][0]].rx_q_new;
                 }
             }
+			ports->rx_stats.rx[ports->id[i]] += num_gpu_batch;
             checkCudaErrors( cuStreamSynchronize(stream) );
             if (likely(rx_q_new != NULL)) {
                 queued = rte_ring_enqueue_burst(rx_q_new, (void **)gpu_batching, num_gpu_batch, NULL);
@@ -226,7 +227,6 @@ rx_thread_main(void *arg) {
 		/* Read ports */
 		for (i = 0; i < ports->num_ports; i++) {
 			rx_count = rte_eth_rx_burst(ports->id[i], rx->queue_id, pkts, PACKET_READ_SIZE);
-			ports->rx_stats.rx[ports->id[i]] += rx_count;
 
 			/* Now process the NIC packets read */
 			if (likely(rx_count > 0)) {
