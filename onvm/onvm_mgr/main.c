@@ -280,7 +280,7 @@ tx_thread_main(void *arg) {
 	struct thread_info *tx = (struct thread_info*)arg;
 	unsigned int core_id = rte_lcore_id();
 
-	unsigned tx_count;
+	unsigned tx_count = 0;
 	unsigned sent;
     unsigned gpu_packet = 0;
 
@@ -349,12 +349,12 @@ tx_thread_main(void *arg) {
             }
         }
 
-        tx_count = rte_ring_dequeue_burst(gpu_q, (void **)tx->port_tx_buf, PACKET_WRITE_SIZE, NULL);
+        tx_count += rte_ring_dequeue_burst(gpu_q, (void **)(tx->port_tx_buf + tx_count), PACKET_WRITE_SIZE - tx_count, NULL);
         if (likely(tx_count > 0)) {
             sent = rte_eth_tx_burst(tx->port_id, tx->queue_id, tx->port_tx_buf, tx_count);
-            onvm_pkt_drop_batch(tx->port_tx_buf + sent, tx_count - sent);
             ports->tx_stats.tx[tx->port_id] += sent;
-            ports->tx_stats.tx_drop[tx->port_id] += tx_count - sent;
+            memmove(tx->port_tx_buf, tx->port_tx_buf + sent, (tx_count - sent) * sizeof(struct rte_mbuf *));
+            tx_count -= sent;
         }
 	}
 
