@@ -331,7 +331,7 @@ tx_thread_main(void *arg) {
                 }
                 /* pull packets */
                 gpu_packet = rte_ring_dequeue_bulk(
-                        ports->tx_q_new[tx->port_id], (void **)(gpu_batching + gpu_packet), TX_GPU_BATCH_SIZE - gpu_packet, NULL);
+                        ports->tx_q_new[tx->port_id], (void **)gpu_batching, TX_GPU_BATCH_SIZE, NULL);
                 if (likely(gpu_packet > 0)) {
                     all_size = 0;
                     for (i = 0; i < gpu_packet; i++) {
