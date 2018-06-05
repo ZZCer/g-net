@@ -65,7 +65,6 @@ extern CUdeviceptr gpu_pkts_buf;
 extern CUdeviceptr gpu_pkts_head;
 extern rte_spinlock_t gpu_pkts_lock;
 extern CUcontext context;
-extern CUfunction tx_copyback;
 
 /*******************************Worker threads********************************/
 
