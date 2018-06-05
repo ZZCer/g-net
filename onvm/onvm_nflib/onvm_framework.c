@@ -42,6 +42,8 @@ static int gcudaPollForStreamSyncResponse(int thread_id);
 static pthread_key_t my_batch;
 static pthread_mutex_t lock;
 
+static int recv_token, send_token;
+
 /* NOTE: The batch size should be at least 10x? larger than the number of items 
  * in PKTMBUF_POOL when running local. Or not enough mbufs to loop */
 static int BATCH_SIZE = 1024;
@@ -171,11 +173,13 @@ onvm_framework_cpu(int thread_id)
 		int num_packets = j;
 
 		// tx
+		while (keep_running && send_token != thread_id);
 		tx_q = *(struct rte_ring * const volatile*)&cl->tx_q_new;
 		int sent_packets = 0;
 		if (likely(tx_q != NULL && num_packets != 0)) {
 			sent_packets = rte_ring_enqueue_burst(tx_q, (void **)batch->pkt_ptr[buf_id], num_packets, NULL);
 		}
+		send_token = (send_token + 1) % (gpu_info->thread_num);
 		if (sent_packets < cur_buf_size) {
 			onvm_pkt_drop_batch(batch->pkt_ptr[buf_id] + sent_packets, cur_buf_size - sent_packets);
 		}
@@ -191,6 +195,7 @@ onvm_framework_cpu(int thread_id)
 		rte_spinlock_unlock(&cl->stats.update_lock);
 
 		// rx
+		while (keep_running && recv_token != thread_id);
 		do {
 			if (BATCH_SIZE != (int)cl->batch_size) {
 				BATCH_SIZE = (int)cl->batch_size;
@@ -204,6 +209,7 @@ onvm_framework_cpu(int thread_id)
 				}
 			}
 		} while (num_packets == 0);
+		recv_token = (recv_token + 1) % (gpu_info->thread_num);
 		starve_rx_counter = 0;
 		cur_buf_size = num_packets;
 		batch->buf_size[buf_id] = cur_buf_size;
@@ -303,6 +309,8 @@ onvm_framework_init(const char *module_file, const char *kernel_name)
 
 	rte_memcpy((void *)(gpu_info->module_file), module_file, strlen(module_file));
 	rte_memcpy((void *)(gpu_info->kernel_name), kernel_name, strlen(kernel_name));
+
+	recv_token = send_token = 0;
 }
 
 void
