@@ -6,6 +6,8 @@
 
 extern "C"
 __global__ void tx_copyback(gpu_packet_t **gpkts, unsigned pktcnt, uint8_t **start_pos) {
+    unsigned tid = blockIdx.x * blockDim.x + threadIdx.x;
+    unsigned step = blockDim.x * gridDim.x;
     for (unsigned i = tid; i < pktcnt; i += step) {
         uint8_t *dst = start_pos[i];
         uint8_t *src = (uint8_t *)gpkts[i];
