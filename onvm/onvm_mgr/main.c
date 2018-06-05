@@ -267,8 +267,6 @@ tx_thread_main(void *arg) {
     uint8_t *batch_buffer;
     CUdeviceptr batch_buffer_base;
 
-    unsigned i;
-
 	checkCudaErrors( cuInit(0) );
 	checkCudaErrors( cuCtxSetCurrent(context) );
 
