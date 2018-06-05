@@ -262,14 +262,10 @@ tx_thread_main(void *arg) {
     unsigned gpu_packet = 0;
 
     struct rte_mbuf **gpu_batching;
-    CUdeviceptr *pktptrs;
-    CUdeviceptr gpu_pktptrs;
     struct rte_ring *gpu_q = ports->tx_q_gpu[tx->port_id];
 
     uint8_t *batch_buffer;
-    unsigned unload_cnt = 0;
-    CUdeviceptr gpu_batch_buffer, gpu_unload_cnt;
-    int wait_state = 0;
+    CUdeviceptr batch_buffer_base;
 
     unsigned i;
 
@@ -278,52 +274,37 @@ tx_thread_main(void *arg) {
 
 	gpu_batching = rte_calloc("tx gpu batch", TX_GPU_BATCH_SIZE, sizeof(struct rte_mbuf *), 0);
 	checkCudaErrors( cuMemAllocHost((void **)&batch_buffer, TX_GPU_BUF_SIZE) );
-    checkCudaErrors( cuMemAllocHost((void **)&pktptrs, TX_GPU_BATCH_SIZE * sizeof(CUdeviceptr)) );
-	checkCudaErrors( cuMemAlloc(&gpu_batch_buffer, TX_GPU_BUF_SIZE) );
-    checkCudaErrors( cuMemAlloc(&gpu_pktptrs, TX_GPU_BATCH_SIZE * sizeof(CUdeviceptr)) );
-	checkCudaErrors( cuMemAlloc(&gpu_unload_cnt, sizeof(unsigned)) );
 
 	CUstream stream;
 	checkCudaErrors( cuStreamCreate(&stream, CU_STREAM_NON_BLOCKING) );
-
-    void *kernel_params[] = {&gpu_pktptrs, &gpu_packet, &gpu_batch_buffer, &gpu_unload_cnt};
 
 	RTE_LOG(INFO, APP, "Core %d: Running TX thread for port %d\n", core_id, tx->port_id);
 
     for (;;) {
         if (CUDA_SUCCESS == cuStreamQuery(stream)) {
-            if (wait_state == 1) {
-                checkCudaErrors( cuMemcpyDtoHAsync(batch_buffer, gpu_batch_buffer, TX_GPU_BUF_SIZE, stream) );
-                checkCudaErrors( cuMemcpyDtoHAsync(&unload_cnt, gpu_unload_cnt, sizeof(unsigned), stream) );
-                wait_state = 0;
-            } else {
-                if (unload_cnt > 0) {
-                    uint8_t *buf_head = batch_buffer;
-                    for (i = 0; i < unload_cnt; i++) {
-                        buf_head += unload_packet(buf_head, gpu_batching[i]);
-                    }
-                    unsigned queued = rte_ring_enqueue_burst(gpu_q, (void **)gpu_batching, unload_cnt, NULL);
-                    onvm_pkt_drop_batch(gpu_batching + queued, unload_cnt - queued);
-                    memmove(gpu_batching, gpu_batching + unload_cnt, sizeof(struct rte_mbuf *) * (gpu_packet - unload_cnt));
-                    gpu_packet -= unload_cnt;
-                    ports->tx_stats.tx_drop[tx->port_id] += unload_cnt - queued;
-                    unload_cnt = 0;
+            if (gpu_packet > 0) {
+                unsigned unloaded = 0;
+                while (unloaded < gpu_packet) {
+                    unsigned pkt_off = onvm_pkt_gpu_ptr(gpu_batching[unloaded]) - batch_buffer_base;
+                    if (pkt_off > TX_GPU_BUF_SIZE - sizeof(gpu_packet_t)) break;
+                    if (((gpu_packet_t *)(batch_buffer + pkt_off))->payload_size > 
+                            TX_GPU_BUF_SIZE - sizeof(gpu_packet_t) - pkt_off) break;
+                    unload_packet(batch_buffer + pkt_off, gpu_batching[unloaded]);
+                    unloaded++;
                 }
-                /* pull packets */
-                unsigned dequeued;
-                dequeued = rte_ring_dequeue_bulk(
-                        ports->tx_q_new[tx->port_id], (void **)(gpu_batching + gpu_packet), TX_GPU_BATCH_SIZE - gpu_packet, NULL);
-                gpu_packet += dequeued;
-                if (likely(dequeued > 0 || gpu_packet > TX_GPU_BATCH_SIZE / 2)) {
-                    for (i = 0; i < gpu_packet; i++) {
-                        pktptrs[i] = onvm_pkt_gpu_ptr(gpu_batching[i]);
-                    }
-                    checkCudaErrors( cuMemcpyHtoDAsync(gpu_pktptrs, pktptrs, sizeof(CUdeviceptr) * gpu_packet, stream) );
-                    checkCudaErrors( cuLaunchKernel(tx_copyback, 1, 1, 1, 
-                                (gpu_packet < MAX_THREAD_PER_BLK ? gpu_packet : MAX_THREAD_PER_BLK),
-                                1, 1, 0, stream, kernel_params, NULL) );
-                    wait_state = 1;
+                unsigned queued = rte_ring_enqueue_burst(gpu_q, (void **)gpu_batching, unloaded);
+                if (unlikepy(queued < unloaded)) {
+                    onvm_pkt_drop_batch(gpu_batching + queued, unloaded - queued);
+                    ports->tx_stats.tx_drop[tx->port_id] += unloaded - queued;
                 }
+                memmove(gpu_batching, gpu_batching + unloaded, (gpu_packet - unloaded) * sizeof(struct rte_mbuf *));
+                gpu_packet -= unloaded;
+            }
+            gpu_packet += rte_ring_dequeue_bulk(
+                    ports->tx_q_new[tx->port_id], (void **)(gpu_batching + gpu_packet), TX_GPU_BATCH_SIZE - gpu_packet, NULL);
+            if (likely(gpu_packet > TX_GPU_BATCH_SIZE / 2)) {
+                batch_buffer_base = onvm_pkt_gpu_ptr(gpu_batching[0]);
+                checkCudaErrors( cuMemcpyDtoHAsync(batch_buffer, batch_buffer_base, TX_GPU_BUF_SIZE, stream) );
             }
         }
 
