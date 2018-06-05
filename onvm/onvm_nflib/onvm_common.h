@@ -69,7 +69,7 @@
 
 #define RX_GPU_BATCH_SIZE 512
 #define TX_GPU_BATCH_SIZE 2048
-#define TX_GPU_BUF_SIZE (256*1024)
+#define TX_GPU_BUF_SIZE (TX_GPU_BATCH_SIZE*1600)
 #define GPU_BUF_SIZE 16384
 
 #define MZ_CLIENTS "MProc_clients"

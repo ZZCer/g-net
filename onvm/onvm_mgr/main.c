@@ -148,6 +148,29 @@ static size_t unload_packet(uint8_t *buffer, struct rte_mbuf *pkt) {
     return bsz;
 }
 
+static size_t packet_gpu_size(struct rte_mbuf *pkt) {
+    uint8_t *datastart, *dataend;
+    size_t payload_size = 0;
+    struct ipv4_hdr* ipv4 = onvm_pkt_ipv4_hdr(pkt);
+    if (!ipv4) {
+        return sizeof(gpu_packet_t);
+    }
+    if (ipv4->next_proto_id == IPPROTO_TCP) {
+        struct tcp_hdr *tcp = onvm_pkt_tcp_hdr(pkt);
+        datastart = (uint8_t *)tcp + (tcp->data_off << 2);
+        dataend = (uint8_t *)ipv4 + rte_be_to_cpu_16(ipv4->total_length);
+        payload_size = dataend - datastart;
+    } else if (ipv4->next_proto_id == IPPROTO_UDP) {
+        struct udp_hdr *udp = onvm_pkt_udp_hdr(pkt);
+        payload_size = rte_be_to_cpu_16(udp->dgram_len) - 8;
+    }
+    size_t bsz = sizeof(gpu_packet_t) + payload_size;
+    if (bsz % GPU_PKT_ALIGN != 0) {
+        bsz += GPU_PKT_ALIGN - (bsz % GPU_PKT_ALIGN);
+    }
+    return bsz;
+}
+
 /*
  * Function to receive packets from the NIC
  * and distribute them to the default service
@@ -262,16 +285,16 @@ tx_thread_main(void *arg) {
     unsigned gpu_packet = 0;
 
     struct rte_mbuf **gpu_batching;
-    CUdeviceptr *pktptrs;
-    CUdeviceptr gpu_pktptrs;
+    CUdeviceptr *pktptrs, *start_pos;
+    CUdeviceptr gpu_pktptrs, gpu_start_pos;
     struct rte_ring *gpu_q = ports->tx_q_gpu[tx->port_id];
 
     uint8_t *batch_buffer;
-    unsigned unload_cnt = 0;
-    CUdeviceptr gpu_batch_buffer, gpu_unload_cnt;
+    CUdeviceptr gpu_batch_buffer;
     int wait_state = 0;
 
     unsigned i;
+    size_t all_size;
 
 	checkCudaErrors( cuInit(0) );
 	checkCudaErrors( cuCtxSetCurrent(context) );
@@ -279,46 +302,45 @@ tx_thread_main(void *arg) {
 	gpu_batching = rte_calloc("tx gpu batch", TX_GPU_BATCH_SIZE, sizeof(struct rte_mbuf *), 0);
 	checkCudaErrors( cuMemAllocHost((void **)&batch_buffer, TX_GPU_BUF_SIZE) );
     checkCudaErrors( cuMemAllocHost((void **)&pktptrs, TX_GPU_BATCH_SIZE * sizeof(CUdeviceptr)) );
+    checkCudaErrors( cuMemAllocHost((void **)&start_pos, TX_GPU_BATCH_SIZE * sizeof(CUdeviceptr)) );
 	checkCudaErrors( cuMemAlloc(&gpu_batch_buffer, TX_GPU_BUF_SIZE) );
     checkCudaErrors( cuMemAlloc(&gpu_pktptrs, TX_GPU_BATCH_SIZE * sizeof(CUdeviceptr)) );
-	checkCudaErrors( cuMemAlloc(&gpu_unload_cnt, sizeof(unsigned)) );
+    checkCudaErrors( cuMemAlloc(&gpu_start_pos, TX_GPU_BATCH_SIZE * sizeof(CUdeviceptr)) );
 
 	CUstream stream;
 	checkCudaErrors( cuStreamCreate(&stream, CU_STREAM_NON_BLOCKING) );
 
-    void *kernel_params[] = {&gpu_pktptrs, &gpu_packet, &gpu_batch_buffer, &gpu_unload_cnt};
+    void *kernel_params[] = {&gpu_pktptrs, &gpu_packet, &gpu_start_pos};
 
 	RTE_LOG(INFO, APP, "Core %d: Running TX thread for port %d\n", core_id, tx->port_id);
 
     for (;;) {
         if (CUDA_SUCCESS == cuStreamQuery(stream)) {
             if (wait_state == 1) {
-                checkCudaErrors( cuMemcpyDtoHAsync(batch_buffer, gpu_batch_buffer, TX_GPU_BUF_SIZE, stream) );
-                checkCudaErrors( cuMemcpyDtoHAsync(&unload_cnt, gpu_unload_cnt, sizeof(unsigned), stream) );
+                checkCudaErrors( cuMemcpyDtoHAsync(batch_buffer, gpu_batch_buffer, all_size, stream) );
                 wait_state = 0;
             } else {
-                if (unload_cnt > 0) {
+                if (gpu_packet > 0) {
                     uint8_t *buf_head = batch_buffer;
-                    for (i = 0; i < unload_cnt; i++) {
+                    for (i = 0; i < gpu_packet; i++) {
                         buf_head += unload_packet(buf_head, gpu_batching[i]);
                     }
-                    unsigned queued = rte_ring_enqueue_burst(gpu_q, (void **)gpu_batching, unload_cnt, NULL);
-                    onvm_pkt_drop_batch(gpu_batching + queued, unload_cnt - queued);
-                    memmove(gpu_batching, gpu_batching + unload_cnt, sizeof(struct rte_mbuf *) * (gpu_packet - unload_cnt));
-                    gpu_packet -= unload_cnt;
-                    ports->tx_stats.tx_drop[tx->port_id] += unload_cnt - queued;
-                    unload_cnt = 0;
+                    unsigned queued = rte_ring_enqueue_burst(gpu_q, (void **)gpu_batching, gpu_packet, NULL);
+                    onvm_pkt_drop_batch(gpu_batching + queued, gpu_packet - queued);
+                    ports->tx_stats.tx_drop[tx->port_id] += gpu_packet - queued;
                 }
                 /* pull packets */
-                unsigned dequeued;
-                dequeued = rte_ring_dequeue_bulk(
+                gpu_packet = rte_ring_dequeue_bulk(
                         ports->tx_q_new[tx->port_id], (void **)(gpu_batching + gpu_packet), TX_GPU_BATCH_SIZE - gpu_packet, NULL);
-                gpu_packet += dequeued;
-                if (likely(dequeued > 0 || gpu_packet > TX_GPU_BATCH_SIZE / 2)) {
+                if (likely(gpu_packet > 0)) {
+                    all_size = 0;
                     for (i = 0; i < gpu_packet; i++) {
                         pktptrs[i] = onvm_pkt_gpu_ptr(gpu_batching[i]);
+                        start_pos[i] = gpu_batch_buffer + all_size;
+                        all_size += packet_gpu_size(gpu_batching[i]);
                     }
                     checkCudaErrors( cuMemcpyHtoDAsync(gpu_pktptrs, pktptrs, sizeof(CUdeviceptr) * gpu_packet, stream) );
+                    checkCudaErrors( cuMemcpyHtoDAsync(gpu_start_pos, start_pos, sizeof(CUdeviceptr) * gpu_packet, stream) );
                     checkCudaErrors( cuLaunchKernel(tx_copyback, 1, 1, 1, 
                                 (gpu_packet < MAX_THREAD_PER_BLK ? gpu_packet : MAX_THREAD_PER_BLK),
                                 1, 1, 0, stream, kernel_params, NULL) );
