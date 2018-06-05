@@ -293,7 +293,7 @@ tx_thread_main(void *arg) {
                     unloaded++;
                 }
                 unsigned queued = rte_ring_enqueue_burst(gpu_q, (void **)gpu_batching, unloaded);
-                if (unlikepy(queued < unloaded)) {
+                if (unlikely(queued < unloaded)) {
                     onvm_pkt_drop_batch(gpu_batching + queued, unloaded - queued);
                     ports->tx_stats.tx_drop[tx->port_id] += unloaded - queued;
                 }
