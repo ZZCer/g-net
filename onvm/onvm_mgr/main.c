@@ -195,9 +195,9 @@ rx_thread_main(void *arg) {
                 onvm_pkt_gpu_ptr(gpu_batching[i]) = buf_sz;
                 buf_sz += cur_sz;
             }
-            CUdeviceptr head, newhead;
+            CUdeviceptr head, oldhead, newhead;
             rte_spinlock_lock(&gpu_pkts_lock);
-            head = gpu_pkts_head;
+            head = oldhead = gpu_pkts_head;
             if ((int64_t)(gpu_pkts_buf + GPU_BUF_SIZE * GPU_MAX_PKT_LEN - head - buf_sz) < 0) {
                 head = gpu_pkts_buf;
             }
@@ -215,7 +215,7 @@ rx_thread_main(void *arg) {
 			ports->rx_stats.rx[ports->id[i]] += num_gpu_batch;
             checkCudaErrors( cuStreamSynchronize(stream) );
             if (likely(rx_q_new != NULL)) {
-                while (gpu_pkts_tail != head);
+                while (gpu_pkts_tail != oldhead);
                 queued = rte_ring_enqueue_burst(rx_q_new, (void **)gpu_batching, num_gpu_batch, NULL);
                 gpu_pkts_tail = newhead;
                 if (unlikely(queued < num_gpu_batch)) {
