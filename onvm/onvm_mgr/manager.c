@@ -10,6 +10,7 @@ extern struct onvm_service_chain *default_chain;
 
 CUdeviceptr gpu_pkts_buf, gpu_pkts_head;
 volatile CUdeviceptr gpu_pkts_tail;
+CUstream rx_stream;
 rte_spinlock_t gpu_pkts_lock;
 
 
@@ -129,6 +130,7 @@ init_manager(void)
 	checkCudaErrors( cuMemAlloc(&gpu_pkts_buf, GPU_BUF_SIZE * GPU_MAX_PKT_LEN + TX_GPU_BUF_SIZE) );
 	gpu_pkts_tail = gpu_pkts_head = gpu_pkts_buf;
 	rte_spinlock_init(&gpu_pkts_lock);
+	checkCudaErrors( cuStreamCreate(&rx_stream, CU_STREAM_NON_BLOCKING) );
 }
 
 void

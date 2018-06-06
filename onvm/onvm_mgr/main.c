@@ -64,6 +64,7 @@ extern struct port_info *ports;
 extern CUdeviceptr gpu_pkts_buf;
 extern CUdeviceptr gpu_pkts_head;
 extern volatile CUdeviceptr gpu_pkts_tail;
+extern CUstream rx_stream;
 extern rte_spinlock_t gpu_pkts_lock;
 extern CUcontext context;
 
@@ -183,55 +184,51 @@ rx_thread_main(void *arg) {
     struct rte_ring *gpu_q = rte_ring_lookup(RX_GPU_QUEUE);
     if (!gpu_q)
         rte_exit(EXIT_FAILURE, "RX_GPU_Q not found");
-    CUstream stream;
-    checkCudaErrors( cuStreamCreate(&stream, CU_STREAM_NON_BLOCKING) );
+    //CUstream stream;
+    //checkCudaErrors( cuStreamCreate(&stream, CU_STREAM_NON_BLOCKING) );
+    CUevent event;
+    checkCudaErrors( cuStreamCreate(&event, CU_EVENT_DISABLE_TIMING) );
 
     CUdeviceptr head, oldhead, newhead;
-    int state = 0;
 
     for (;;) {
-        if (state == 0) {
-            num_gpu_batch = rte_ring_dequeue_bulk(gpu_q, (void **)gpu_batching, RX_GPU_BATCH_SIZE, NULL);
-            if (num_gpu_batch > 0) {
-                size_t buf_sz = 0, cur_sz;
-                for (i = 0; i < num_gpu_batch; i++) {
-                    cur_sz = load_packet(batch_buffer + buf_sz, gpu_batching[i]);
-                    onvm_pkt_gpu_ptr(gpu_batching[i]) = buf_sz;
-                    buf_sz += cur_sz;
-                }
-                rte_spinlock_lock(&gpu_pkts_lock);
-                head = oldhead = gpu_pkts_head;
-                if ((int64_t)(gpu_pkts_buf + GPU_BUF_SIZE * GPU_MAX_PKT_LEN - head - buf_sz) < 0) {
-                    head = gpu_pkts_buf;
-                }
-                gpu_pkts_head = newhead = head + buf_sz;
-                rte_spinlock_unlock(&gpu_pkts_lock);
-                checkCudaErrors( cuMemcpyHtoDAsync(head, batch_buffer, buf_sz, stream) );
-                for (i = 0; i < num_gpu_batch; i++) {
-                    onvm_pkt_gpu_ptr(gpu_batching[i]) += head;
-                }
-                if (unlikely(rx_q_new == NULL)) {
-                    if (nf_per_service_count[first_service_id] > 0) {
-                        rx_q_new = clients[services[first_service_id][0]].rx_q_new;
-                    }
-                }
-                ports->rx_stats.rx[ports->id[i]] += num_gpu_batch;
-                checkCudaErrors( cuStreamSynchronize(stream) );
-                state = 1;
+        num_gpu_batch = rte_ring_dequeue_bulk(gpu_q, (void **)gpu_batching, RX_GPU_BATCH_SIZE, NULL);
+        if (num_gpu_batch > 0) {
+            size_t buf_sz = 0, cur_sz;
+            for (i = 0; i < num_gpu_batch; i++) {
+                cur_sz = load_packet(batch_buffer + buf_sz, gpu_batching[i]);
+                onvm_pkt_gpu_ptr(gpu_batching[i]) = buf_sz;
+                buf_sz += cur_sz;
             }
-        } else if (state == 1) {
-            if (gpu_pkts_tail == oldhead)  {
-                if (likely(rx_q_new != NULL)) {
-                    queued = rte_ring_enqueue_burst(rx_q_new, (void **)gpu_batching, num_gpu_batch, NULL);
-                    gpu_pkts_tail = newhead;
-                    if (unlikely(queued < num_gpu_batch)) {
-                        onvm_pkt_drop_batch(gpu_batching + queued, num_gpu_batch - queued);
-                    }
-                } else {
-                    gpu_pkts_tail = newhead;
-                    onvm_pkt_drop_batch(gpu_batching, num_gpu_batch);
+            rte_spinlock_lock(&gpu_pkts_lock);
+            head = oldhead = gpu_pkts_head;
+            if ((int64_t)(gpu_pkts_buf + GPU_BUF_SIZE * GPU_MAX_PKT_LEN - head - buf_sz) < 0) {
+                head = gpu_pkts_buf;
+            }
+            gpu_pkts_head = newhead = head + buf_sz;
+            checkCudaErrors( cuMemcpyHtoDAsync(head, batch_buffer, buf_sz, rx_stream) );
+            checkCudaErrors( cuEventRecord(event, rx_stream) );
+            rte_spinlock_unlock(&gpu_pkts_lock);
+            for (i = 0; i < num_gpu_batch; i++) {
+                onvm_pkt_gpu_ptr(gpu_batching[i]) += head;
+            }
+            if (unlikely(rx_q_new == NULL)) {
+                if (nf_per_service_count[first_service_id] > 0) {
+                    rx_q_new = clients[services[first_service_id][0]].rx_q_new;
                 }
-                state = 0;
+            }
+            ports->rx_stats.rx[ports->id[i]] += num_gpu_batch;
+            checkCudaErrors( cuEventSynchronize(event) );
+            while (gpu_pkts_tail != oldhead);
+            if (likely(rx_q_new != NULL)) {
+                queued = rte_ring_enqueue_burst(rx_q_new, (void **)gpu_batching, num_gpu_batch, NULL);
+                gpu_pkts_tail = newhead;
+                if (unlikely(queued < num_gpu_batch)) {
+                    onvm_pkt_drop_batch(gpu_batching + queued, num_gpu_batch - queued);
+                }
+            } else {
+                gpu_pkts_tail = newhead;
+                onvm_pkt_drop_batch(gpu_batching, num_gpu_batch);
             }
         }
 
