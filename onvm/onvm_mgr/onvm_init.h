@@ -126,6 +126,8 @@ struct rx_stats{
 struct tx_stats{
 	uint64_t tx[RTE_MAX_ETHPORTS];
 	uint64_t tx_drop[RTE_MAX_ETHPORTS];
+	uint64_t gpu_batch_cnt[RTE_MAX_ETHPORTS];
+	uint64_t gpu_batch_pkt[RTE_MAX_ETHPORTS];
 };
 
 

@@ -302,6 +302,8 @@ tx_thread_main(void *arg) {
                     for (i = 0; i < unload_cnt; i++) {
                         buf_head += unload_packet(buf_head, gpu_batching[i]);
                     }
+                    ports->tx_stats.gpu_batch_cnt[tx->port_id]++;
+                    ports->tx_stats.gpu_batch_pkt[tx->port_id] += unload_cnt;
                     unsigned queued = rte_ring_enqueue_burst(gpu_q, (void **)gpu_batching, unload_cnt, NULL);
                     onvm_pkt_drop_batch(gpu_batching + queued, unload_cnt - queued);
                     memmove(gpu_batching, gpu_batching + unload_cnt, sizeof(struct rte_mbuf *) * (gpu_packet - unload_cnt));
