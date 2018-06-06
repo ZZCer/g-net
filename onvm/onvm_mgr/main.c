@@ -301,7 +301,7 @@ tx_thread_main(void *arg) {
             }
             gpu_packet += rte_ring_dequeue_bulk(
                     ports->tx_q_new[tx->port_id], (void **)(gpu_batching + gpu_packet), TX_GPU_BATCH_SIZE - gpu_packet, NULL);
-            if (likely(gpu_packet > TX_GPU_BATCH_SIZE / 2)) {
+            if (likely(gpu_packet > 0)) {
                 batch_buffer_base = onvm_pkt_gpu_ptr(gpu_batching[0]);
                 checkCudaErrors( cuMemcpyDtoHAsync(batch_buffer, batch_buffer_base, TX_GPU_BUF_SIZE, stream) );
             }
