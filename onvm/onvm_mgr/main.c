@@ -187,7 +187,7 @@ rx_thread_main(void *arg) {
     //CUstream stream;
     //checkCudaErrors( cuStreamCreate(&stream, CU_STREAM_NON_BLOCKING) );
     CUevent event;
-    checkCudaErrors( cuStreamCreate(&event, CU_EVENT_DISABLE_TIMING) );
+    checkCudaErrors( cuEventCreate(&event, CU_EVENT_DISABLE_TIMING) );
 
     CUdeviceptr head, oldhead, newhead;
 
