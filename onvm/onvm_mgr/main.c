@@ -186,44 +186,52 @@ rx_thread_main(void *arg) {
     CUstream stream;
     checkCudaErrors( cuStreamCreate(&stream, CU_STREAM_NON_BLOCKING) );
 
+    CUdeviceptr head, oldhead, newhead;
+    int state = 0;
+
     for (;;) {
-        num_gpu_batch = rte_ring_dequeue_bulk(gpu_q, (void **)gpu_batching, RX_GPU_BATCH_SIZE, NULL);
-        if (num_gpu_batch > 0) {
-            size_t buf_sz = 0, cur_sz;
-            for (i = 0; i < num_gpu_batch; i++) {
-                cur_sz = load_packet(batch_buffer + buf_sz, gpu_batching[i]);
-                onvm_pkt_gpu_ptr(gpu_batching[i]) = buf_sz;
-                buf_sz += cur_sz;
-            }
-            CUdeviceptr head, oldhead, newhead;
-            rte_spinlock_lock(&gpu_pkts_lock);
-            head = oldhead = gpu_pkts_head;
-            if ((int64_t)(gpu_pkts_buf + GPU_BUF_SIZE * GPU_MAX_PKT_LEN - head - buf_sz) < 0) {
-                head = gpu_pkts_buf;
-            }
-            gpu_pkts_head = newhead = head + buf_sz;
-            rte_spinlock_unlock(&gpu_pkts_lock);
-            checkCudaErrors( cuMemcpyHtoDAsync(head, batch_buffer, buf_sz, stream) );
-            for (i = 0; i < num_gpu_batch; i++) {
-                onvm_pkt_gpu_ptr(gpu_batching[i]) += head;
-            }
-            if (unlikely(rx_q_new == NULL)) {
-                if (nf_per_service_count[first_service_id] > 0) {
-                    rx_q_new = clients[services[first_service_id][0]].rx_q_new;
+        if (state == 0) {
+            num_gpu_batch = rte_ring_dequeue_bulk(gpu_q, (void **)gpu_batching, RX_GPU_BATCH_SIZE, NULL);
+            if (num_gpu_batch > 0) {
+                size_t buf_sz = 0, cur_sz;
+                for (i = 0; i < num_gpu_batch; i++) {
+                    cur_sz = load_packet(batch_buffer + buf_sz, gpu_batching[i]);
+                    onvm_pkt_gpu_ptr(gpu_batching[i]) = buf_sz;
+                    buf_sz += cur_sz;
                 }
-            }
-			ports->rx_stats.rx[ports->id[i]] += num_gpu_batch;
-            checkCudaErrors( cuStreamSynchronize(stream) );
-            while (gpu_pkts_tail != oldhead);
-            if (likely(rx_q_new != NULL)) {
-                queued = rte_ring_enqueue_burst(rx_q_new, (void **)gpu_batching, num_gpu_batch, NULL);
-                gpu_pkts_tail = newhead;
-                if (unlikely(queued < num_gpu_batch)) {
-                    onvm_pkt_drop_batch(gpu_batching + queued, num_gpu_batch - queued);
+                rte_spinlock_lock(&gpu_pkts_lock);
+                head = oldhead = gpu_pkts_head;
+                if ((int64_t)(gpu_pkts_buf + GPU_BUF_SIZE * GPU_MAX_PKT_LEN - head - buf_sz) < 0) {
+                    head = gpu_pkts_buf;
                 }
-            } else {
-                gpu_pkts_tail = newhead;
-                onvm_pkt_drop_batch(gpu_batching, num_gpu_batch);
+                gpu_pkts_head = newhead = head + buf_sz;
+                rte_spinlock_unlock(&gpu_pkts_lock);
+                checkCudaErrors( cuMemcpyHtoDAsync(head, batch_buffer, buf_sz, stream) );
+                for (i = 0; i < num_gpu_batch; i++) {
+                    onvm_pkt_gpu_ptr(gpu_batching[i]) += head;
+                }
+                if (unlikely(rx_q_new == NULL)) {
+                    if (nf_per_service_count[first_service_id] > 0) {
+                        rx_q_new = clients[services[first_service_id][0]].rx_q_new;
+                    }
+                }
+                ports->rx_stats.rx[ports->id[i]] += num_gpu_batch;
+                checkCudaErrors( cuStreamSynchronize(stream) );
+                state = 1;
+            }
+        } else if (state == 1) {
+            if (gpu_pkts_tail == oldhead)  {
+                if (likely(rx_q_new != NULL)) {
+                    queued = rte_ring_enqueue_burst(rx_q_new, (void **)gpu_batching, num_gpu_batch, NULL);
+                    gpu_pkts_tail = newhead;
+                    if (unlikely(queued < num_gpu_batch)) {
+                        onvm_pkt_drop_batch(gpu_batching + queued, num_gpu_batch - queued);
+                    }
+                } else {
+                    gpu_pkts_tail = newhead;
+                    onvm_pkt_drop_batch(gpu_batching, num_gpu_batch);
+                }
+                state = 0;
             }
         }
 
