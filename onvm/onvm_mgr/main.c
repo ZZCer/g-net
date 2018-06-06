@@ -57,6 +57,7 @@
 #include "manager.h"
 #include "scheduler.h"
 #include "onvm_pkt_helper.h"
+#include <cudaProfiler.h>
 
 extern struct onvm_service_chain *default_chain;
 extern struct rx_perf rx_stats[ONVM_NUM_RX_THREADS]; 
@@ -279,6 +280,9 @@ tx_thread_main(void *arg) {
 	CUstream stream;
 	checkCudaErrors( cuStreamCreate(&stream, CU_STREAM_NON_BLOCKING) );
 
+    static int profst = 0;
+    static long long int bcnt = 0;
+
 	RTE_LOG(INFO, APP, "Core %d: Running TX thread for port %d\n", core_id, tx->port_id);
 
     for (;;) {
@@ -293,6 +297,12 @@ tx_thread_main(void *arg) {
                     unload_packet(batch_buffer + pkt_off, gpu_batching[unloaded]);
                     unloaded++;
                 }
+                if (tx->queue_id == 0) {
+                    bcnt++;
+                    if (bcnt == 100000) {
+                        cuProfilerStop();
+                    }
+                }
                 ports->tx_stats.gpu_batch_cnt[tx->port_id]++;
                 ports->tx_stats.gpu_batch_pkt[tx->port_id] += unloaded;
                 unsigned queued = rte_ring_enqueue_burst(gpu_q, (void **)gpu_batching, unloaded, NULL);
@@ -306,6 +316,10 @@ tx_thread_main(void *arg) {
             gpu_packet += rte_ring_dequeue_bulk(
                     ports->tx_q_new[tx->port_id], (void **)(gpu_batching + gpu_packet), TX_GPU_BATCH_SIZE - gpu_packet, NULL);
             if (likely(gpu_packet > 0)) {
+                if (tx->queue_id == 0 && !profst) {
+                    cuProfilerStart();
+                    profst = 1;
+                }
                 batch_buffer_base = onvm_pkt_gpu_ptr(gpu_batching[0]);
                 checkCudaErrors( cuMemcpyDtoHAsync(batch_buffer, batch_buffer_base, TX_GPU_BUF_SIZE, stream) );
             }
