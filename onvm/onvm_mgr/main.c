@@ -57,6 +57,7 @@
 #include "manager.h"
 #include "scheduler.h"
 #include "onvm_pkt_helper.h"
+#include <cudaProfiler.h>
 
 extern struct onvm_service_chain *default_chain;
 extern struct rx_perf rx_stats[ONVM_NUM_RX_THREADS]; 
@@ -288,6 +289,9 @@ tx_thread_main(void *arg) {
 
     void *kernel_params[] = {&gpu_pktptrs, &gpu_packet, &gpu_batch_buffer, &gpu_unload_cnt};
 
+    static int profst = 0;
+    static long long int bcnt = 0;
+
 	RTE_LOG(INFO, APP, "Core %d: Running TX thread for port %d\n", core_id, tx->port_id);
 
     for (;;) {
@@ -310,6 +314,12 @@ tx_thread_main(void *arg) {
                     gpu_packet -= unload_cnt;
                     ports->tx_stats.tx_drop[tx->port_id] += unload_cnt - queued;
                     unload_cnt = 0;
+                    if (tx->queue_id == 0) {
+                        bcnt++;
+                        if (bcnt == 100000) {
+                            cuProfilerStop();
+                        }
+                    }
                 }
                 /* pull packets */
                 unsigned dequeued;
@@ -317,6 +327,10 @@ tx_thread_main(void *arg) {
                         ports->tx_q_new[tx->port_id], (void **)(gpu_batching + gpu_packet), TX_GPU_BATCH_SIZE - gpu_packet, NULL);
                 gpu_packet += dequeued;
                 if (likely(dequeued > 0 || gpu_packet > TX_GPU_BATCH_SIZE / 2)) {
+                    if (tx->queue_id == 0 && !profst) {
+                        cuProfilerStart();
+                        profst = 1;
+                    }
                     for (i = 0; i < gpu_packet; i++) {
                         pktptrs[i] = onvm_pkt_gpu_ptr(gpu_batching[i]);
                     }
