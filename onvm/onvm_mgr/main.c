@@ -204,9 +204,9 @@ rx_thread_main(void *arg) {
                 head = gpu_pkts_buf;
             }
             gpu_pkts_head = head + buf_sz;
-            rte_spinlock_unlock(&gpu_pkts_lock);
             checkCudaErrors( cuMemcpyHtoDAsync(head, batch_buffer, buf_sz, rx_stream) );
             checkCudaErrors( cuEventRecord(event, rx_stream) );
+            rte_spinlock_unlock(&gpu_pkts_lock);
             for (i = 0; i < num_gpu_batch; i++) {
                 onvm_pkt_gpu_ptr(gpu_batching[i]) += head;
             }
