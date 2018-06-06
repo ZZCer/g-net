@@ -192,7 +192,7 @@ rx_thread_main(void *arg) {
             size_t buf_sz = 0, cur_sz;
             for (i = 0; i < num_gpu_batch; i++) {
                 cur_sz = load_packet(batch_buffer + buf_sz, gpu_batching[i]);
-                onvm_pkt_gpu_ptr(gpu_batching[i]) = cur_sz;
+                onvm_pkt_gpu_ptr(gpu_batching[i]) = buf_sz;
                 buf_sz += cur_sz;
             }
             CUdeviceptr head;
