@@ -9,6 +9,7 @@
 extern struct onvm_service_chain *default_chain;
 
 CUdeviceptr gpu_pkts_buf, gpu_pkts_head;
+volatile CUdeviceptr gpu_pkts_tail;
 rte_spinlock_t gpu_pkts_lock;
 
 
@@ -126,7 +127,7 @@ init_manager(void)
 
 	rte_ring_create(RX_GPU_QUEUE, MAX_BATCH_SIZE * BATCH_QUEUE_FACTOR, rte_socket_id(), NO_FLAGS);
 	checkCudaErrors( cuMemAlloc(&gpu_pkts_buf, GPU_BUF_SIZE * GPU_MAX_PKT_LEN + TX_GPU_BUF_SIZE) );
-	gpu_pkts_head = gpu_pkts_buf;
+	gpu_pkts_tail = gpu_pkts_head = gpu_pkts_buf;
 	rte_spinlock_init(&gpu_pkts_lock);
 }
 

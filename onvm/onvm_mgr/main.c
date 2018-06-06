@@ -63,6 +63,7 @@ extern struct rx_perf rx_stats[ONVM_NUM_RX_THREADS];
 extern struct port_info *ports;
 extern CUdeviceptr gpu_pkts_buf;
 extern CUdeviceptr gpu_pkts_head;
+extern volatile CUdeviceptr gpu_pkts_tail;
 extern rte_spinlock_t gpu_pkts_lock;
 extern CUcontext context;
 
@@ -194,13 +195,13 @@ rx_thread_main(void *arg) {
                 onvm_pkt_gpu_ptr(gpu_batching[i]) = buf_sz;
                 buf_sz += cur_sz;
             }
-            CUdeviceptr head;
+            CUdeviceptr head, newhead;
             rte_spinlock_lock(&gpu_pkts_lock);
             head = gpu_pkts_head;
             if ((int64_t)(gpu_pkts_buf + GPU_BUF_SIZE * GPU_MAX_PKT_LEN - head - buf_sz) < 0) {
                 head = gpu_pkts_buf;
             }
-            gpu_pkts_head = head + buf_sz;
+            gpu_pkts_head = newhead = head + buf_sz;
             rte_spinlock_unlock(&gpu_pkts_lock);
             checkCudaErrors( cuMemcpyHtoDAsync(head, batch_buffer, buf_sz, stream) );
             for (i = 0; i < num_gpu_batch; i++) {
@@ -214,7 +215,9 @@ rx_thread_main(void *arg) {
 			ports->rx_stats.rx[ports->id[i]] += num_gpu_batch;
             checkCudaErrors( cuStreamSynchronize(stream) );
             if (likely(rx_q_new != NULL)) {
+                while (gpu_pkts_tail != head);
                 queued = rte_ring_enqueue_burst(rx_q_new, (void **)gpu_batching, num_gpu_batch, NULL);
+                gpu_pkts_tail = newhead;
                 if (unlikely(queued < num_gpu_batch)) {
                     onvm_pkt_drop_batch(gpu_batching + queued, num_gpu_batch - queued);
                 }
