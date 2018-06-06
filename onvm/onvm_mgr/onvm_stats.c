@@ -174,6 +174,11 @@ onvm_stats_display_ports(unsigned difftime) {
 				ports->tx_stats.tx[ports->id[i]],
 				(ports->tx_stats.tx[ports->id[i]] - tx_last[i])
 				/difftime);
+		printf("Tx GPU Batch: cnt %9"PRIu64", pkt %9"PRIu64", avg pkt %f\n",
+				ports->tx_stats.gpu_batch_cnt[ports->id[i]],
+				ports->tx_stats.gpu_batch_pkt[ports->id[i]],
+				ports->tx_stats.gpu_batch_pkt[ports->id[i]] * 1.0 / ports->tx_stats.gpu_batch_cnt[ports->id[i]]
+				);
 
 		rx_last[i] = ports->rx_stats.rx[ports->id[i]];
 		tx_last[i] = ports->tx_stats.tx[ports->id[i]];

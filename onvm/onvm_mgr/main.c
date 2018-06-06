@@ -289,6 +289,8 @@ tx_thread_main(void *arg) {
                     unload_packet(batch_buffer + pkt_off, gpu_batching[unloaded]);
                     unloaded++;
                 }
+                ports->tx_stats.gpu_batch_cnt[tx->port_id]++;
+                ports->tx_stats.gpu_batch_pkt[tx->port_id] += unloaded;
                 unsigned queued = rte_ring_enqueue_burst(gpu_q, (void **)gpu_batching, unloaded, NULL);
                 if (unlikely(queued < unloaded)) {
                     onvm_pkt_drop_batch(gpu_batching + queued, unloaded - queued);
