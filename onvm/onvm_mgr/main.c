@@ -214,14 +214,15 @@ rx_thread_main(void *arg) {
             }
 			ports->rx_stats.rx[ports->id[i]] += num_gpu_batch;
             checkCudaErrors( cuStreamSynchronize(stream) );
+            while (gpu_pkts_tail != oldhead);
             if (likely(rx_q_new != NULL)) {
-                while (gpu_pkts_tail != oldhead);
                 queued = rte_ring_enqueue_burst(rx_q_new, (void **)gpu_batching, num_gpu_batch, NULL);
                 gpu_pkts_tail = newhead;
                 if (unlikely(queued < num_gpu_batch)) {
                     onvm_pkt_drop_batch(gpu_batching + queued, num_gpu_batch - queued);
                 }
             } else {
+                gpu_pkts_tail = newhead;
                 onvm_pkt_drop_batch(gpu_batching, num_gpu_batch);
             }
         }
