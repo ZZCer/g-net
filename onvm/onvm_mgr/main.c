@@ -184,12 +184,9 @@ rx_thread_main(void *arg) {
     struct rte_ring *gpu_q = rte_ring_lookup(RX_GPU_QUEUE);
     if (!gpu_q)
         rte_exit(EXIT_FAILURE, "RX_GPU_Q not found");
-    //CUstream stream;
-    //checkCudaErrors( cuStreamCreate(&stream, CU_STREAM_NON_BLOCKING) );
     CUevent event;
     checkCudaErrors( cuEventCreate(&event, CU_EVENT_DISABLE_TIMING) );
 
-    CUdeviceptr head, oldhead, newhead;
 
     for (;;) {
         num_gpu_batch = rte_ring_dequeue_bulk(gpu_q, (void **)gpu_batching, RX_GPU_BATCH_SIZE, NULL);
@@ -201,14 +198,15 @@ rx_thread_main(void *arg) {
                 buf_sz += cur_sz;
             }
             rte_spinlock_lock(&gpu_pkts_lock);
-            head = oldhead = gpu_pkts_head;
+            CUdeviceptr head;
+            head = gpu_pkts_head;
             if ((int64_t)(gpu_pkts_buf + GPU_BUF_SIZE * GPU_MAX_PKT_LEN - head - buf_sz) < 0) {
                 head = gpu_pkts_buf;
             }
-            gpu_pkts_head = newhead = head + buf_sz;
+            gpu_pkts_head = head + buf_sz;
+            rte_spinlock_unlock(&gpu_pkts_lock);
             checkCudaErrors( cuMemcpyHtoDAsync(head, batch_buffer, buf_sz, rx_stream) );
             checkCudaErrors( cuEventRecord(event, rx_stream) );
-            rte_spinlock_unlock(&gpu_pkts_lock);
             for (i = 0; i < num_gpu_batch; i++) {
                 onvm_pkt_gpu_ptr(gpu_batching[i]) += head;
             }
@@ -219,15 +217,12 @@ rx_thread_main(void *arg) {
             }
             ports->rx_stats.rx[ports->id[i]] += num_gpu_batch;
             checkCudaErrors( cuEventSynchronize(event) );
-            while (gpu_pkts_tail != oldhead);
             if (likely(rx_q_new != NULL)) {
                 queued = rte_ring_enqueue_burst(rx_q_new, (void **)gpu_batching, num_gpu_batch, NULL);
-                gpu_pkts_tail = newhead;
                 if (unlikely(queued < num_gpu_batch)) {
                     onvm_pkt_drop_batch(gpu_batching + queued, num_gpu_batch - queued);
                 }
             } else {
-                gpu_pkts_tail = newhead;
                 onvm_pkt_drop_batch(gpu_batching, num_gpu_batch);
             }
         }
