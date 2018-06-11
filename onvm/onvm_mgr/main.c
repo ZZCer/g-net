@@ -68,7 +68,41 @@ extern CUstream rx_stream;
 extern rte_spinlock_t gpu_pkts_lock;
 extern CUcontext context;
 
+#define RX_BUF_SIZE 1048576
+#define RX_BUF_PKT_MAX_NUM (RX_BUF_SIZE / 32)
+#define RX_NUM_THREADS 4
+#define RX_NUM_BATCHES 4
+
+typedef struct rx_batch_s {
+    volatile int gpu_sync;
+    int full[RX_NUM_THREADS];
+    unsigned pkt_cnt[RX_NUM_THREADS];
+    struct rte_mbuf *pkt_ptr[RX_NUM_THREADS][RX_BUF_PKT_MAX_NUM];
+    uint8_t buf[RX_NUM_THREADS][RX_BUF_SIZE];
+} rx_batch_t;
+
+static rx_batch_t rx_batch[RX_NUM_BATCHES];
+
 /*******************************Worker threads********************************/
+
+static size_t size_packet(struct rte_mbuf *pkt) {
+    struct ipv4_hdr* ipv4 = onvm_pkt_ipv4_hdr(pkt);
+    if (!ipv4) {
+        return sizeof(gpu_packet_t);
+    }
+    if (ipv4->next_proto_id == IPPROTO_TCP) {
+        struct tcp_hdr *tcp = onvm_pkt_tcp_hdr(pkt);
+        uint8_t *datastart, *dataend;
+        datastart = (uint8_t *)tcp + (tcp->data_off << 2);
+        dataend = (uint8_t *)ipv4 + rte_be_to_cpu_16(ipv4->total_length);
+        return sizeof(gpu_packet_t) + dataend - datastart;
+    } else if (ipv4->next_proto_id == IPPROTO_UDP) {
+        struct udp_hdr *udp = onvm_pkt_udp_hdr(pkt);
+        return sizeof(gpu_packet_t) + rte_be_to_cpu_16(udp->dgram_len) - 8;
+    } else {
+        return sizeof(gpu_packet_t);
+    }
+}
 
 static size_t load_packet(uint8_t *buffer, struct rte_mbuf *pkt) {
        gpu_packet_t *gpkt = (gpu_packet_t *) buffer;
@@ -157,22 +191,70 @@ static int
 rx_thread_main(void *arg) {
     unsigned i, j, rx_count;
     struct rte_mbuf *pkts[PACKET_READ_SIZE];
-    struct rte_mbuf **gpu_batching;
-    uint8_t *batch_buffer;
     struct thread_info *rx = (struct thread_info*)arg;
     unsigned int core_id = rte_lcore_id();
-    uint64_t starve_rx_counter = 0;	
+    int thread_id = rx->queue_id;
 
-    size_t num_gpu_batch = 0;
-    size_t queued;
+    unsigned rx_batch_id;
 
+    RTE_LOG(INFO, APP, "Core %d: Running RX thread for RX queue %d\n", core_id, rx->queue_id);
+
+    rx_batch_id = 0;
+    unsigned batch_head = 0;
+    unsigned batch_cnt = 0;
+    for (;;) {
+		/* Read ports */
+		for (i = 0; i < ports->num_ports; i++) {
+			rx_count = rte_eth_rx_burst(ports->id[i], rx->queue_id, pkts, PACKET_READ_SIZE);
+
+            for (j = 0; j < rx_count; j++) {
+                unsigned pkt_sz = size_packet(pkts[j]);
+                if (batch_head + pkt_sz > RX_BUF_SIZE) {
+                    unsigned next_id = (rx_batch_id + 1) % RX_NUM_BATCHES;
+                    if (rx_batch[next_id].full[thread_id]) break;
+                    rx_batch[rx_batch_id].pkt_cnt[thread_id] = batch_cnt;
+                    batch_cnt = 0;
+                    batch_head = 0;
+                    rx_batch_id = next_id;
+                }
+                rx_batch[rx_batch_id].pkt_ptr[thread_id][batch_cnt++] = pkts[j];
+                uint8_t *pos = rx_batch[rx_batch_id].buf[thread_id] + batch_head;
+                onvm_pkt_gpu_ptr(pkts[j]) = (uint64_t)(pos - (uint8_t *)&rx_batch[rx_batch_id].buf);
+                batch_head += load_packet(pos, pkts[j]);
+                // workaround: mark not to drop the packet
+                struct onvm_pkt_meta *meta = onvm_get_pkt_meta(pkts[j]);
+                meta->action = ONVM_NF_ACTION_TONF;
+            }
+
+            if (unlikely(j < rx_count)) {
+                onvm_pkt_drop_batch(&pkts[j], rx_count - j);
+            }
+		}
+	}
+
+	return 0;
+}
+
+
+static void cu_memcpy_cb(CUstream stream, CUresult result, void *data) {
+    UNUSED(stream);
+    checkCudaErrors(result);
+    volatile int *sync = (volatile int *)data;
+    *sync = 2;
+}
+
+static int
+rx_gpu_thread_main(void *arg) {
+    UNUSED(arg);
     checkCudaErrors( cuInit(0) );
     checkCudaErrors( cuCtxSetCurrent(context) );
 
-    gpu_batching = rte_calloc("rx gpu batch", RX_GPU_BATCH_SIZE * 2, sizeof(struct rte_mbuf *), 0);
-    checkCudaErrors( cuMemAllocHost((void **)&batch_buffer, RX_GPU_BATCH_SIZE * GPU_MAX_PKT_LEN) );
+    CUstream stream;
+    checkCudaErrors( cuStreamCreate(&stream, CU_STREAM_NON_BLOCKING) );
 
-    RTE_LOG(INFO, APP, "Core %d: Running RX thread for RX queue %d\n", core_id, rx->queue_id);
+    int batch_id = 0;
+    unsigned i, j, k;
+    unsigned rx_count;
 
     struct rte_ring *rx_q_new = NULL;
     if (default_chain->sc[1].action == ONVM_NF_ACTION_OUT)
@@ -181,76 +263,55 @@ rx_thread_main(void *arg) {
         rte_exit(EXIT_FAILURE, "Failed to find first nf");
     uint16_t first_service_id = default_chain->sc[1].destination;
 
-    struct rte_ring *gpu_q = rte_ring_lookup(RX_GPU_QUEUE);
-    if (!gpu_q)
-        rte_exit(EXIT_FAILURE, "RX_GPU_Q not found");
-    CUevent event;
-    checkCudaErrors( cuEventCreate(&event, CU_EVENT_DISABLE_TIMING) );
-
+    rx_batch_t *batch;
 
     for (;;) {
-        num_gpu_batch = rte_ring_dequeue_bulk(gpu_q, (void **)gpu_batching, RX_GPU_BATCH_SIZE, NULL);
-        if (num_gpu_batch > 0) {
-            size_t buf_sz = 0, cur_sz;
-            for (i = 0; i < num_gpu_batch; i++) {
-                cur_sz = load_packet(batch_buffer + buf_sz, gpu_batching[i]);
-                onvm_pkt_gpu_ptr(gpu_batching[i]) = buf_sz;
-                buf_sz += cur_sz;
-            }
-            rte_spinlock_lock(&gpu_pkts_lock);
-            CUdeviceptr head;
-            head = gpu_pkts_head;
-            if ((int64_t)(gpu_pkts_buf + GPU_BUF_SIZE * GPU_MAX_PKT_LEN - head - buf_sz) < 0) {
-                head = gpu_pkts_buf;
-            }
-            gpu_pkts_head = head + buf_sz;
-            checkCudaErrors( cuMemcpyHtoDAsync(head, batch_buffer, buf_sz, rx_stream) );
-            checkCudaErrors( cuEventRecord(event, rx_stream) );
-            rte_spinlock_unlock(&gpu_pkts_lock);
-            for (i = 0; i < num_gpu_batch; i++) {
-                onvm_pkt_gpu_ptr(gpu_batching[i]) += head;
-            }
-            if (unlikely(rx_q_new == NULL)) {
-                if (nf_per_service_count[first_service_id] > 0) {
-                    rx_q_new = clients[services[first_service_id][0]].rx_q_new;
+        for (i = 0; i < RX_NUM_BATCHES; i++) {
+            batch = &rx_batch[i];
+            if (batch->gpu_sync == 2) {
+                if (unlikely(rx_q_new == NULL)) {
+                    if (nf_per_service_count[first_service_id] > 0) {
+                        rx_q_new = clients[services[first_service_id][0]].rx_q_new;
+                    }
                 }
-            }
-            ports->rx_stats.rx[ports->id[i]] += num_gpu_batch;
-            checkCudaErrors( cuEventSynchronize(event) );
-            if (likely(rx_q_new != NULL)) {
-                queued = rte_ring_enqueue_burst(rx_q_new, (void **)gpu_batching, num_gpu_batch, NULL);
-                if (unlikely(queued < num_gpu_batch)) {
-                    onvm_pkt_drop_batch(gpu_batching + queued, num_gpu_batch - queued);
+                for (j = 0; j < RX_NUM_THREADS; j++) {
+                    rx_count = 0;
+                    if (rx_q_new != NULL) {
+                        rx_count = rte_ring_enqueue_burst(rx_q_new, (void **)batch->pkt_ptr[j], batch->pkt_cnt[j], NULL);
+                    }
+                    if (rx_count < batch->pkt_cnt[j]) {
+                        onvm_pkt_drop_batch(batch->pkt_ptr[j] + rx_count, batch->pkt_cnt[j] - rx_count);
+                    }
+                    ports->rx_stats.rx[0] += rx_count;
+                    batch->full[j] = 0;
                 }
-            } else {
-                onvm_pkt_drop_batch(gpu_batching, num_gpu_batch);
+                batch->gpu_sync = 0;
             }
         }
 
-		/* Read ports */
-		for (i = 0; i < ports->num_ports; i++) {
-			rx_count = rte_eth_rx_burst(ports->id[i], rx->queue_id, pkts, PACKET_READ_SIZE);
+        batch = &rx_batch[batch_id];
+        if (batch->gpu_sync != 0) continue;
+        int full = 1;
+        for (j = 0; j < RX_NUM_THREADS; j++) {
+            full = (full && batch->full[j]);
+        }
+        if (!full) continue;
+        batch->gpu_sync = 1;
 
-			/* Now process the NIC packets read */
-			if (likely(rx_count > 0)) {
-				starve_rx_counter = 0;
-				for (j = 0; j < rx_count; j++) {
-					// workaround: mark not to drop the packet
-					struct onvm_pkt_meta *meta = onvm_get_pkt_meta(pkts[j]);
-					meta->action = ONVM_NF_ACTION_TONF;
-				}
-				queued = rte_ring_enqueue_burst(gpu_q, (void **)pkts, rx_count, NULL);
-				if (unlikely(queued < rx_count)) {
-					onvm_pkt_drop_batch(pkts + queued, rx_count - queued);
-				}
-			} else {
-				starve_rx_counter++;
-				if (starve_rx_counter == STARVE_THRESHOLD) {
-					RTE_LOG(INFO, APP, "Rx starving\n");
-				}
-			}
-		}
-	}
+        CUdeviceptr head = gpu_pkts_head;
+        if (head + sizeof(batch->buf) > gpu_pkts_buf + RX_GPU_BATCH_SIZE)
+            head = gpu_pkts_buf;
+        gpu_pkts_head = head + sizeof(batch->buf);
+        checkCudaErrors( cuMemcpyHtoDAsync(head, (void *)batch->buf, sizeof(batch->buf), stream) );
+        checkCudaErrors( cuStreamAddCallback(stream, cu_memcpy_cb, (void *)(uintptr_t)&batch->gpu_sync, 0) );
+
+        for (j = 0; j < RX_NUM_THREADS; j++) {
+            for (k = 0; k < batch->pkt_cnt[j]; k++) {
+                onvm_pkt_gpu_ptr(batch->pkt_ptr[j][k]) += head;
+            }
+        }
+        batch_id = (batch_id + 1) % RX_NUM_BATCHES;
+    }
 
 	return 0;
 }
@@ -344,7 +405,7 @@ main(int argc, char *argv[]) {
 
 	/* Reserve n cores for: 1 Scheduler + Stats, 1 Manager, and ONVM_NUM_RX_THREADS for Rx, 1 per port for Tx, to be adjusted */
 	cur_lcore = rte_lcore_id();
-	rx_lcores = ONVM_NUM_RX_THREADS;
+	rx_lcores = RX_NUM_THREADS;
 	tx_lcores = ports->num_ports * ONVM_NUM_TX_THREADS_PER_PORT;
 
 	RTE_LOG(INFO, APP, "%d cores available in total\n", rte_lcore_count());
@@ -353,8 +414,8 @@ main(int argc, char *argv[]) {
 	RTE_LOG(INFO, APP, "%d cores available for Manager\n", 1);
 	RTE_LOG(INFO, APP, "%d cores available for Scheduler + States\n", 1);
 
-	if (rx_lcores + tx_lcores + 2 != rte_lcore_count()) {
-		rte_exit(EXIT_FAILURE, "%d cores needed, but %d cores specified\n", rx_lcores+tx_lcores+2, rte_lcore_count());
+	if (rx_lcores + tx_lcores + 3 != rte_lcore_count()) {
+		rte_exit(EXIT_FAILURE, "%d cores needed, but %d cores specified\n", rx_lcores+tx_lcores+3, rte_lcore_count());
 	}
 
 	// We start the system with 0 NFs active
@@ -395,6 +456,12 @@ main(int argc, char *argv[]) {
 			return -1;
 		}
 	}
+
+    cur_lcore = rte_get_next_lcore(cur_lcore, 1, 1);
+    if (rte_eal_remote_launch(rx_gpu_thread_main, NULL, cur_lcore) == -EBUSY) {
+        RTE_LOG(ERR, APP, "Core %d is already busy, can't use for RX GPU\n", cur_lcore);
+        return -1;
+    }
 
 	/* Master thread handles statistics and resource allocation */
 	scheduler_thread_main(NULL);
