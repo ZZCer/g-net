@@ -39,7 +39,7 @@ init_manager(void)
 	}
 
 	// get first CUDA device
-	checkCudaErrors(cuDeviceGet(&device, 1));
+	checkCudaErrors(cuDeviceGet(&device, 0));
 	char name[100];
 	cuDeviceGetName(name, 100, device);
 	printf("> Using device 0: %s\n", name);
