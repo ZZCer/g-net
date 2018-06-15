@@ -75,7 +75,7 @@ extern CUcontext context;
 
 typedef struct rx_batch_s {
     volatile int gpu_sync;
-    int full[RX_NUM_THREADS];
+    volatile int full[RX_NUM_THREADS];
     unsigned pkt_cnt[RX_NUM_THREADS];
     struct rte_mbuf *pkt_ptr[RX_NUM_THREADS][RX_BUF_PKT_MAX_NUM];
     uint8_t buf[RX_NUM_THREADS][RX_BUF_SIZE];
@@ -215,6 +215,7 @@ rx_thread_main(void *arg) {
                     rx_batch[rx_batch_id].pkt_cnt[thread_id] = batch_cnt;
                     batch_cnt = 0;
                     batch_head = 0;
+                    rx_batch[rx_batch_id].full[thread_id] = 1;
                     rx_batch_id = next_id;
                 }
                 rx_batch[rx_batch_id].pkt_ptr[thread_id][batch_cnt++] = pkts[j];
@@ -282,7 +283,7 @@ rx_gpu_thread_main(void *arg) {
                     if (rx_count < batch->pkt_cnt[j]) {
                         onvm_pkt_drop_batch(batch->pkt_ptr[j] + rx_count, batch->pkt_cnt[j] - rx_count);
                     }
-                    ports->rx_stats.rx[0] += rx_count;
+                    ports->rx_stats.rx[0] += batch->pkt_cnt[j];
                     batch->full[j] = 0;
                 }
                 batch->gpu_sync = 0;
@@ -443,6 +444,14 @@ main(int argc, char *argv[]) {
             }
         }
 	}
+
+    /* init rx bufs */
+    for (i = 0; i < RX_NUM_BATCHES; i++) {
+        rx_batch[i].gpu_sync = 0;
+        for (j = 0; j < RX_NUM_THREADS; j++) {
+            rx_batch[i].full[j] = 0;
+        }
+    }
 
 	/* Launch RX thread main function for each RX queue on cores */
 	for (i = 0; i < rx_lcores; i++) {
