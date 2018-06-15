@@ -325,6 +325,8 @@ tx_thread_main(void *arg) {
     uint8_t *batch_buffer;
     CUdeviceptr batch_buffer_base;
 
+    volatile int sync = 2;
+
 	checkCudaErrors( cuInit(0) );
 	checkCudaErrors( cuCtxSetCurrent(context) );
 
@@ -337,7 +339,7 @@ tx_thread_main(void *arg) {
 	RTE_LOG(INFO, APP, "Core %d: Running TX thread for port %d\n", core_id, tx->port_id);
 
     for (;;) {
-        if (CUDA_SUCCESS == cuStreamQuery(stream)) {
+        if (sync == 2) {
             if (gpu_packet > 0) {
                 unsigned unloaded = 0;
                 while (unloaded < gpu_packet) {
@@ -363,6 +365,8 @@ tx_thread_main(void *arg) {
             if (likely(gpu_packet > 0)) {
                 batch_buffer_base = onvm_pkt_gpu_ptr(gpu_batching[0]);
                 checkCudaErrors( cuMemcpyDtoHAsync(batch_buffer, batch_buffer_base, TX_GPU_BUF_SIZE, stream) );
+                sync = 0;
+                checkCudaErrors( cuStreamAddCallback(stream, cu_memcpy_cb, (void *)(uintptr_t)&sync, 0) );
             }
         }
 
