@@ -68,7 +68,7 @@ extern CUstream rx_stream;
 extern rte_spinlock_t gpu_pkts_lock;
 extern CUcontext context;
 
-#define RX_BUF_SIZE 1048576
+#define RX_BUF_SIZE (1024*256)
 #define RX_BUF_PKT_MAX_NUM (RX_BUF_SIZE / 32)
 #define RX_NUM_THREADS ONVM_NUM_RX_THREADS
 #define RX_NUM_BATCHES 4
