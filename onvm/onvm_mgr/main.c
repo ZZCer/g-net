@@ -70,7 +70,7 @@ extern CUcontext context;
 
 #define RX_BUF_SIZE 1048576
 #define RX_BUF_PKT_MAX_NUM (RX_BUF_SIZE / 32)
-#define RX_NUM_THREADS 4
+#define RX_NUM_THREADS ONVM_NUM_RX_THREADS
 #define RX_NUM_BATCHES 4
 
 typedef struct rx_batch_s {
@@ -254,8 +254,8 @@ rx_gpu_thread_main(void *arg) {
     CUstream stream;
     checkCudaErrors( cuStreamCreate(&stream, CU_STREAM_NON_BLOCKING) );
 
-    int batch_id = 0;
-    unsigned i, j;
+    int batch_id = 0, tonf_id = 0;
+    unsigned i;
     unsigned rx_count;
 
     struct rte_ring *rx_q_new = NULL;
@@ -268,39 +268,39 @@ rx_gpu_thread_main(void *arg) {
     rx_batch_t *batch;
 
     for (;;) {
-        for (i = 0; i < RX_NUM_BATCHES; i++) {
-            batch = &rx_batch[i];
-            if (batch->gpu_sync == 2) {
-                if (unlikely(rx_q_new == NULL)) {
-                    if (nf_per_service_count[first_service_id] > 0) {
-                        rx_q_new = clients[services[first_service_id][0]].rx_q_new;
-                    }
+        batch = &rx_batch[tonf_id];
+        if (batch->gpu_sync == 2) {
+            if (unlikely(rx_q_new == NULL)) {
+                if (nf_per_service_count[first_service_id] > 0) {
+                    rx_q_new = clients[services[first_service_id][0]].rx_q_new;
                 }
-                for (j = 0; j < RX_NUM_THREADS; j++) {
-                    rx_count = 0;
-                    if (rx_q_new != NULL) {
-                        rx_count = rte_ring_enqueue_burst(rx_q_new, (void **)batch->pkt_ptr[j], batch->pkt_cnt[j], NULL);
-                    }
-                    if (rx_count < batch->pkt_cnt[j]) {
-                        onvm_pkt_drop_batch(batch->pkt_ptr[j] + rx_count, batch->pkt_cnt[j] - rx_count);
-                    }
-                    ports->rx_stats.rx[0] += batch->pkt_cnt[j];
-                    batch->full[j] = 0;
-                }
-                if (gpu_pkts_head + sizeof(batch->buf) > gpu_pkts_buf + GPU_BUF_SIZE * GPU_MAX_PKT_LEN) {
-                    gpu_pkts_head = gpu_pkts_buf;
-                }
-                batch->buf_head = gpu_pkts_head;
-                gpu_pkts_head += sizeof(batch->buf);
-                batch->gpu_sync = 0;
             }
+            for (i = 0; i < RX_NUM_THREADS; i++) {
+                rx_count = 0;
+                if (rx_q_new != NULL) {
+                    rx_count = rte_ring_enqueue_burst(rx_q_new, (void **)batch->pkt_ptr[i], batch->pkt_cnt[i], NULL);
+                }
+                if (rx_count < batch->pkt_cnt[i]) {
+                    // it takes some time so performance is worse if all dropped
+                    onvm_pkt_drop_batch(batch->pkt_ptr[i] + rx_count, batch->pkt_cnt[i] - rx_count);
+                }
+                ports->rx_stats.rx[0] += batch->pkt_cnt[i];
+                batch->full[i] = 0;
+            }
+            if (gpu_pkts_head + sizeof(batch->buf) > gpu_pkts_buf + GPU_BUF_SIZE * GPU_MAX_PKT_LEN) {
+                gpu_pkts_head = gpu_pkts_buf;
+            }
+            batch->buf_head = gpu_pkts_head;
+            gpu_pkts_head += sizeof(batch->buf);
+            batch->gpu_sync = 0;
+            tonf_id = (tonf_id + 1) % RX_NUM_BATCHES;
         }
 
         batch = &rx_batch[batch_id];
         if (batch->gpu_sync != 0) continue;
         int full = 1;
-        for (j = 0; j < RX_NUM_THREADS; j++) {
-            full = (full && batch->full[j]);
+        for (i = 0; i < RX_NUM_THREADS; i++) {
+            full = (full && batch->full[i]);
         }
         if (!full) continue;
         batch->gpu_sync = 1;
