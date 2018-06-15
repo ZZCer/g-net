@@ -60,7 +60,7 @@ INC :=
 
 WERROR_FLAGS += -Wno-error=unused-function -Wno-error=maybe-uninitialized
 
-CFLAGS += $(WERROR_FLAGS) -g -rdynamic $(USER_FLAGS)
+CFLAGS += $(WERROR_FLAGS) -O3 -g -rdynamic $(USER_FLAGS)
 
 CFLAGS += -I$(SRCDIR)/../onvm_nflib
 LDFLAGS += -L$(SRCDIR)/../onvm_nflib/$(RTE_TARGET)/lib -lonvm
