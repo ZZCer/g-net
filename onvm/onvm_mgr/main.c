@@ -76,6 +76,7 @@ extern CUcontext context;
 typedef struct rx_batch_s {
     volatile int gpu_sync;
     volatile int full[RX_NUM_THREADS];
+    CUdeviceptr buf_head;
     unsigned pkt_cnt[RX_NUM_THREADS];
     struct rte_mbuf *pkt_ptr[RX_NUM_THREADS][RX_BUF_PKT_MAX_NUM];
     uint8_t buf[RX_NUM_THREADS][RX_BUF_SIZE];
@@ -220,7 +221,7 @@ rx_thread_main(void *arg) {
                 }
                 rx_batch[rx_batch_id].pkt_ptr[thread_id][batch_cnt++] = pkts[j];
                 uint8_t *pos = rx_batch[rx_batch_id].buf[thread_id] + batch_head;
-                onvm_pkt_gpu_ptr(pkts[j]) = (uint64_t)(pos - (uint8_t *)&rx_batch[rx_batch_id].buf);
+                onvm_pkt_gpu_ptr(pkts[j]) = rx_batch[rx_batch_id].buf_head + (pos - (uint8_t *)&rx_batch[rx_batch_id].buf);
                 batch_head += load_packet(pos, pkts[j]);
                 // workaround: mark not to drop the packet
                 struct onvm_pkt_meta *meta = onvm_get_pkt_meta(pkts[j]);
@@ -254,7 +255,7 @@ rx_gpu_thread_main(void *arg) {
     checkCudaErrors( cuStreamCreate(&stream, CU_STREAM_NON_BLOCKING) );
 
     int batch_id = 0;
-    unsigned i, j, k;
+    unsigned i, j;
     unsigned rx_count;
 
     struct rte_ring *rx_q_new = NULL;
@@ -286,6 +287,11 @@ rx_gpu_thread_main(void *arg) {
                     ports->rx_stats.rx[0] += batch->pkt_cnt[j];
                     batch->full[j] = 0;
                 }
+                if (gpu_pkts_head + sizeof(batch->buf) > gpu_pkts_buf + GPU_BUF_SIZE * GPU_MAX_PKT_LEN) {
+                    gpu_pkts_head = gpu_pkts_buf;
+                }
+                batch->buf_head = gpu_pkts_head;
+                gpu_pkts_head += sizeof(batch->buf);
                 batch->gpu_sync = 0;
             }
         }
@@ -299,18 +305,9 @@ rx_gpu_thread_main(void *arg) {
         if (!full) continue;
         batch->gpu_sync = 1;
 
-        CUdeviceptr head = gpu_pkts_head;
-        if (head + sizeof(batch->buf) > gpu_pkts_buf + RX_GPU_BATCH_SIZE)
-            head = gpu_pkts_buf;
-        gpu_pkts_head = head + sizeof(batch->buf);
-        checkCudaErrors( cuMemcpyHtoDAsync(head, (void *)batch->buf, sizeof(batch->buf), stream) );
+        checkCudaErrors( cuMemcpyHtoDAsync(batch->buf_head, (void *)batch->buf, sizeof(batch->buf), stream) );
         checkCudaErrors( cuStreamAddCallback(stream, cu_memcpy_cb, (void *)(uintptr_t)&batch->gpu_sync, 0) );
 
-        for (j = 0; j < RX_NUM_THREADS; j++) {
-            for (k = 0; k < batch->pkt_cnt[j]; k++) {
-                onvm_pkt_gpu_ptr(batch->pkt_ptr[j][k]) += head;
-            }
-        }
         batch_id = (batch_id + 1) % RX_NUM_BATCHES;
     }
 
@@ -448,6 +445,8 @@ main(int argc, char *argv[]) {
     /* init rx bufs */
     for (i = 0; i < RX_NUM_BATCHES; i++) {
         rx_batch[i].gpu_sync = 0;
+        rx_batch[i].buf_head = gpu_pkts_head;
+        gpu_pkts_head += sizeof(rx_batch[i].buf);
         for (j = 0; j < RX_NUM_THREADS; j++) {
             rx_batch[i].full[j] = 0;
         }
