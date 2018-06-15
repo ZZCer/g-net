@@ -184,10 +184,6 @@ static size_t unload_packet(uint8_t *buffer, struct rte_mbuf *pkt) {
     return bsz;
 }
 
-/*
- * Function to receive packets from the NIC
- * and distribute them to the default service
- */
 static int
 rx_thread_main(void *arg) {
     unsigned i, j, rx_count;
