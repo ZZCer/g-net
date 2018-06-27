@@ -84,6 +84,8 @@ typedef struct rx_batch_s {
 
 static rx_batch_t rx_batch[RX_NUM_BATCHES];
 
+//typedef struct tx_batch_s {}
+
 /*******************************Worker threads********************************/
 
 static size_t size_packet(struct rte_mbuf *pkt) {
@@ -136,7 +138,7 @@ static size_t load_packet(uint8_t *buffer, struct rte_mbuf *pkt) {
                gpkt->payload_size = 0;
        }
        if (gpkt->payload_size) {
-               memcpy(&gpkt->payload, datastart, gpkt->payload_size);
+               rte_memcpy(&gpkt->payload, datastart, gpkt->payload_size);
        }
        size_t bsz = sizeof(gpu_packet_t) + gpkt->payload_size;
        if (bsz % GPU_PKT_ALIGN != 0) {
@@ -175,7 +177,7 @@ static size_t unload_packet(uint8_t *buffer, struct rte_mbuf *pkt) {
         udp->dgram_len = rte_be_to_cpu_16(gpkt->payload_size + 8);
     }
     if (datastart && gpkt->payload_size) {
-        memcpy(datastart, gpkt->payload, gpkt->payload_size);
+        rte_memcpy(datastart, gpkt->payload, gpkt->payload_size);
     }
     size_t bsz = sizeof(gpu_packet_t) + gpkt->payload_size;
     if (bsz % GPU_PKT_ALIGN != 0) {
