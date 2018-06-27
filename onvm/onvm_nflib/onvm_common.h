@@ -149,7 +149,7 @@
 
 #define MAX_BATCH_SIZE 8192
 
-#define NUM_BATCH_BUF 3
+#define NUM_BATCH_BUF 2
 
 /*****************************************************************************/
 
