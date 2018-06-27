@@ -73,14 +73,13 @@ extern CUcontext context;
 #define RX_BUF_SIZE (1024*256)
 #define RX_BUF_PKT_MAX_NUM (RX_BUF_SIZE / 32)
 #define RX_NUM_THREADS ONVM_NUM_RX_THREADS
-#define RX_NUM_BATCHES 6
+#define RX_NUM_BATCHES 4
 
 typedef struct rx_batch_s {
     volatile int gpu_sync __rte_cache_aligned;
     volatile int full[RX_NUM_THREADS] __rte_cache_aligned;
     CUdeviceptr buf_head;
     unsigned pkt_cnt[RX_NUM_THREADS];
-    unsigned pkt_sent[RX_NUM_THREADS];
     struct rte_mbuf *pkt_ptr[RX_NUM_THREADS][RX_BUF_PKT_MAX_NUM];
     uint8_t buf[RX_NUM_THREADS][RX_BUF_SIZE];
 } rx_batch_t;
@@ -219,12 +218,6 @@ rx_thread_main(void *arg) {
                     batch_head = 0;
                     rx_batch[rx_batch_id].full[thread_id] = 1;
                     rx_batch_id = next_id;
-
-                    unsigned c = rx_batch[rx_batch_id].pkt_cnt[thread_id];
-                    unsigned s = rx_batch[rx_batch_id].pkt_sent[thread_id];
-                    if (unlikely(s < c)) {
-                        onvm_pkt_drop_batch(rx_batch[rx_batch_id].pkt_ptr[thread_id] + s, c - s);
-                    }
                 }
                 rx_batch[rx_batch_id].pkt_ptr[thread_id][batch_cnt++] = pkts[j];
                 uint8_t *pos = rx_batch[rx_batch_id].buf[thread_id] + batch_head;
@@ -287,7 +280,10 @@ rx_gpu_thread_main(void *arg) {
                 if (rx_q_new != NULL) {
                     rx_count = rte_ring_enqueue_burst(rx_q_new, (void **)batch->pkt_ptr[i], batch->pkt_cnt[i], NULL);
                 }
-                batch->pkt_sent[i] = rx_count;
+                if (rx_count < batch->pkt_cnt[i]) {
+                    // it takes some time so performance is worse if all dropped
+                    onvm_pkt_drop_batch(batch->pkt_ptr[i] + rx_count, batch->pkt_cnt[i] - rx_count);
+                }
                 ports->rx_stats.rx[0] += batch->pkt_cnt[i];
                 batch->full[i] = 0;
             }
