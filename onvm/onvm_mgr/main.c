@@ -222,7 +222,7 @@ rx_thread_main(void *arg) {
 
                     unsigned c = rx_batch[rx_batch_id].pkt_cnt[thread_id];
                     unsigned s = rx_batch[rx_batch_id].pkt_sent[thread_id];
-                    if (unlikely(c < s)) {
+                    if (unlikely(s < c)) {
                         onvm_pkt_drop_batch(rx_batch[rx_batch_id].pkt_ptr[thread_id] + s, c - s);
                     }
                 }
