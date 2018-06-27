@@ -270,7 +270,7 @@ static inline uint8_t onvm_get_pkt_chain_index(struct rte_mbuf* pkt) {
 struct onvm_nf_info {
 	uint16_t instance_id;
 	uint16_t service_id;
-	uint8_t status;
+	volatile uint8_t status;
 	const char *tag;
 };
 
