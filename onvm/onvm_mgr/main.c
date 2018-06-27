@@ -86,7 +86,15 @@ typedef struct rx_batch_s {
 
 static rx_batch_t rx_batch[RX_NUM_BATCHES];
 
-//typedef struct tx_batch_s {}
+typedef struct tx_batch_s {
+    volatile int ready[ONVM_NUM_TX_THREADS_PER_PORT];
+    unsigned pkt_cnt;
+    struct rte_mbuf **pkt_ptr;
+    uint8_t *buf;
+    CUdeviceptr buf_base;
+} tx_batch_t;
+
+static tx_batch_t tx_batch[ONVM_NUM_TX_THREADS_PER_PORT];
 
 /*******************************Worker threads********************************/
 
@@ -317,24 +325,30 @@ static int
 tx_thread_main(void *arg) {
 	struct thread_info *tx = (struct thread_info*)arg;
 	unsigned int core_id = rte_lcore_id();
+    int thread_id = tx->queue_id;
+    tx_batch_t *gpu_batch = &tx_batch[thread_id];
 
-	unsigned tx_count = 0;
-	unsigned sent;
+	unsigned i, sent;
     unsigned gpu_packet = 0;
 
     struct rte_mbuf **gpu_batching;
-    struct rte_ring *gpu_q = ports->tx_q_gpu[tx->port_id];
+    //struct rte_ring *gpu_q = ports->tx_q_gpu[tx->port_id];
 
     uint8_t *batch_buffer;
     CUdeviceptr batch_buffer_base;
 
-    volatile int sync = 2;
+    volatile int sync = 1;
+
+    unsigned batch_id = 0;
 
 	checkCudaErrors( cuInit(0) );
 	checkCudaErrors( cuCtxSetCurrent(context) );
 
 	gpu_batching = rte_calloc("tx gpu batch", TX_GPU_BATCH_SIZE, sizeof(struct rte_mbuf *), 0);
 	checkCudaErrors( cuMemAllocHost((void **)&batch_buffer, TX_GPU_BUF_SIZE) );
+
+    gpu_batch->pkt_ptr = gpu_batching;
+    gpu_batch->buf = batch_buffer;
 
 	CUstream stream;
 	checkCudaErrors( cuStreamCreate(&stream, CU_STREAM_NON_BLOCKING) );
@@ -344,42 +358,75 @@ tx_thread_main(void *arg) {
     for (;;) {
         if (sync) {
             if (gpu_packet > 0) {
-                unsigned unloaded = 0;
-                while (unloaded < gpu_packet) {
-                    unsigned pkt_off = onvm_pkt_gpu_ptr(gpu_batching[unloaded]) - batch_buffer_base;
+                unsigned unloadable = 0;
+                while (unloadable < gpu_packet) {
+                    unsigned pkt_off = onvm_pkt_gpu_ptr(gpu_batching[unloadable]) - batch_buffer_base;
                     if (pkt_off > TX_GPU_BUF_SIZE - sizeof(gpu_packet_t)) break;
                     if (((gpu_packet_t *)(batch_buffer + pkt_off))->payload_size > 
                             TX_GPU_BUF_SIZE - sizeof(gpu_packet_t) - pkt_off) break;
-                    unload_packet(batch_buffer + pkt_off, gpu_batching[unloaded]);
-                    unloaded++;
+                    //unload_packet(batch_buffer + pkt_off, gpu_batching[unloaded]);
+                    //unloaded++;
+                    unloadable++;
                 }
                 ports->tx_stats.gpu_batch_cnt[tx->port_id]++;
-                ports->tx_stats.gpu_batch_pkt[tx->port_id] += unloaded;
+                ports->tx_stats.gpu_batch_pkt[tx->port_id] += unloadable;
+                /*
                 unsigned queued = rte_ring_enqueue_burst(gpu_q, (void **)gpu_batching, unloaded, NULL);
                 if (unlikely(queued < unloaded)) {
                     onvm_pkt_drop_batch(gpu_batching + queued, unloaded - queued);
                     ports->tx_stats.tx_drop[tx->port_id] += unloaded - queued;
                 }
-                memmove(gpu_batching, gpu_batching + unloaded, (gpu_packet - unloaded) * sizeof(struct rte_mbuf *));
-                gpu_packet -= unloaded;
+                */
+                gpu_packet -= unloadable;
+                gpu_batch->pkt_cnt = unloadable;
+                gpu_batch->buf_base = batch_buffer_base;
+                for (i = 0; i < ONVM_NUM_TX_THREADS_PER_PORT; i++) {
+                    gpu_batch->ready[i] = 1;
+                }
             }
-            gpu_packet += rte_ring_dequeue_bulk(
+            int ready = 0;
+            for (i = 0; i < ONVM_NUM_TX_THREADS_PER_PORT; i++) {
+                ready = (ready || gpu_batch->ready[i]);
+            }
+            if (ready == 0) {
+                memmove(gpu_batching, gpu_batching + gpu_batch->pkt_cnt, gpu_packet * sizeof(struct rte_mbuf *));
+                gpu_packet += rte_ring_dequeue_bulk(
                     ports->tx_q_new[tx->port_id], (void **)(gpu_batching + gpu_packet), TX_GPU_BATCH_SIZE - gpu_packet, NULL);
-            if (likely(gpu_packet > 0)) {
-                batch_buffer_base = onvm_pkt_gpu_ptr(gpu_batching[0]);
-                checkCudaErrors( cuMemcpyDtoHAsync(batch_buffer, batch_buffer_base, TX_GPU_BUF_SIZE, stream) );
-                sync = 0;
-                checkCudaErrors( cuStreamAddCallback(stream, cu_memcpy_cb, (void *)(uintptr_t)&sync, 0) );
+                if (likely(gpu_packet > 0)) {
+                    batch_buffer_base = onvm_pkt_gpu_ptr(gpu_batching[0]);
+                    checkCudaErrors( cuMemcpyDtoHAsync(batch_buffer, batch_buffer_base, TX_GPU_BUF_SIZE, stream) );
+                    sync = 0;
+                    checkCudaErrors( cuStreamAddCallback(stream, cu_memcpy_cb, (void *)(uintptr_t)&sync, 0) );
+                }
             }
         }
 
-        tx_count += rte_ring_dequeue_burst(gpu_q, (void **)(tx->port_tx_buf + tx_count), PACKET_WRITE_SIZE - tx_count, NULL);
-        if (likely(tx_count > 0)) {
-            sent = rte_eth_tx_burst(tx->port_id, tx->queue_id, tx->port_tx_buf, tx_count);
-            ports->tx_stats.tx[tx->port_id] += sent;
-            memmove(tx->port_tx_buf, tx->port_tx_buf + sent, (tx_count - sent) * sizeof(struct rte_mbuf *));
-            tx_count -= sent;
+        for (i = 0; i < ONVM_NUM_TX_THREADS_PER_PORT; i++) {
+            if (tx_batch[batch_id].ready[thread_id]) {
+                break;
+            }
+            batch_id = (batch_id + 1) % ONVM_NUM_TX_THREADS_PER_PORT;
         }
+        if (i == ONVM_NUM_TX_THREADS_PER_PORT) {
+            batch_id = (batch_id + 1) % ONVM_NUM_TX_THREADS_PER_PORT;
+            continue;
+        }
+
+        unsigned range_id = (thread_id + batch_id) % ONVM_NUM_TX_THREADS_PER_PORT;
+        unsigned step = (tx_batch[batch_id].pkt_cnt + ONVM_NUM_TX_THREADS_PER_PORT - 1) / ONVM_NUM_TX_THREADS_PER_PORT;
+        unsigned cnt = (step * (range_id + 1) > tx_batch[batch_id].pkt_cnt ?
+                tx_batch[batch_id].pkt_cnt - step * range_id : step);
+        for (i = step * range_id; i < step * range_id + cnt; i++) {
+            unsigned pkt_off = onvm_pkt_gpu_ptr(tx_batch[batch_id].pkt_ptr[i]) - tx_batch[batch_id].buf_base;
+            unload_packet(tx_batch[batch_id].buf + pkt_off, tx_batch[batch_id].pkt_ptr[i]);
+        }
+
+        sent = 0;
+        while (sent < cnt) {
+            sent += rte_eth_tx_burst(tx->port_id, tx->queue_id, tx_batch[batch_id].pkt_ptr + step * range_id + sent, cnt - sent);
+        }
+        tx_batch[batch_id].ready[thread_id] = 0;
+        ports->tx_stats.tx[tx->port_id] += cnt;
 	}
 
 	return 0;
