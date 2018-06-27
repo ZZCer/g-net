@@ -58,6 +58,8 @@
 #include "scheduler.h"
 #include "onvm_pkt_helper.h"
 
+#include <rte_memory.h>
+
 extern struct onvm_service_chain *default_chain;
 extern struct rx_perf rx_stats[ONVM_NUM_RX_THREADS]; 
 extern struct port_info *ports;
@@ -74,8 +76,8 @@ extern CUcontext context;
 #define RX_NUM_BATCHES 4
 
 typedef struct rx_batch_s {
-    volatile int gpu_sync;
-    volatile int full[RX_NUM_THREADS];
+    volatile int gpu_sync __rte_cache_aligned;
+    volatile int full[RX_NUM_THREADS] __rte_cache_aligned;
     CUdeviceptr buf_head;
     unsigned pkt_cnt[RX_NUM_THREADS];
     struct rte_mbuf *pkt_ptr[RX_NUM_THREADS][RX_BUF_PKT_MAX_NUM];
@@ -240,7 +242,7 @@ static void cu_memcpy_cb(CUstream stream, CUresult result, void *data) {
     UNUSED(stream);
     checkCudaErrors(result);
     volatile int *sync = (volatile int *)data;
-    *sync = 2;
+    *sync = 1;
 }
 
 static int
@@ -267,7 +269,7 @@ rx_gpu_thread_main(void *arg) {
 
     for (;;) {
         batch = &rx_batch[tonf_id];
-        if (batch->gpu_sync == 2) {
+        if (batch->gpu_sync) {
             if (unlikely(rx_q_new == NULL)) {
                 if (nf_per_service_count[first_service_id] > 0) {
                     rx_q_new = clients[services[first_service_id][0]].rx_q_new;
@@ -294,16 +296,16 @@ rx_gpu_thread_main(void *arg) {
             tonf_id = (tonf_id + 1) % RX_NUM_BATCHES;
         }
 
+        if (batch_id + 1 == tonf_id || batch_id + 1 - RX_NUM_BATCHES == tonf_id) continue;
         batch = &rx_batch[batch_id];
-        if (batch->gpu_sync != 0) continue;
         int full = 1;
         for (i = 0; i < RX_NUM_THREADS; i++) {
             full = (full && batch->full[i]);
         }
         if (!full) continue;
-        batch->gpu_sync = 1;
 
         checkCudaErrors( cuMemcpyHtoDAsync(batch->buf_head, (void *)batch->buf, sizeof(batch->buf), stream) );
+        batch->gpu_sync = 0;
         checkCudaErrors( cuStreamAddCallback(stream, cu_memcpy_cb, (void *)(uintptr_t)&batch->gpu_sync, 0) );
 
         batch_id = (batch_id + 1) % RX_NUM_BATCHES;
@@ -341,7 +343,7 @@ tx_thread_main(void *arg) {
 	RTE_LOG(INFO, APP, "Core %d: Running TX thread for port %d\n", core_id, tx->port_id);
 
     for (;;) {
-        if (sync == 2) {
+        if (sync) {
             if (gpu_packet > 0) {
                 unsigned unloaded = 0;
                 while (unloaded < gpu_packet) {
