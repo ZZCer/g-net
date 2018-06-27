@@ -309,7 +309,6 @@ rx_gpu_thread_main(void *arg) {
         if (!full) continue;
 
         checkCudaErrors( cuMemcpyHtoDAsync(batch->buf_head, (void *)batch->buf, sizeof(batch->buf), stream) );
-        batch->gpu_sync = 0;
         checkCudaErrors( cuStreamAddCallback(stream, cu_memcpy_cb, (void *)(uintptr_t)&batch->gpu_sync, 0) );
 
         batch_id = (batch_id + 1) % RX_NUM_BATCHES;
