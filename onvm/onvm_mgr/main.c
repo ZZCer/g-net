@@ -278,6 +278,14 @@ rx_gpu_thread_main(void *arg) {
     for (;;) {
         batch = &rx_batch[tonf_id];
         if (batch->gpu_sync) {
+            if (gpu_pkts_head + sizeof(batch->buf) > gpu_pkts_buf + GPU_BUF_SIZE * GPU_MAX_PKT_LEN) {
+                gpu_pkts_head = gpu_pkts_buf;
+            }
+            batch->buf_head = gpu_pkts_head;
+            gpu_pkts_head += sizeof(batch->buf);
+            batch->gpu_sync = 0;
+            tonf_id = (tonf_id + 1) % RX_NUM_BATCHES;
+
             if (unlikely(rx_q_new == NULL)) {
                 if (nf_per_service_count[first_service_id] > 0) {
                     rx_q_new = clients[services[first_service_id][0]].rx_q_new;
@@ -295,13 +303,6 @@ rx_gpu_thread_main(void *arg) {
                 ports->rx_stats.rx[0] += batch->pkt_cnt[i];
                 batch->full[i] = 0;
             }
-            if (gpu_pkts_head + sizeof(batch->buf) > gpu_pkts_buf + GPU_BUF_SIZE * GPU_MAX_PKT_LEN) {
-                gpu_pkts_head = gpu_pkts_buf;
-            }
-            batch->buf_head = gpu_pkts_head;
-            gpu_pkts_head += sizeof(batch->buf);
-            batch->gpu_sync = 0;
-            tonf_id = (tonf_id + 1) % RX_NUM_BATCHES;
         }
 
         if (batch_id + 1 == tonf_id || batch_id + 1 - RX_NUM_BATCHES == tonf_id) continue;
