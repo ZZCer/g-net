@@ -294,7 +294,8 @@ rx_gpu_thread_main(void *arg) {
             for (i = 0; i < RX_NUM_THREADS; i++) {
                 rx_count = 0;
                 if (rx_q_new != NULL) {
-                    rx_count = rte_ring_enqueue_burst(rx_q_new, (void **)batch->pkt_ptr[i], batch->pkt_cnt[i], NULL);
+                    while (rx_count == 0)
+                        rx_count = rte_ring_enqueue_bulk(rx_q_new, (void **)batch->pkt_ptr[i], batch->pkt_cnt[i], NULL);
                 }
                 if (rx_count < batch->pkt_cnt[i]) {
                     // it takes some time so performance is worse if all dropped
