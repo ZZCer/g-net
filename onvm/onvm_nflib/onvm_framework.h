@@ -24,6 +24,7 @@ typedef struct nfv_batch_s
 
 	int thread_id;
 	volatile int gpu_buf_id;
+	int gpu_next_buf_id;
 	int gpu_state;
 
 	void *host_mem_addr_base;

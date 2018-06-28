@@ -42,7 +42,7 @@ static int gcudaPollForStreamSyncResponse(int thread_id);
 static pthread_key_t my_batch;
 static pthread_mutex_t lock;
 
-static int recv_token, send_token;
+static volatile int recv_token, send_token;
 
 /* NOTE: The batch size should be at least 10x? larger than the number of items 
  * in PKTMBUF_POOL when running local. Or not enough mbufs to loop */
@@ -55,20 +55,10 @@ struct thread_arg {
 	int thread_id;
 };
 
-static inline int get_batch(nfv_batch_t *batch, int state) {
-       int i;
-       for (i = 0; i < NUM_BATCH_BUF; i++) {
-               if (batch->buf_state[i] == state) return i;
-       }
-       return -1;
-}
-
-static inline int cpu_get_batch(nfv_batch_t *batch) {
-       return get_batch(batch, BUF_STATE_CPU_READY);
-}
-
 static inline int gpu_get_batch(nfv_batch_t *batch) {
-       return get_batch(batch, BUF_STATE_GPU_READY);
+       int i = batch->gpu_next_buf_id;
+       if (batch->buf_state[i] != BUF_STATE_GPU_READY) return -1;
+       return i;
 }
 
 static void 
@@ -90,6 +80,7 @@ onvm_framework_thread_init(int thread_id)
 		batch->user_bufs[i] = INIT_FUNC();
 		batch->pkt_ptr[i] = (struct rte_mbuf **)malloc(sizeof(struct rte_mbuf *) * MAX_BATCH_SIZE);
 		batch->gpu_buf_id = -1;
+		batch->gpu_next_buf_id = 0;
 	}
 }
 
@@ -129,7 +120,7 @@ static int
 onvm_framework_cpu(int thread_id)
 {
 	int i, j;
-	int buf_id;
+	int buf_id = 0;
 	struct rte_ring *rx_q, *tx_q;
 	nfv_batch_t *batch;
 	int cur_buf_size;
@@ -142,8 +133,7 @@ onvm_framework_cpu(int thread_id)
 
 	while (keep_running) {
 		batch = &batch_set[thread_id];
-		buf_id = cpu_get_batch(batch);
-		if (buf_id == -1) {
+        if (batch->buf_state[buf_id] != BUF_STATE_CPU_READY) {
 			starve_gpu_counter++;
 			if (starve_gpu_counter == STARVE_THRESHOLD) {
 				RTE_LOG(INFO, APP, "GPU starving\n");
@@ -235,6 +225,7 @@ onvm_framework_cpu(int thread_id)
 		// launch kernel
 		if (cur_buf_size > 0) {
 			batch->buf_state[buf_id] = BUF_STATE_GPU_READY;
+            buf_id = (buf_id + 1) % NUM_BATCH_BUF;
 		}
 	}
 
@@ -385,6 +376,7 @@ onvm_framework_start_gpu(gpu_htod_t user_gpu_htod, gpu_dtoh_t user_gpu_dtoh, gpu
 		if (!keep_running) break;
 		if (gpu_buf_id == -1) continue;
 		batch->gpu_buf_id = gpu_buf_id;
+		batch->gpu_next_buf_id = (gpu_buf_id + 1) % NUM_BATCH_BUF;
 
 		/* 3. Launch kernel - USER DEFINED */
 		gcudaRecordStart(batch_id);
