@@ -363,7 +363,7 @@ onvm_framework_start_gpu(gpu_htod_t user_gpu_htod, gpu_dtoh_t user_gpu_dtoh, gpu
 					user_gpu_dtoh(batch->user_bufs[batch->gpu_buf_id], batch->buf_size[batch->gpu_buf_id], i);
 					gcudaStreamSynchronize(i);
 					rte_spinlock_lock(&cl->stats.update_lock);
-					cl->stats.batch_size += batch->buf_size[gpu_buf_id];
+					cl->stats.batch_size += batch->buf_size[batch->gpu_buf_id];
 					cl->stats.batch_cnt++;
 					rte_spinlock_unlock(&cl->stats.update_lock);
 					batch->gpu_state = 0;
