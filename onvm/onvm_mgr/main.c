@@ -397,8 +397,10 @@ tx_thread_main(void *arg) {
             }
             if (ready == 0) {
                 memmove(gpu_batching, gpu_batching + gpu_batch->pkt_cnt, remain * sizeof(struct rte_mbuf *));
-                gpu_packet = remain + rte_ring_dequeue_bulk(
-                    ports->tx_q_new[tx->port_id], (void **)(gpu_batching + remain), TX_GPU_BATCH_SIZE - remain, NULL);
+                gpu_packet = remain;
+                if (gpu_packet < TX_GPU_BATCH_SIZE / 2)
+                    gpu_packet += rte_ring_dequeue_burst(
+                        ports->tx_q_new[tx->port_id], (void **)(gpu_batching + remain), TX_GPU_BATCH_SIZE - remain, NULL);
                 if (likely(gpu_packet > 0)) {
                     batch_buffer_base = onvm_pkt_gpu_ptr(gpu_batching[0]);
                     checkCudaErrors( cuMemcpyDtoHAsync(batch_buffer, batch_buffer_base, TX_GPU_BUF_SIZE, stream) );
