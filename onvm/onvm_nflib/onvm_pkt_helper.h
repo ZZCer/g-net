@@ -125,12 +125,8 @@ onvm_pkt_drop(struct rte_mbuf *pkt) {
  *
  */
 inline static void
-onvm_pkt_drop_batch(struct rte_mbuf **pkts, uint16_t size) {
-       uint16_t i;
-
-       if (pkts == NULL)
-               return;
-
+onvm_pkt_drop_batch(struct rte_mbuf **pkts, unsigned size) {
+       unsigned i;
        for (i = 0; i < size; i++)
                onvm_pkt_drop(pkts[i]);
 }
