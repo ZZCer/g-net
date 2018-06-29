@@ -217,6 +217,11 @@ rx_thread_main(void *arg) {
 			rx_count = rte_eth_rx_burst(ports->id[i], rx->queue_id, pkts, PACKET_READ_SIZE);
 
             for (j = 0; j < rx_count; j++) {
+                // workaround: mark not to drop the packet
+                struct onvm_pkt_meta *meta = onvm_get_pkt_meta(pkts[j]);
+                meta->action = ONVM_NF_ACTION_TONF;
+            }
+            for (j = 0; j < rx_count; j++) {
                 unsigned pkt_sz = size_packet(pkts[j]);
                 if (batch_head + pkt_sz > RX_BUF_SIZE) {
                     unsigned next_id = (rx_batch_id + 1) % RX_NUM_BATCHES;
@@ -231,9 +236,6 @@ rx_thread_main(void *arg) {
                 uint8_t *pos = rx_batch[rx_batch_id].buf[thread_id] + batch_head;
                 onvm_pkt_gpu_ptr(pkts[j]) = rx_batch[rx_batch_id].buf_head + (pos - (uint8_t *)&rx_batch[rx_batch_id].buf);
                 batch_head += load_packet(pos, pkts[j]);
-                // workaround: mark not to drop the packet
-                struct onvm_pkt_meta *meta = onvm_get_pkt_meta(pkts[j]);
-                meta->action = ONVM_NF_ACTION_TONF;
             }
 
             if (unlikely(j < rx_count)) {
@@ -421,12 +423,15 @@ tx_thread_main(void *arg) {
         unsigned step = (tx_batch[batch_id].pkt_cnt + ONVM_NUM_TX_THREADS_PER_PORT - 1) / ONVM_NUM_TX_THREADS_PER_PORT;
         unsigned cnt = (step * (range_id + 1) <= tx_batch[batch_id].pkt_cnt ? step : (
                         step * range_id <= tx_batch[batch_id].pkt_cnt ? tx_batch[batch_id].pkt_cnt - step * range_id : 0));
-        for (i = step * range_id; i < step * range_id + cnt; i++) {
-            unsigned pkt_off = onvm_pkt_gpu_ptr(tx_batch[batch_id].pkt_ptr[i]) - tx_batch[batch_id].buf_base;
-            unload_packet(tx_batch[batch_id].buf + pkt_off, tx_batch[batch_id].pkt_ptr[i]);
-        }
 
         sent = 0;
+        for (i = 0; i < cnt; i++) {
+            unsigned pkt_off = onvm_pkt_gpu_ptr(tx_batch[batch_id].pkt_ptr[step * range_id + i]) - tx_batch[batch_id].buf_base;
+            unload_packet(tx_batch[batch_id].buf + pkt_off, tx_batch[batch_id].pkt_ptr[step * range_id + i]);
+            if (i > 0 && i % 64 == 0)
+                sent += rte_eth_tx_burst(tx->port_id, tx->queue_id, tx_batch[batch_id].pkt_ptr + step * range_id + sent, i - sent);
+        }
+
         while (sent < cnt) {
             sent += rte_eth_tx_burst(tx->port_id, tx->queue_id, tx_batch[batch_id].pkt_ptr + step * range_id + sent, cnt - sent);
         }
