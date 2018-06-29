@@ -182,6 +182,8 @@ onvm_stats_display_ports(unsigned difftime) {
 
 		rx_last[i] = ports->rx_stats.rx[ports->id[i]];
 		tx_last[i] = ports->tx_stats.tx[ports->id[i]];
+		ports->tx_stats.gpu_batch_cnt[ports->id[i]] = 0;
+		ports->tx_stats.gpu_batch_pkt[ports->id[i]] = 0;
 
 		clock_gettime(CLOCK_MONOTONIC, &end);
 		double diff = 1000000 * (end.tv_sec - start.tv_sec) + (end.tv_nsec - start.tv_nsec) / 1000;
