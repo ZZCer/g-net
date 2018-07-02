@@ -241,6 +241,7 @@ rx_thread_main(void *arg) {
             if (unlikely(j < rx_count)) {
                 onvm_pkt_drop_batch(&pkts[j], rx_count - j);
             }
+            rte_atomic64_add((rte_atomic64_t *)(uintptr_t)&ports->rx_stats.rx[0], rx_count);
 		}
 	}
 
@@ -303,7 +304,6 @@ rx_gpu_thread_main(void *arg) {
                     // it takes some time so performance is worse if all dropped
                     onvm_pkt_drop_batch(batch->pkt_ptr[i] + rx_count, batch->pkt_cnt[i] - rx_count);
                 }
-                ports->rx_stats.rx[0] += batch->pkt_cnt[i];
                 batch->full[i] = 0;
             }
         }
