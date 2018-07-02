@@ -330,7 +330,7 @@ struct gpu_schedule_info {
 	char args[MAX_CPU_THREAD_NUM][MAX_ARG_SIZE];
 	void *arg_info[MAX_CPU_THREAD_NUM][MAX_ARG_NUM + 1];
 
-	unsigned int thread_num;
+	volatile unsigned int thread_num;
 	int init;
 
 	uint16_t latency_us;

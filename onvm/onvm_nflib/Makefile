@@ -54,7 +54,7 @@ SRCS-y := onvm_pkt_helper.c onvm_nflib.c onvm_framework.c onvm_sc_mgr.c onvm_sc_
 
 INC := onvm_includes.h
 
-CFLAGS += $(WERROR_FLAGS) -g -rdynamic $(USER_FLAGS)
+CFLAGS += $(WERROR_FLAGS) -O3 -g -rdynamic $(USER_FLAGS)
 CFLAGS += -I$(SRCDIR)
 CFLAGS += -I$(CUDA_PATH)/include
 CFLAGS += -D__CUDA_ARCH__=0
