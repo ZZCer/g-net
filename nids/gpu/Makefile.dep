@@ -1,0 +1,12 @@
+objs/nids.o: nids.cu rules.h
+
+rules.h:
+objs/free.o: free.c rules.h
+
+rules.h:
+objs/parser.o: parser.c rules.h
+
+rules.h:
+objs/test.o: test.c rules.h
+
+rules.h:
