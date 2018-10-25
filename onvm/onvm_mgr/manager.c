@@ -495,7 +495,12 @@ manager_thread_main(void *arg)
 				cl->stats.htod_mem += req->size;
 				rte_spinlock_unlock(&cl->stats.update_lock);
 
-				checkCudaErrors( cuMemcpyHtoDAsync(req->device_ptr, host_ptr, req->size, cl->stream[req->thread_id]) );
+				// checkCudaErrors( cuMemcpyHtoDAsync(req->device_ptr, host_ptr, req->size, cl->stream[req->thread_id]) );
+				int error;
+				if ((error = cuMemcpyHtoDAsync(req->device_ptr, host_ptr, req->size, cl->stream[req->thread_id])) != CUDA_SUCCESS) {
+					RTE_LOG(INFO, APP, "CUDA_ERROR: cuMemcpyHtoDAsync: %lx <- %p (%d), thread_id = %d\n", (uint64_t)req->device_ptr, host_ptr, req->size, req->thread_id);
+					checkCudaErrors( error );
+				}
 
 				rte_mempool_put(nf_request_pool, req);
 

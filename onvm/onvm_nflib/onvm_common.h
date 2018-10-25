@@ -147,7 +147,8 @@
 	#define PKT_LEN 64
 #endif
 
-#define MAX_BATCH_SIZE 8192
+// #define MAX_BATCH_SIZE 8192
+#define MAX_BATCH_SIZE 32768
 
 #define NUM_BATCH_BUF 3
 

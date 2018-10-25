@@ -60,6 +60,11 @@
 
 #include <rte_memory.h>
 
+// Test flags to test pure RX performance
+// #define DROP_RX_PKTS
+// #define DISABLE_GPU_RX
+// #define DISABLE_TX
+
 extern struct onvm_service_chain *default_chain;
 extern struct rx_perf rx_stats[ONVM_NUM_RX_THREADS]; 
 extern struct port_info *ports;
@@ -198,7 +203,7 @@ static size_t unload_packet(uint8_t *buffer, struct rte_mbuf *pkt) {
 
 static int
 rx_thread_main(void *arg) {
-    unsigned i, j, rx_count;
+    unsigned i, j, rx_count, rx_len;
     struct rte_mbuf *pkts[PACKET_READ_SIZE];
     struct thread_info *rx = (struct thread_info*)arg;
     unsigned int core_id = rte_lcore_id();
@@ -214,34 +219,40 @@ rx_thread_main(void *arg) {
     for (;;) {
 		/* Read ports */
 		for (i = 0; i < ports->num_ports; i++) {
+            rx_len = 0;
 			rx_count = rte_eth_rx_burst(ports->id[i], rx->queue_id, pkts, PACKET_READ_SIZE);
 
             for (j = 0; j < rx_count; j++) {
-                // workaround: mark not to drop the packet
                 struct onvm_pkt_meta *meta = onvm_get_pkt_meta(pkts[j]);
                 meta->action = ONVM_NF_ACTION_TONF;
-            }
-            for (j = 0; j < rx_count; j++) {
                 unsigned pkt_sz = size_packet(pkts[j]);
+                
                 if (batch_head + pkt_sz > RX_BUF_SIZE) {
                     unsigned next_id = (rx_batch_id + 1) % RX_NUM_BATCHES;
                     if (rx_batch[next_id].full[thread_id]) break;
                     rx_batch[rx_batch_id].pkt_cnt[thread_id] = batch_cnt;
                     batch_cnt = 0;
                     batch_head = 0;
+#ifndef DROP_RX_PKTS
                     rx_batch[rx_batch_id].full[thread_id] = 1;
+#endif
                     rx_batch_id = next_id;
                 }
                 rx_batch[rx_batch_id].pkt_ptr[thread_id][batch_cnt++] = pkts[j];
                 uint8_t *pos = rx_batch[rx_batch_id].buf[thread_id] + batch_head;
                 onvm_pkt_gpu_ptr(pkts[j]) = rx_batch[rx_batch_id].buf_head + (pos - (uint8_t *)&rx_batch[rx_batch_id].buf);
                 batch_head += load_packet(pos, pkts[j]);
+                rx_len += (*pkts[j]).pkt_len;
             }
-
+#ifndef DROP_RX_PKTS
             if (unlikely(j < rx_count)) {
                 onvm_pkt_drop_batch(&pkts[j], rx_count - j);
             }
-            rte_atomic64_add((rte_atomic64_t *)(uintptr_t)&ports->rx_stats.rx[0], rx_count);
+#else
+            onvm_pkt_drop_batch(pkts, rx_count);
+#endif
+            rte_atomic64_add((rte_atomic64_t *)(uintptr_t)&ports->rx_stats.rx[0], j);
+            rte_atomic64_add((rte_atomic64_t *)(uintptr_t)&ports->rx_stats.rx_len[0], rx_len);
 		}
 	}
 
@@ -438,7 +449,8 @@ tx_thread_main(void *arg) {
             sent += rte_eth_tx_burst(tx->port_id, tx->queue_id, tx_batch[batch_id].pkt_ptr + step * range_id + sent, cnt - sent);
         }
         tx_batch[batch_id].ready[thread_id] = 0;
-        ports->tx_stats.tx[tx->port_id] += cnt;
+        // ports->tx_stats.tx[tx->port_id] += cnt;
+        rte_atomic64_add((rte_atomic64_t *)(uintptr_t)&ports->tx_stats.tx[tx->port_id], cnt);
 	}
 
 	return 0;
@@ -463,7 +475,7 @@ main(int argc, char *argv[]) {
 	/* clear statistics */
 	onvm_stats_clear_all_clients();
 
-	/* Reserve n cores for: 1 Scheduler + Stats, 1 Manager, and ONVM_NUM_RX_THREADS for Rx, 1 per port for Tx, to be adjusted */
+	/* Reserve n cores for: 1 Scheduler + Stats, 1 Manager, 1 GPU Thread, and ONVM_NUM_RX_THREADS for Rx, 1 per port for Tx, to be adjusted */
 	cur_lcore = rte_lcore_id();
 	rx_lcores = RX_NUM_THREADS;
 	tx_lcores = ports->num_ports * ONVM_NUM_TX_THREADS_PER_PORT;
@@ -474,7 +486,7 @@ main(int argc, char *argv[]) {
 	RTE_LOG(INFO, APP, "%d cores available for Manager\n", 1);
 	RTE_LOG(INFO, APP, "%d cores available for Scheduler + States\n", 1);
 
-	if (rx_lcores + tx_lcores + 3 != rte_lcore_count()) {
+	if (rx_lcores + tx_lcores + 3 > rte_lcore_count()) {
 		rte_exit(EXIT_FAILURE, "%d cores needed, but %d cores specified\n", rx_lcores+tx_lcores+3, rte_lcore_count());
 	}
 
@@ -487,7 +499,7 @@ main(int argc, char *argv[]) {
 		RTE_LOG(ERR, APP, "Core %d is already busy, can't use for Manager\n", cur_lcore);
 		return -1;
 	}
-
+#ifndef DISABLE_TX
 	/* Assign each port with a TX thread */
 	for (i = 0; i < ports->num_ports; i++) {
         for (j = 0; j < ONVM_NUM_TX_THREADS_PER_PORT; j++) {
@@ -503,7 +515,7 @@ main(int argc, char *argv[]) {
             }
         }
 	}
-
+#endif
     /* init rx bufs */
     for (i = 0; i < RX_NUM_BATCHES; i++) {
         rx_batch[i].gpu_sync = 0;
@@ -526,13 +538,13 @@ main(int argc, char *argv[]) {
 			return -1;
 		}
 	}
-
+#ifndef DISABLE_GPU_RX
     cur_lcore = rte_get_next_lcore(cur_lcore, 1, 1);
     if (rte_eal_remote_launch(rx_gpu_thread_main, NULL, cur_lcore) == -EBUSY) {
         RTE_LOG(ERR, APP, "Core %d is already busy, can't use for RX GPU\n", cur_lcore);
         return -1;
     }
-
+#endif
 	/* Master thread handles statistics and resource allocation */
 	scheduler_thread_main(NULL);
 	return 0;

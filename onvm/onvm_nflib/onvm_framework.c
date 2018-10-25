@@ -49,7 +49,7 @@ static volatile int recv_token, send_token;
 static int BATCH_SIZE = 1024;
 
 int NF_REQUIRED_LATENCY = 1000; // us -- default latency
-int INIT_WORKER_THREAD_NUM = 1; // us -- default latency
+int INIT_WORKER_THREAD_NUM = 1;
 
 struct thread_arg {
 	int thread_id;

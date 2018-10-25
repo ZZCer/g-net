@@ -126,7 +126,7 @@ $(OBJS_DIR)/%.o : %.c
 
 
 clean:
-	rm -f $(TARGET) $(OBJS) $(DEPS)
+	rm -f $(TARGET) $(OBJS) $(DEPS) $(PTXS)
 
 ifneq ($(MAKECMDGOALS), clean)
 -include $(DEPS)

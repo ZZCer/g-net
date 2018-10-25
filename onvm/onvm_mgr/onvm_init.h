@@ -120,6 +120,7 @@ struct rx_perf {
  */
 struct rx_stats{
 	uint64_t rx[RTE_MAX_ETHPORTS];
+	uint64_t rx_len[RTE_MAX_ETHPORTS];
 };
 
 
