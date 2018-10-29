@@ -243,7 +243,7 @@ onvm_stats_display_clients(void) {
 		clients[i].avg_pkt_len = (double)rx_datalen / rx;
 		clients[i].throughput_mpps = (double)(tx + tx_drop + act_drop) / diff;
 
-		double approx_gbps = (double)((tx + tx_drop + act_drop) * (clients[i].avg_pkt_len + 20) * 8)/(1000 * diff);
+		double approx_gbps = (double)((tx + tx_drop + act_drop) * (clients[i].avg_pkt_len + PKT_LEN_ETH_SPEC) * 8)/(1000 * diff);
 
 		printf("\n[Client %u - %s] :\n"
 		       "rx: %9lu\t" "tx: %9lu\t" "tx_drop: %9lu\t" "act_drop: %9lu\n"

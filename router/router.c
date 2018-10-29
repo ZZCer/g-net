@@ -38,7 +38,7 @@ static void *init_host_buf(void)
 	gcudaHostAlloc((void **)&(buf->host_in), MAX_BATCH_SIZE * sizeof(CUdeviceptr));
 	gcudaHostAlloc((void **)&(buf->host_out), MAX_BATCH_SIZE * sizeof(uint8_t));
 
-	gcudaMalloc(&(buf->device_in), MAX_BATCH_SIZE * sizeof(uint32_t));
+	gcudaMalloc(&(buf->device_in), MAX_BATCH_SIZE * sizeof(CUdeviceptr));
 	gcudaMalloc(&(buf->device_out), MAX_BATCH_SIZE * sizeof(uint8_t));
 
 	return buf;

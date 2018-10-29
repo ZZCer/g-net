@@ -159,7 +159,7 @@ gpu_get_resource(int instance_id, double T0) {
 		/* For each CPU thread: the least number of SMs to meet the latency demands */
 		cl->blk_num = N / stream_num;
 		/* The batch size for each CPU thread */
-		cl->batch_size = B0 * cl->blk_num;
+		cl->batch_size = B0 * cl->blk_num;// * batch_cnt; // TODO multiply by batch_cnt?
 		cl->threads_per_blk = B0 < MAX_THREAD_PER_BLK ? B0 : MAX_THREAD_PER_BLK;
 
 		allocated_sm_num += N;
@@ -324,7 +324,7 @@ gpu_optimize_latency(double T0) {
 
 		/* Update the info */
 		cl->blk_num ++;
-		cl->batch_size = B0 * cl->blk_num;
+		cl->batch_size = B0 * cl->blk_num;// * (cl->stats.batch_cnt <= 0 ? 1 : cl->stats.batch_cnt); // TODO multiply by batch_cnt?
 		cl->threads_per_blk = B0 < MAX_THREAD_PER_BLK ? B0 : MAX_THREAD_PER_BLK;
 
 		/* Allocate another stream_num SMs, one per stream */
@@ -373,6 +373,39 @@ schedule(void) {
 	printf("\n========================================================\n\n");
 }
 
+static void
+schedule_new(void) {
+	// unsigned int i;
+	struct timespec end;
+
+	clock_gettime(CLOCK_MONOTONIC, &end);
+
+	/* Calculate the allocated SMs */
+	allocated_sm_num = 0;
+	exausted = 0;
+
+	// TODO add new implementations
+	/* Local Schedule */
+	for (int i = 0; i < MAX_CLIENTS; i ++) {
+		if (!onvm_nf_is_valid(&clients[i]))
+			continue;
+
+		/* static allocation */
+		struct client *cl = &(clients[i]);
+		unsigned int stream_num = cl->gpu_info->thread_num;
+		
+		// parameters
+		cl->blk_num = 28;				// blk_num * stream_num <= total #SM	// 6.1 device max #SM: 28
+		cl->batch_size = 16384; 		// max definition in onvm_common.h
+		cl->threads_per_blk = 1024;		// 6.1 device max: 1024
+
+		// assert(cl->batch_size <= MAX_BATCH_SIZE);
+		assert(stream_num * cl->blk_num <= SM_TOTAL_NUM);
+	}
+
+	printf("\n========================================================\n\n");
+}
+
 int
 scheduler_thread_main(void *arg) {
 	UNUSED(arg);
@@ -384,7 +417,8 @@ scheduler_thread_main(void *arg) {
 
 		onvm_nf_check_status();
 		onvm_stats_display_all(sleeptime);
-		schedule();
+		// schedule();
+		schedule_new();
 		onvm_stats_clear_all_clients();
 	}
 

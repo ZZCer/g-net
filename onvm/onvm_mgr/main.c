@@ -221,6 +221,9 @@ rx_thread_main(void *arg) {
 		for (i = 0; i < ports->num_ports; i++) {
             rx_len = 0;
 			rx_count = rte_eth_rx_burst(ports->id[i], rx->queue_id, pkts, PACKET_READ_SIZE);
+            if (rx_count > 0) {
+                rx_len += (*pkts[0]).pkt_len * rx_count;
+            }
 
             for (j = 0; j < rx_count; j++) {
                 struct onvm_pkt_meta *meta = onvm_get_pkt_meta(pkts[j]);
@@ -242,7 +245,6 @@ rx_thread_main(void *arg) {
                 uint8_t *pos = rx_batch[rx_batch_id].buf[thread_id] + batch_head;
                 onvm_pkt_gpu_ptr(pkts[j]) = rx_batch[rx_batch_id].buf_head + (pos - (uint8_t *)&rx_batch[rx_batch_id].buf);
                 batch_head += load_packet(pos, pkts[j]);
-                rx_len += (*pkts[j]).pkt_len;
             }
 #ifndef DROP_RX_PKTS
             if (unlikely(j < rx_count)) {
@@ -251,7 +253,7 @@ rx_thread_main(void *arg) {
 #else
             onvm_pkt_drop_batch(pkts, rx_count);
 #endif
-            rte_atomic64_add((rte_atomic64_t *)(uintptr_t)&ports->rx_stats.rx[0], j);
+            rte_atomic64_add((rte_atomic64_t *)(uintptr_t)&ports->rx_stats.rx[0], rx_count);  // TODO should dropped packets be counted?
             rte_atomic64_add((rte_atomic64_t *)(uintptr_t)&ports->rx_stats.rx_len[0], rx_len);
 		}
 	}
