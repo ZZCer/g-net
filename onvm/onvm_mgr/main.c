@@ -253,7 +253,7 @@ rx_thread_main(void *arg) {
 #else
             onvm_pkt_drop_batch(pkts, rx_count);
 #endif
-            rte_atomic64_add((rte_atomic64_t *)(uintptr_t)&ports->rx_stats.rx[0], rx_count);  // TODO should dropped packets be counted?
+            rte_atomic64_add((rte_atomic64_t *)(uintptr_t)&ports->rx_stats.rx[0], rx_count);
             rte_atomic64_add((rte_atomic64_t *)(uintptr_t)&ports->rx_stats.rx_len[0], rx_len);
 		}
 	}
@@ -280,7 +280,7 @@ rx_gpu_thread_main(void *arg) {
 
     int batch_id = 0, tonf_id = 0;
     unsigned i;
-    unsigned rx_count;
+    unsigned rx_count, rx_count_total, rx_len_total;
 
     struct rte_ring *rx_q_new = NULL;
     if (default_chain->sc[1].action == ONVM_NF_ACTION_OUT)
@@ -292,6 +292,7 @@ rx_gpu_thread_main(void *arg) {
     rx_batch_t *batch;
 
     for (;;) {
+        rx_count_total = 0, rx_len_total = 0;
         batch = &rx_batch[tonf_id];
         if (batch->gpu_sync) {
             if (gpu_pkts_head + sizeof(batch->buf) > gpu_pkts_buf + GPU_BUF_SIZE * GPU_MAX_PKT_LEN) {
@@ -318,8 +319,13 @@ rx_gpu_thread_main(void *arg) {
                     onvm_pkt_drop_batch(batch->pkt_ptr[i] + rx_count, batch->pkt_cnt[i] - rx_count);
                 }
                 batch->full[i] = 0;
+                rx_count_total += batch->pkt_cnt[i];
+                rx_len_total += batch->pkt_cnt[i] == 0 ? 0 : batch->pkt_cnt[i] * batch->pkt_ptr[i][0]->pkt_len;
             }
         }
+
+        rte_atomic64_add((rte_atomic64_t *)(uintptr_t)&ports->rx_stats.rx_gpucopy, rx_count_total);
+        rte_atomic64_add((rte_atomic64_t *)(uintptr_t)&ports->rx_stats.rx_len_gpucopy, rx_len_total);
 
         if (batch_id + 1 == tonf_id || batch_id + 1 - RX_NUM_BATCHES == tonf_id) continue;
         batch = &rx_batch[batch_id];
@@ -447,12 +453,15 @@ tx_thread_main(void *arg) {
                 sent += rte_eth_tx_burst(tx->port_id, tx->queue_id, tx_batch[batch_id].pkt_ptr + step * range_id + sent, i - sent);
         }
 
+        unsigned pkt_size_sample = cnt > 0 ? tx_batch[batch_id].pkt_ptr[step * range_id]->pkt_len : 0;
+
         while (sent < cnt) {
             sent += rte_eth_tx_burst(tx->port_id, tx->queue_id, tx_batch[batch_id].pkt_ptr + step * range_id + sent, cnt - sent);
         }
         tx_batch[batch_id].ready[thread_id] = 0;
         // ports->tx_stats.tx[tx->port_id] += cnt;
         rte_atomic64_add((rte_atomic64_t *)(uintptr_t)&ports->tx_stats.tx[tx->port_id], cnt);
+        rte_atomic64_add((rte_atomic64_t *)(uintptr_t)&ports->tx_stats.tx_len[tx->port_id], cnt * pkt_size_sample);
 	}
 
 	return 0;

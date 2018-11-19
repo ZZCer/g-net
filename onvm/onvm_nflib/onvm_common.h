@@ -68,9 +68,9 @@
 #define STARVE_THRESHOLD 1000000
 
 #define RX_GPU_BATCH_SIZE 512
-#define TX_GPU_BATCH_SIZE 2048
+#define TX_GPU_BATCH_SIZE 4096
 #define TX_GPU_BUF_SIZE (256*1024)
-#define GPU_BUF_SIZE 524288
+#define GPU_BUF_SIZE (2*256*1024)
 
 #define MZ_CLIENTS "MProc_clients"
 
@@ -148,7 +148,7 @@
 #endif
 
 // #define MAX_BATCH_SIZE 8192
-#define MAX_BATCH_SIZE 16384
+#define MAX_BATCH_SIZE 32768
 
 #define NUM_BATCH_BUF 3
 
@@ -215,6 +215,9 @@ struct client {
 	uint16_t threads_per_blk;
 	uint16_t blk_num;
 	uint32_t batch_size;
+
+	int worker_scale_target;
+	int worker_scale_finished;
 
 	uint16_t init;
 	uint16_t worker_thread_num;

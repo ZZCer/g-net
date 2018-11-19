@@ -121,11 +121,14 @@ struct rx_perf {
 struct rx_stats{
 	uint64_t rx[RTE_MAX_ETHPORTS];
 	uint64_t rx_len[RTE_MAX_ETHPORTS];
+	uint64_t rx_gpucopy;
+	uint64_t rx_len_gpucopy;
 };
 
 
 struct tx_stats{
 	uint64_t tx[RTE_MAX_ETHPORTS];
+	uint64_t tx_len[RTE_MAX_ETHPORTS];
 	uint64_t tx_drop[RTE_MAX_ETHPORTS];
 	uint64_t gpu_batch_cnt[RTE_MAX_ETHPORTS];
 	uint64_t gpu_batch_pkt[RTE_MAX_ETHPORTS];

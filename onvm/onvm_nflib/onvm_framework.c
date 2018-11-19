@@ -51,6 +51,8 @@ static int BATCH_SIZE = 1024;
 int NF_REQUIRED_LATENCY = 1000; // us -- default latency
 int INIT_WORKER_THREAD_NUM = 1;
 
+unsigned last_assigned_core_id = 0;
+
 struct thread_arg {
 	int thread_id;
 };
@@ -97,7 +99,7 @@ cpu_thread(void *arg)
 	pthread_mutex_unlock(&lock);
 
 	RTE_LOG(INFO, APP, "New CPU thread %d is spawned, running on lcore %u, total_thread %d\n", my_arg->thread_id, cur_lcore, gpu_info->thread_num);
-
+	
 	onvm_nflib_run(&(onvm_framework_cpu), my_arg->thread_id);
 
 	RTE_LOG(INFO, APP, "Thread %d terminated on core %d\n", my_arg->thread_id, cur_lcore);
@@ -207,18 +209,18 @@ onvm_framework_cpu(int thread_id)
 		clock_gettime(CLOCK_MONOTONIC, &start);
 
 		// pre-processing // todo: pass param i insteadof modify the struct
-		uint64_t rx_datalen = 0;
+		uint64_t rx_datalen_sample = 0;
 		for (i = 0; i < cur_buf_size; i++) {
-			rx_datalen += batch->pkt_ptr[buf_id][i]->data_len;
 			PRE_FUNC(batch->user_bufs[buf_id], batch->pkt_ptr[buf_id][i], i);
 		}
+		rx_datalen_sample = cur_buf_size > 0 ? cur_buf_size * batch->pkt_ptr[buf_id][0]->data_len : 0;
 
 		clock_gettime(CLOCK_MONOTONIC, &end);
 		diff = (end.tv_sec - start.tv_sec) * 1000000.0 + (end.tv_nsec - start.tv_nsec) / 1000.0;
 
 		rte_spinlock_lock(&cl->stats.update_lock);
 		cl->stats.rx += cur_buf_size;		
-		cl->stats.rx_datalen += rx_datalen;
+		cl->stats.rx_datalen += rx_datalen_sample;
 		cl->stats.cpu_time += diff;
 		rte_spinlock_unlock(&cl->stats.update_lock);
 
@@ -317,7 +319,9 @@ onvm_framework_start_cpu(init_func_t user_init_buf_func, pre_func_t user_pre_fun
 		/* Better to wait for a while between launching two threads, don't know why */
 		sleep(1);
         cur_lcore =	rte_get_next_lcore(cur_lcore, 1, 1);
+		cl->worker_scale_finished++;
 		onvm_framework_spawn_thread(i, cur_lcore);
+		last_assigned_core_id = cur_lcore;
 	}
 }
 
@@ -377,6 +381,22 @@ onvm_framework_start_gpu(gpu_htod_t user_gpu_htod, gpu_dtoh_t user_gpu_dtoh, gpu
 		if (gpu_buf_id == -1) continue;
 		batch->gpu_buf_id = gpu_buf_id;
 		batch->gpu_next_buf_id = (gpu_buf_id + 1) % NUM_BATCH_BUF;
+
+		// Automatic scaling
+		if (cl->worker_scale_target > cl->worker_scale_finished) {
+			RTE_LOG(INFO, APP, "CPU Scaling: %u -> %u\n", cl->worker_scale_finished, cl->worker_scale_target);
+			int num = cl->worker_scale_target - cl->worker_scale_finished;
+			int base = cl->worker_scale_finished;
+			unsigned lcore = last_assigned_core_id;
+			for (int i = base; i < num + base; i++) {
+				sleep(1);
+        		lcore =	rte_get_next_lcore(lcore, 1, 1);
+				rte_eal_wait_lcore(lcore);
+				onvm_framework_spawn_thread(i, lcore);
+				last_assigned_core_id = lcore;
+				cl->worker_scale_finished++;
+			}
+		}
 
 		/* 3. Launch kernel - USER DEFINED */
 		gcudaRecordStart(batch_id);

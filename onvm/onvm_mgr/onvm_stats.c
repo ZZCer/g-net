@@ -151,8 +151,9 @@ static void
 onvm_stats_display_ports(unsigned difftime) {
 	unsigned i;
 	/* Arrays to store last TX/RX count to calculate rate */
-	static uint64_t tx_last[RTE_MAX_ETHPORTS];
-	static uint64_t rx_last[RTE_MAX_ETHPORTS], rx_len_last[RTE_MAX_ETHPORTS];
+	static uint64_t tx_last[RTE_MAX_ETHPORTS] = {0}, tx_len_last[RTE_MAX_ETHPORTS] = {0};
+	static uint64_t rx_last[RTE_MAX_ETHPORTS] = {0}, rx_len_last[RTE_MAX_ETHPORTS] = {0};
+	static uint64_t rx_gpucopy_last = 0, rx_len_gpucopy_last = 0;
 	/* Hardware statistic */
 	static struct timespec start, end;
 	struct rte_eth_stats stats;
@@ -168,17 +169,29 @@ onvm_stats_display_ports(unsigned difftime) {
 	for (i = 0; i < ports->num_ports; i++) {
 		uint64_t rx_count = rte_atomic64_read((rte_atomic64_t *)(uintptr_t)&ports->rx_stats.rx[ports->id[i]]);
 		uint64_t rx_len = rte_atomic64_read((rte_atomic64_t *)(uintptr_t)&ports->rx_stats.rx_len[ports->id[i]]);
+		uint64_t rx_gpucopy = rte_atomic64_read((rte_atomic64_t *)(uintptr_t)&ports->rx_stats.rx_gpucopy);
+		uint64_t rx_len_gpucopy = rte_atomic64_read((rte_atomic64_t *)(uintptr_t)&ports->rx_stats.rx_len_gpucopy);
 		uint64_t tx_count = rte_atomic64_read((rte_atomic64_t *)(uintptr_t)&ports->tx_stats.tx[ports->id[i]]);
-		
-		printf("Port %u - rx: %9"PRIu64"  (%9"PRIu64" pps, %.2lf Gbps)\t"
-				"tx: %9"PRIu64"  (%9"PRIu64" pps)\n",
+		uint64_t tx_len = rte_atomic64_read((rte_atomic64_t *)(uintptr_t)&ports->tx_stats.tx_len[ports->id[i]]);
+
+		printf("Port %u - \trx:\t %9"PRIu64"  (%9"PRIu64" pps, %.6lf Gbps)\n"
+				"\t\tgpucopy: %9"PRIu64"  (%9"PRIu64" pps, %.6lf Gbps)\n"
+				"\t\ttx:\t %9"PRIu64"  (%9"PRIu64" pps, %.6lf Gbps)\n",
 				(unsigned)ports->id[i],
 				rx_count,
 				(rx_count - rx_last[i]) / difftime,
 				(double)(rx_len - rx_len_last[i] + (rx_count - rx_last[i]) * PKT_LEN_ETH_SPEC) / 1e9 * 8 
 				/difftime,
+
+				rx_gpucopy,
+				(rx_gpucopy - rx_gpucopy_last) / difftime,
+				(double)(rx_len_gpucopy - rx_len_gpucopy_last + (rx_gpucopy - rx_gpucopy_last) * PKT_LEN_ETH_SPEC) / 1e9 * 8 
+				/difftime,
+
 				tx_count,
 				(tx_count - tx_last[i])
+				/difftime,
+				(double)(tx_len - tx_len_last[i] + (tx_count - tx_last[i]) * PKT_LEN_ETH_SPEC) / 1e9 * 8 
 				/difftime);
 
 		printf("Tx GPU Batch: cnt %9"PRIu64", pkt %9"PRIu64", avg pkt %f\n",
@@ -189,7 +202,10 @@ onvm_stats_display_ports(unsigned difftime) {
 
 		rx_last[i] = rx_count;
 		rx_len_last[i] = rx_len;
+		rx_gpucopy_last = rx_gpucopy;
+		rx_len_gpucopy_last = rx_len_gpucopy;
 		tx_last[i] = tx_count;
+		tx_len_last[i] = tx_len;
 		ports->tx_stats.gpu_batch_cnt[ports->id[i]] = 0;
 		ports->tx_stats.gpu_batch_pkt[ports->id[i]] = 0;
 
@@ -262,8 +278,9 @@ onvm_stats_display_clients(void) {
 					clients[i].stats.batch_cnt);
 		}
 
-		printf("Average GPU execution time in NF: %.2lf us, CPU: %.2lf us, batch count is %ld\n",
+		printf("Average GPU execution time in NF: %.2lf us (kernel:  %.2lf us), CPU: %.2lf us, batch count is %ld\n",
 				clients[i].stats.gpu_time/clients[i].stats.batch_cnt,
+				clients[i].stats.kernel_time/clients[i].stats.batch_cnt,
 				clients[i].stats.cpu_time/clients[i].stats.batch_cnt,
 				clients[i].stats.batch_cnt);
 	}

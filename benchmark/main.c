@@ -71,8 +71,15 @@
 #define NUM_TX_QUEUE 4
 #define NUM_RX_QUEUE 1
 
+// #define INCREASE_TTL
+
 int PKTLEN;
 
+#ifdef INCREASE_TTL
+uint8_t ttl = 0;
+#else
+uint8_t ttl = 64;
+#endif
 struct rte_mempool *mp;
 
 /*
@@ -130,7 +137,7 @@ packet_ipv4hdr_constructor(struct ipv4_hdr *iph, int payload_len)
 	iph->packet_id = 0;
 	/* set DF flag */
 	iph->fragment_offset = htons(IPV4_HDR_DF_MASK);
-	iph->time_to_live = 64;
+	iph->time_to_live = ttl;
 
 	/* Total length of L3 */
 	iph->total_length = htons(sizeof(struct ipv4_hdr) + sizeof(struct
@@ -348,10 +355,23 @@ tx_loop(context_t *context)
 	struct rte_mbuf *tx_packets[MBUF_NUM];
 	setup_mbuf(port_id, mp, tx_packets);
 
+#ifdef INCREASE_TTL
+	unsigned long long freq_counter = 0;
+#endif
+
 	printf(">>>>>>>> TX thread running on core %d, queue %d\n", core_id, queue_id);
 	core_statistics[core_id].enable = 1;
 
 	for (;;) {
+#ifdef INCREASE_TTL
+		freq_counter++;
+		if (freq_counter % (TIMER_MILLISECOND) == 0) {
+			ttl++;
+			freq_counter = 0;
+			setup_mbuf(port_id, mp, tx_packets);
+			printf("ttl changed to %d\n", ttl);
+		}
+#endif
 #if 1
 		for (i = 0; i < MBUF_NUM; i ++) {
 			pkt = rte_pktmbuf_mtod(tx_packets[i], char *);

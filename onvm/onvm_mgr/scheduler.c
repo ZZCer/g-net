@@ -373,8 +373,17 @@ schedule(void) {
 	printf("\n========================================================\n\n");
 }
 
+static void detect_steady_state(void) {
+
+}
+
 static void
-schedule_new(void) {
+schedule_dynamic(void) {
+
+}
+
+static void
+schedule_static(void) {
 	// unsigned int i;
 	struct timespec end;
 
@@ -386,7 +395,7 @@ schedule_new(void) {
 
 	// TODO add new implementations
 	/* Local Schedule */
-	for (int i = 0; i < MAX_CLIENTS; i ++) {
+	for (int i = 0; i < MAX_CLIENTS; i++) {
 		if (!onvm_nf_is_valid(&clients[i]))
 			continue;
 
@@ -394,12 +403,31 @@ schedule_new(void) {
 		struct client *cl = &(clients[i]);
 		unsigned int stream_num = cl->gpu_info->thread_num;
 		
-		// parameters
-		cl->blk_num = 28;				// blk_num * stream_num <= total #SM	// 6.1 device max #SM: 28
-		cl->batch_size = 16384; 		// max definition in onvm_common.h
-		cl->threads_per_blk = 1024;		// 6.1 device max: 1024
+		switch (cl->info->service_id) {
+			case NF_ROUTER:
+				cl->blk_num = 2;				// blk_num * stream_num <= total #SM	// 6.1 device max #SM: 28
+				cl->batch_size = 4096; 		// max definition in onvm_common.h
+				cl->threads_per_blk = 1024;		// 6.1 device max: 1024
+				break;
+			case NF_FIREWALL:
+				cl->blk_num = 2;				// blk_num * stream_num <= total #SM	// 6.1 device max #SM: 28
+				cl->batch_size = 8192; 		// max definition in onvm_common.h
+				cl->threads_per_blk = 1024;		// 6.1 device max: 1024
+				break;
+			case NF_NIDS:
+				cl->blk_num = 6;				// blk_num * stream_num <= total #SM	// 6.1 device max #SM: 28
+				cl->batch_size = 8192; 		// max definition in onvm_common.h
+				cl->threads_per_blk = 1024;		// 6.1 device max: 1024
+				cl->worker_scale_target = 3;
+				break;
+			case NF_IPSEC:
+				cl->blk_num = 6;				// blk_num * stream_num <= total #SM	// 6.1 device max #SM: 28
+				cl->batch_size = 8192; 		// max definition in onvm_common.h
+				cl->threads_per_blk = 1024;		// 6.1 device max: 1024
+				break;
+		}
 
-		// assert(cl->batch_size <= MAX_BATCH_SIZE);
+		assert(cl->batch_size <= MAX_BATCH_SIZE);
 		assert(stream_num * cl->blk_num <= SM_TOTAL_NUM);
 	}
 
@@ -418,7 +446,8 @@ scheduler_thread_main(void *arg) {
 		onvm_nf_check_status();
 		onvm_stats_display_all(sleeptime);
 		// schedule();
-		schedule_new();
+		// schedule_dynamic();
+		schedule_static();
 		onvm_stats_clear_all_clients();
 	}
 
