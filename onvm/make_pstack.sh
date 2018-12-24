@@ -1,1 +1,1 @@
-cd onvm_mgr/pstack && make clean && make
+cd pstack && make clean && make

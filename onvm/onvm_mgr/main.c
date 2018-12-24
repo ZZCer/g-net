@@ -246,7 +246,9 @@ rx_thread_main(void *arg) {
                 onvm_pkt_gpu_ptr(pkts[j]) = rx_batch[rx_batch_id].buf_head + (pos - (uint8_t *)&rx_batch[rx_batch_id].buf);
                 batch_head += load_packet(pos, pkts[j]);
                 // Use pstack to process TCP/IP
+#ifdef ENABLE_PSTACK
                 pstack_process((char *)onvm_pkt_ipv4_hdr(pkts[j]), pkts[j]->data_len - sizeof(struct ether_hdr), thread_id);
+#endif
             }
 #ifndef DROP_RX_PKTS
             if (unlikely(j < rx_count)) {

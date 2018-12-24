@@ -324,7 +324,7 @@ process_tcp(u_char * data, int skblen, TCP_THREAD_LOCAL_P tcp_thread_local_p)
 	if (a % 50000 == 0)
 		printf(" %d \n", a);
 #endif
-
+	// TODO: return tcp handle
 	//  ugly_iphdr = this_iphdr;
 	iplen = ntohs(this_iphdr->ip_len);
 	if ((unsigned)iplen < 4 * this_iphdr->ip_hl + sizeof(struct tcphdr)) {

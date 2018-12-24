@@ -72,8 +72,8 @@ LDFLAGS += -L$(SRCDIR)/../onvm_nflib/$(RTE_TARGET)/lib -lonvm
 CFLAGS += -I$(CUDA_PATH)/include
 LDFLAGS += -L$(CUDA_PATH)/lib64 -lcudart -lcuda
 
-CFLAGS += -I$(SRCDIR)/pstack/src -DPARALLEL -DORIGIN_TCP
-LDFLAGS += -L$(SRCDIR)/pstack/src -lnids
+CFLAGS += -I$(SRCDIR)/../pstack/src -DPARALLEL -DORIGIN_TCP
+LDFLAGS += -L$(SRCDIR)/../pstack/src -lnids
 
 # for newer gcc, e.g. 4.4, no-strict-aliasing may not be necessary
 # and so the next line can be removed in those cases.

@@ -13,4 +13,5 @@ compile_commands.json
 tags
 
 *.o
+*.a
 mgr_prof*

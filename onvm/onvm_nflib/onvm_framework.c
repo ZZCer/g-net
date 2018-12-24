@@ -13,6 +13,11 @@
 #include "onvm_pkt_helper.h"
 #include "onvm_includes.h"
 
+#include "../onvm_mgr/onvm_init.h"
+#include "../onvm_mgr/pstack.h"
+
+// #define ENABLE_PSTACK
+
 extern struct rte_mempool *nf_request_mp;
 extern struct rte_mempool *nf_response_mp;
 extern struct rte_ring *nf_request_queue;
@@ -20,6 +25,8 @@ extern struct onvm_nf_info *nf_info;
 extern struct client *cl;
 extern volatile uint8_t keep_running;
 extern void onvm_nflib_handle_signal(int sig);
+
+pstack_thread_info pstack_info;
 
 /* shared data from server. */
 struct gpu_schedule_info *gpu_info;
@@ -211,6 +218,9 @@ onvm_framework_cpu(int thread_id)
 		// pre-processing // todo: pass param i insteadof modify the struct
 		uint64_t rx_datalen_sample = 0;
 		for (i = 0; i < cur_buf_size; i++) {
+#ifdef ENABLE_PSTACK
+			pstack_process((char *)onvm_pkt_ipv4_hdr(batch->pkt_ptr[buf_id][i]), batch->pkt_ptr[buf_id][i]->data_len - sizeof(struct ether_hdr), thread_id);
+#endif
 			PRE_FUNC(batch->user_bufs[buf_id], batch->pkt_ptr[buf_id][i], i);
 		}
 		rx_datalen_sample = cur_buf_size > 0 ? cur_buf_size * batch->pkt_ptr[buf_id][0]->data_len : 0;
@@ -304,6 +314,12 @@ onvm_framework_init(const char *module_file, const char *kernel_name)
 	rte_memcpy((void *)(gpu_info->kernel_name), kernel_name, strlen(kernel_name));
 
 	recv_token = send_token = 0;
+#ifdef ENABLE_PSTACK
+	pstack_info.ip_thread_local = rte_malloc(PSTACK_IP_INFO_NAME, MAX_CPU_THREAD_NUM * PSTACK_IP_INFO_SIZE, 0);
+	pstack_info.tcp_thread_local = rte_malloc(PSTACK_TCP_INFO_NAME, MAX_CPU_THREAD_NUM * PSTACK_TCP_INFO_SIZE, 0);
+
+	pstack_init(pstack_info, MAX_CPU_THREAD_NUM);
+#endif
 }
 
 void

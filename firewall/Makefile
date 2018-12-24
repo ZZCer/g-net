@@ -26,6 +26,9 @@ LDFLAGS += -L$(ONVM)/onvm_nflib/$(RTE_TARGET) -lonvm
 LDFLAGS += -L$(CUDA_PATH)/lib64 -lcudart -lcuda
 CFLAGS += -D__CUDA_ARCH__=0
 
+CFLAGS += -I$(SRCDIR)/../onvm/pstack/src -DPARALLEL -DORIGIN_TCP
+LDFLAGS += -L$(SRCDIR)/../onvm/pstack/src -lnids
+
 # workaround for a gcc bug with noreturn attribute
 # http://gcc.gnu.org/bugzilla/show_bug.cgi?id=12603
 ifeq ($(CONFIG_RTE_TOOLCHAIN_GCC),y)

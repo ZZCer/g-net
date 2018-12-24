@@ -500,6 +500,7 @@ schedule_dynamic(int timediff) {
 		}
 		// no scheduling decision yet, increase throughput of first nf.
 		if (default_chain->chain_length >= 2) {
+			// TODO: do not increase if the speed is approaching the input rate.
 			RTE_LOG(INFO, APP, "Increasing the performance of head client of the service chain.\n");
 			clients[chain_ids[1]].batch_size *= 1.1;
 		}
@@ -533,13 +534,13 @@ schedule_static(void) {
 				cl->blk_num = 1;				// blk_num * stream_num <= total #SM	// 6.1 device max #SM: 28
 				cl->batch_size = 4096; 		// max definition in onvm_common.h
 				cl->threads_per_blk = 1024;		// 6.1 device max: 1024
-				cl->worker_scale_target = 1;
+				cl->worker_scale_target = 2;
 				break;
 			case NF_FIREWALL:
 				cl->blk_num = 2;				// blk_num * stream_num <= total #SM	// 6.1 device max #SM: 28
 				cl->batch_size = 8192; 		// max definition in onvm_common.h
 				cl->threads_per_blk = 1024;		// 6.1 device max: 1024
-				cl->worker_scale_target = 1;
+				cl->worker_scale_target = 2;
 				break;
 			case NF_NIDS:
 				cl->blk_num = 6;				// blk_num * stream_num <= total #SM	// 6.1 device max #SM: 28
@@ -572,7 +573,7 @@ scheduler_thread_main(void *arg) {
 		usleep(sleeptime * 1000000);
 		onvm_nf_check_status();
 		onvm_stats_display_all(sleeptime);
-		/// schedule();
+		// schedule();
 		schedule_dynamic(sleeptime);
 		// schedule_static();
 		onvm_stats_clear_all_clients();

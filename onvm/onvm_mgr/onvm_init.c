@@ -145,7 +145,7 @@ init(int argc, char *argv[]) {
 	init_pstack_info_pool();
 
 	/* Choose service chain, copy one and paste out of "if 0" to use it */
-	const int service_chain[MAX_SERVICES] = {NF_FIREWALL, NF_NIDS, NF_IPSEC, NF_ROUTER, NF_END};
+	const int service_chain[MAX_SERVICES] = {NF_ROUTER,NF_FIREWALL, NF_END};
 
 #if 0
 	/* 1 NF */
@@ -255,7 +255,7 @@ init_pstack_info_pool(void) {
 	pstack_info.ip_thread_local = rte_malloc(PSTACK_IP_INFO_NAME, ONVM_NUM_RX_THREADS * PSTACK_IP_INFO_SIZE, 0);
 	pstack_info.tcp_thread_local = rte_malloc(PSTACK_TCP_INFO_NAME, ONVM_NUM_RX_THREADS * PSTACK_TCP_INFO_SIZE, 0);
 
-	pstack_init(pstack_info);
+	pstack_init(pstack_info, ONVM_NUM_RX_THREADS);
 
 	return (pstack_info.ip_thread_local == NULL || pstack_info.tcp_thread_local == NULL); 
 }
