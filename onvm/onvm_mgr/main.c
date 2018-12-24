@@ -111,7 +111,7 @@ static size_t size_packet(struct rte_mbuf *pkt) {
     if (ipv4->next_proto_id == IPPROTO_TCP) {
         struct tcp_hdr *tcp = onvm_pkt_tcp_hdr(pkt);
         uint8_t *datastart, *dataend;
-        datastart = (uint8_t *)tcp + (tcp->data_off << 2);
+        datastart = (uint8_t *)tcp + (tcp->data_off >> 4 << 2);
         dataend = (uint8_t *)ipv4 + rte_be_to_cpu_16(ipv4->total_length);
         return sizeof(gpu_packet_t) + dataend - datastart;
     } else if (ipv4->next_proto_id == IPPROTO_UDP) {
@@ -140,7 +140,7 @@ static size_t load_packet(uint8_t *buffer, struct rte_mbuf *pkt) {
                gpkt->dst_port = rte_be_to_cpu_16(tcp->dst_port);
                gpkt->sent_seq = rte_be_to_cpu_32(tcp->sent_seq);
                gpkt->recv_ack = rte_be_to_cpu_32(tcp->recv_ack);
-               datastart = (uint8_t *)tcp + (tcp->data_off << 2);
+               datastart = (uint8_t *)tcp + (tcp->data_off >> 4 << 2);
                dataend = (uint8_t *)ipv4 + rte_be_to_cpu_16(ipv4->total_length);
                gpkt->payload_size = dataend - datastart;
        } else if (ipv4->next_proto_id == IPPROTO_UDP) {
@@ -181,7 +181,7 @@ static size_t unload_packet(uint8_t *buffer, struct rte_mbuf *pkt) {
         tcp->dst_port = rte_be_to_cpu_16(gpkt->dst_port);
         tcp->sent_seq = rte_be_to_cpu_32(gpkt->sent_seq);
         tcp->recv_ack = rte_be_to_cpu_32(gpkt->recv_ack);
-        datastart = (uint8_t *)tcp + (tcp->data_off << 2);
+        datastart = (uint8_t *)tcp + (tcp->data_off >> 4 << 2);
         //dataend = datastart + gpkt->payload_size;
         //ipv4->total_length = rte_be_to_cpu_16(dataend - (uint8_t *)ipv4);
     } else if (ipv4->next_proto_id == IPPROTO_UDP) {
@@ -245,6 +245,8 @@ rx_thread_main(void *arg) {
                 uint8_t *pos = rx_batch[rx_batch_id].buf[thread_id] + batch_head;
                 onvm_pkt_gpu_ptr(pkts[j]) = rx_batch[rx_batch_id].buf_head + (pos - (uint8_t *)&rx_batch[rx_batch_id].buf);
                 batch_head += load_packet(pos, pkts[j]);
+                // Use pstack to process TCP/IP
+                pstack_process((char *)onvm_pkt_ipv4_hdr(pkts[j]), pkts[j]->data_len - sizeof(struct ether_hdr), thread_id);
             }
 #ifndef DROP_RX_PKTS
             if (unlikely(j < rx_count)) {

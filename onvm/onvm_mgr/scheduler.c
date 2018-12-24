@@ -1,5 +1,6 @@
 #include <stdint.h>
 #include <math.h>
+#include <rte_time.h>
 
 #include "onvm_init.h"
 #include "onvm_stats.h"
@@ -373,12 +374,136 @@ schedule(void) {
 	printf("\n========================================================\n\n");
 }
 
-static void detect_steady_state(void) {
+#define STATE_SAMPLES 5
+#define STEADY_STATE_D_THRESHOLD 10000
 
+static int detect_steady_state(int timediff) {
+	// We define that the system is in steady state if
+	// whole system throughput is steady (samples have a low variance)
+	static double samples[STATE_SAMPLES] = {0};
+	static int current_index = 0;
+	static uint64_t tx_last = 0;
+	static int full = 0;
+
+	uint64_t tx = rte_atomic64_read((rte_atomic64_t *)(uintptr_t)&ports->tx_stats.tx[0]); // FIXME: only support one port
+	samples[current_index] = (tx - tx_last) / (double) timediff;
+	tx_last = tx;
+
+	if (current_index == STATE_SAMPLES - 1)
+		full = 1;
+	current_index = (current_index + 1) % STATE_SAMPLES;
+	
+	if (full) {
+		double sum = 0.;
+		for (int i = 0; i < STATE_SAMPLES; i++) {
+			sum += samples[i];
+		}
+		double avg = sum / STATE_SAMPLES;
+		double diff_square_sum = 0.;
+		for (int i = 0; i < STATE_SAMPLES; i++) {
+			diff_square_sum += (samples[i] - avg) * (samples[i] - avg);
+		}
+		double index_of_dispersion = diff_square_sum / STATE_SAMPLES / avg;
+		
+		printf("%f\n", index_of_dispersion);
+		return index_of_dispersion < STEADY_STATE_D_THRESHOLD;
+	} else return 0;
 }
 
+static void refresh_statistics(int timediff) {
+	// Here we only check the performance stats of
+	// 1. Throughput and latency of each NF
+	// 2. Throughput of the entire system
+	// TODO: Use built-in stats for now.
+	UNUSED(timediff);
+}
+
+typedef enum schedule_resource_type_e { 
+	BATCH_SIZE,
+	NUM_WORKER,
+	NUM_SM
+} schedule_resource_type_t;
+
+typedef struct schedule_decision_s {
+	int instance_id;
+	schedule_resource_type_t resource_type;
+} schedule_decision_t;
+
 static void
-schedule_dynamic(void) {
+schedule_dynamic(int timediff) {
+	int chain_ids[ONVM_MAX_CHAIN_LENGTH];
+
+	// Make decisions only when in steady state
+	if (!detect_steady_state(timediff)) {
+		RTE_LOG(INFO, APP, "Steady state not detected.\n");
+		return;
+	} else {
+		allocated_sm_num = 0;
+		for (int i = 0; i < MAX_CLIENTS; i++) {
+			if (!onvm_nf_is_valid(&clients[i]))
+				continue;
+			chain_ids[clients[i].position_in_chain] = i;
+			
+			struct client* c = &clients[i];
+			// c->blk_num = 4;
+			allocated_sm_num += clients[i].blk_num * clients[i].worker_scale_target;
+			RTE_LOG(INFO, APP, "Client %d: #SM - %d * %d, Batch Size - %d\n", c->instance_id, c->worker_scale_target, c->blk_num, c->batch_size);
+		}
+		
+		for (int i = 1; i < default_chain->chain_length; i++) {
+			struct client* c = &clients[chain_ids[i]];
+			if (!onvm_nf_is_valid(c))
+				continue;
+
+			// check the performance metrics
+			double latency = (c->stats.cpu_time + c->stats.gpu_time) / c->stats.batch_cnt;
+			RTE_LOG(INFO, APP, "Client %d latency: %f, limit: %d\n", c->instance_id, latency, c->gpu_info->latency_us);
+			if (latency > c->gpu_info->latency_us) {
+				RTE_LOG(INFO, APP, "Client %d surpasses the latency limit.\n", c->instance_id);
+				// latency optimization is required
+				// c->batch_size *= 0.8; // todo
+				if (c->worker_scale_target < 1) { // TODO thread limit
+					unsigned int old_target = c->worker_scale_target;
+					c->worker_scale_target += 1;
+					allocated_sm_num -= c->blk_num * old_target;
+					c->blk_num *= old_target / (double) c->worker_scale_target;
+					if (c->blk_num == 0)
+						c->blk_num = 1;
+					allocated_sm_num += c->blk_num * c->worker_scale_target;
+					c->batch_size *= old_target / (double) c->worker_scale_target;
+				} else if (c->stats.kernel_time / c->stats.gpu_time > 0.4 && allocated_sm_num + c->worker_scale_target < SM_TOTAL_NUM) {
+					c->blk_num++;
+					RTE_LOG(INFO, APP, "Client %d: Allocating %d SMs.\n", c->instance_id, c->worker_scale_target * c->blk_num);
+				} else {
+					c->batch_size *= 0.9;
+				}
+				return;
+			} else {
+				// check current throughput of NF
+				if (i == 1) {
+					continue;
+				} else {
+					if (clients[chain_ids[i - 1]].stats.tx_drop > 0) {
+						// the current throughput of NF is low
+						RTE_LOG(INFO, APP, "Increasing the performance of client %d\n", c->instance_id);
+						// if kernel time takes the majority of the GPU time
+						// we need to add SM to increase performance
+						// if (c->stats.kernel_time / c->stats.gpu_time > 0.4) { // TODO: set threshold
+						//  	c->blk_num++;
+						// } else {
+							c->batch_size *= 1.2;
+						// }
+						return;
+					}
+				}
+			}
+		}
+		// no scheduling decision yet, increase throughput of first nf.
+		if (default_chain->chain_length >= 2) {
+			RTE_LOG(INFO, APP, "Increasing the performance of head client of the service chain.\n");
+			clients[chain_ids[1]].batch_size *= 1.1;
+		}
+	}
 
 }
 
@@ -405,20 +530,22 @@ schedule_static(void) {
 		
 		switch (cl->info->service_id) {
 			case NF_ROUTER:
-				cl->blk_num = 2;				// blk_num * stream_num <= total #SM	// 6.1 device max #SM: 28
+				cl->blk_num = 1;				// blk_num * stream_num <= total #SM	// 6.1 device max #SM: 28
 				cl->batch_size = 4096; 		// max definition in onvm_common.h
 				cl->threads_per_blk = 1024;		// 6.1 device max: 1024
+				cl->worker_scale_target = 1;
 				break;
 			case NF_FIREWALL:
 				cl->blk_num = 2;				// blk_num * stream_num <= total #SM	// 6.1 device max #SM: 28
 				cl->batch_size = 8192; 		// max definition in onvm_common.h
 				cl->threads_per_blk = 1024;		// 6.1 device max: 1024
+				cl->worker_scale_target = 1;
 				break;
 			case NF_NIDS:
 				cl->blk_num = 6;				// blk_num * stream_num <= total #SM	// 6.1 device max #SM: 28
-				cl->batch_size = 8192; 		// max definition in onvm_common.h
+				cl->batch_size = 4096; 		// max definition in onvm_common.h
 				cl->threads_per_blk = 1024;		// 6.1 device max: 1024
-				cl->worker_scale_target = 3;
+				cl->worker_scale_target = 1;
 				break;
 			case NF_IPSEC:
 				cl->blk_num = 6;				// blk_num * stream_num <= total #SM	// 6.1 device max #SM: 28
@@ -437,17 +564,17 @@ schedule_static(void) {
 int
 scheduler_thread_main(void *arg) {
 	UNUSED(arg);
-	const unsigned sleeptime = 3;
+	const unsigned sleeptime = 1;
 
 	RTE_LOG(INFO, APP, "Core %d: Scheduler is running\n", rte_lcore_id());
 
-	while (sleep(sleeptime) <= sleeptime) {
-
+	while (1) {
+		usleep(sleeptime * 1000000);
 		onvm_nf_check_status();
 		onvm_stats_display_all(sleeptime);
-		// schedule();
-		// schedule_dynamic();
-		schedule_static();
+		/// schedule();
+		schedule_dynamic(sleeptime);
+		// schedule_static();
 		onvm_stats_clear_all_clients();
 	}
 

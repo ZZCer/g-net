@@ -84,7 +84,7 @@
 /*****************************Original Below**********************************/
 
 #define ONVM_NUM_RX_THREADS	4
-#define ONVM_NUM_TX_THREADS_PER_PORT 4
+#define ONVM_NUM_TX_THREADS_PER_PORT 8
 #define BQUEUE_SWITCH	1      /* Use BQueue to transfer packets */
 //#define MEASURE_LATENCY	1     /* Measure the latency of each NF */
 
@@ -194,7 +194,7 @@ struct client {
 	struct rte_ring *global_response_q;
 	struct onvm_nf_info *info;
 	uint16_t instance_id;
-
+	uint16_t position_in_chain;
 	struct rte_ring *rx_q_new;
 	struct rte_ring *tx_q_new;
 
@@ -216,8 +216,8 @@ struct client {
 	uint16_t blk_num;
 	uint32_t batch_size;
 
-	int worker_scale_target;
-	int worker_scale_finished;
+	unsigned worker_scale_target;
+	unsigned worker_scale_finished;
 
 	uint16_t init;
 	uint16_t worker_thread_num;
@@ -447,7 +447,8 @@ static inline int get_nf_type(int service_id)
 #define MZ_SCP_INFO "MProc_scp_info"
 #define MZ_FTP_INFO "MProc_ftp_info"
 #define MZ_GPU_INFO_NAME "MProc_GPU_info_%u"
-
+#define PSTACK_IP_INFO_NAME "MProc_pstack_ip_info"
+#define PSTACK_TCP_INFO_NAME "MProc_pstack_tcp_info"
 
 /* common names for NF states */
 #define _NF_QUEUE_NAME "NF_INFO_QUEUE"

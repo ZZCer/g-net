@@ -198,6 +198,7 @@ onvm_nf_start(struct onvm_nf_info *nf_info) {
 	}
 	if (cur_chain == -1)
 			rte_exit(EXIT_FAILURE, "Don't know the nf's position in the chain");
+	clients[instance_id].position_in_chain = cur_chain;
 	// setup prev
 	if (cur_chain > 1) {
 			uint16_t prev_service = default_chain->sc[cur_chain-1].destination;

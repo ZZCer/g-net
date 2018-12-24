@@ -7,6 +7,7 @@
 #include "drvapi_error_string.h"
 
 extern struct onvm_service_chain *default_chain;
+extern int INIT_WORKER_THREAD_NUM;
 
 CUdeviceptr gpu_pkts_buf, gpu_pkts_head;
 volatile CUdeviceptr gpu_pkts_tail;
@@ -155,6 +156,7 @@ manager_nf_init(int instance_id)
 	cl->threads_per_blk = 1024;
 	cl->blk_num = PRESET_BLK_NUM;
 	cl->batch_size = PRESET_BATCH_SIZE;
+	cl->worker_scale_target = INIT_WORKER_THREAD_NUM;
 	
 	/* mark that this NF has been initiated */
 	cl->init = 1;

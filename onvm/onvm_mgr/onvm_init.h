@@ -73,6 +73,8 @@
 #include "onvm_sc_mgr.h"
 #include "onvm_sc_common.h"
 
+#include "pstack.h"
+
 /***********************************Macros************************************/
 
 #if defined(UNCO_SHARE_GPU) || defined(FAIR_SHARE_GPU)
@@ -89,6 +91,9 @@
 
 #define NF_INFO_SIZE sizeof(struct onvm_nf_info)
 #define NF_INFO_CACHE 8
+
+#define PSTACK_IP_INFO_SIZE sizeof(_IP_THREAD_LOCAL_P)
+#define PSTACK_TCP_INFO_SIZE sizeof(_TCP_THREAD_LOCAL_P)
 
 #define MAX_REQUEST_NUM	256 
 #define MAX_RESPONSE_NUM 256 
@@ -132,6 +137,8 @@ struct tx_stats{
 	uint64_t tx_drop[RTE_MAX_ETHPORTS];
 	uint64_t gpu_batch_cnt[RTE_MAX_ETHPORTS];
 	uint64_t gpu_batch_pkt[RTE_MAX_ETHPORTS];
+
+	double tx_throuput_mpps[RTE_MAX_ETHPORTS];
 };
 
 
@@ -167,7 +174,7 @@ extern unsigned num_sockets;
 extern struct onvm_service_chain *default_chain;
 extern struct onvm_ft *sdn_ft;
 extern struct rx_perf rx_stats[ONVM_NUM_RX_THREADS];
-
+extern pstack_thread_info pstack_info;
 
 /**********************************Functions**********************************/
 

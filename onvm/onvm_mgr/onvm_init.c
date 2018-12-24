@@ -62,6 +62,7 @@ struct port_info *ports = NULL;
 
 struct rte_mempool *pktmbuf_pool;
 struct rte_mempool *nf_info_pool;
+pstack_thread_info pstack_info;
 
 struct rte_ring *nf_info_queue;
 
@@ -80,7 +81,7 @@ static int init_port(uint8_t port_num);
 static int init_shm_rings(void);
 static int init_info_queue(void);
 static void check_all_ports_link_status(uint8_t port_num, uint32_t port_mask);
-
+static int init_pstack_info_pool(void);
 
 /*********************************Interfaces**********************************/
 
@@ -141,9 +142,10 @@ init(int argc, char *argv[]) {
 	/* initialize gpu related settings */
 	init_manager();
 
+	init_pstack_info_pool();
 
 	/* Choose service chain, copy one and paste out of "if 0" to use it */
-	const int service_chain[MAX_SERVICES] = {NF_NIDS, NF_END};
+	const int service_chain[MAX_SERVICES] = {NF_FIREWALL, NF_NIDS, NF_IPSEC, NF_ROUTER, NF_END};
 
 #if 0
 	/* 1 NF */
@@ -232,6 +234,30 @@ init_client_info_pool(void) {
 			0, NULL, NULL, NULL, NULL, rte_socket_id(), NO_FLAGS);
 
 	return (nf_info_pool == NULL); /* 0 on success */
+}
+
+/**
+ * Set up the mempool of the common tcp/ip stack (pstack)
+ */
+
+static int
+init_pstack_info_pool(void) {
+	// pstack_info.ip_thread_local = rte_mempool_create(MZ_PSTACK_IP_INFO_NAME, ONVM_NUM_RX_THREADS,
+	// 		MZ_PSTACK_IP_INFO_SIZE, NF_INFO_CACHE, // TODO cache size?
+	// 		0, NULL, NULL, NULL, NULL, rte_socket_id(), NO_FLAGS);
+	// pstack_info.tcp_thread_local = rte_mempool_create(MZ_PSTACK_TCP_INFO_NAME, ONVM_NUM_RX_THREADS,
+	// 		MZ_PSTACK_TCP_INFO_SIZE, NF_INFO_CACHE, // TODO cache size?
+	// 		0, NULL, NULL, NULL, NULL, rte_socket_id(), NO_FLAGS);
+
+	// USE RTE_MALLOC for now 
+	// The pstack library use dynamic memory allocation
+	// shared memory requires rte_mempool
+	pstack_info.ip_thread_local = rte_malloc(PSTACK_IP_INFO_NAME, ONVM_NUM_RX_THREADS * PSTACK_IP_INFO_SIZE, 0);
+	pstack_info.tcp_thread_local = rte_malloc(PSTACK_TCP_INFO_NAME, ONVM_NUM_RX_THREADS * PSTACK_TCP_INFO_SIZE, 0);
+
+	pstack_init(pstack_info);
+
+	return (pstack_info.ip_thread_local == NULL || pstack_info.tcp_thread_local == NULL); 
 }
 
 /**

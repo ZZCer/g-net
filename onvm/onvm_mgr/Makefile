@@ -35,6 +35,9 @@
 # (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+# subsystem:
+#	cd pstack && $(MAKE) clean && $(MAKE)
+
 ifeq ($(RTE_SDK),)
 $(error "Please define RTE_SDK environment variable")
 endif
@@ -54,12 +57,13 @@ endif
 APP = onvm_mgr
 
 # all source are stored in SRCS-y
-SRCS-y := main.c onvm_init.c onvm_args.c onvm_stats.c onvm_nf.c manager.c scheduler.c
+SRCS-y := main.c onvm_init.c onvm_args.c onvm_stats.c onvm_nf.c manager.c scheduler.c pstack.c
 
 INC :=
 
 WERROR_FLAGS += -Wno-error=unused-function -Wno-error=maybe-uninitialized
 
+# CFLAGS += $(WERROR_FLAGS) -O3 -g -rdynamic $(USER_FLAGS)
 CFLAGS += $(WERROR_FLAGS) -O3 -g -rdynamic $(USER_FLAGS)
 
 CFLAGS += -I$(SRCDIR)/../onvm_nflib
@@ -67,6 +71,9 @@ LDFLAGS += -L$(SRCDIR)/../onvm_nflib/$(RTE_TARGET)/lib -lonvm
 
 CFLAGS += -I$(CUDA_PATH)/include
 LDFLAGS += -L$(CUDA_PATH)/lib64 -lcudart -lcuda
+
+CFLAGS += -I$(SRCDIR)/pstack/src -DPARALLEL -DORIGIN_TCP
+LDFLAGS += -L$(SRCDIR)/pstack/src -lnids
 
 # for newer gcc, e.g. 4.4, no-strict-aliasing may not be necessary
 # and so the next line can be removed in those cases.

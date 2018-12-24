@@ -1,5 +1,6 @@
 # VSCode
 .vscode/
+.zcache/
 
 # Built binaries
 x86_64-native-linuxapp-gcc/
@@ -10,3 +11,6 @@ lib/
 compile_commands.json
 *.tmp
 tags
+
+*.o
+mgr_prof*
