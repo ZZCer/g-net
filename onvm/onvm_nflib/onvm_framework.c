@@ -183,6 +183,13 @@ onvm_framework_cpu(int thread_id)
 			onvm_pkt_drop_batch(batch->pkt_ptr[buf_id] + sent_packets, cur_buf_size - sent_packets);
 		}
 
+#ifdef MEASURE_NF_END_TO_END
+		struct timeval cur;
+		gettimeofday(&cur, NULL);
+		uint64_t timediff_usec = ((uint32_t) cur.tv_sec - batch->start_time.tv_sec) * 1e6 + ((cur.tv_usec - batch->start_time.tv_usec));
+        printf("NF latency: %f ms\n", timediff_usec / 1e3);
+#endif
+
 		clock_gettime(CLOCK_MONOTONIC, &end);
 		diff = (end.tv_sec - start.tv_sec) * 1000000.0 + (end.tv_nsec - start.tv_nsec) / 1000.0;
 
@@ -193,6 +200,11 @@ onvm_framework_cpu(int thread_id)
 		cl->stats.cpu_time += diff;
 		rte_spinlock_unlock(&cl->stats.update_lock);
 
+		clock_gettime(CLOCK_MONOTONIC, &start);
+
+#ifdef MEASURE_NF_END_TO_END
+		gettimeofday(&batch->start_time, NULL);
+#endif
 		// rx
 		while (keep_running && recv_token != thread_id);
 		do {
@@ -213,7 +225,7 @@ onvm_framework_cpu(int thread_id)
 		cur_buf_size = num_packets;
 		batch->buf_size[buf_id] = cur_buf_size;
 
-		clock_gettime(CLOCK_MONOTONIC, &start);
+		// clock_gettime(CLOCK_MONOTONIC, &start);
 
 		// pre-processing // todo: pass param i insteadof modify the struct
 		uint64_t rx_datalen_sample = 0;

@@ -173,7 +173,7 @@ void nids_pcap_handler(u_char *, struct pcap_pkthdr *, u_char *);
 //struct tcp_stream *nids_find_tcp_stream(struct tuple4 *);
 //void nids_free_tcp_stream(struct tcp_stream *);
 
-void gen_ip_frag_proc(char *data, int len, int thread_id);
+void* gen_ip_frag_proc(char *data, int len, int thread_id);
 
 extern struct nids_prm nids_params;
 extern char *nids_warnings[];

@@ -24,7 +24,7 @@ struct skbuff {
 
 int tcp_init(int, TCP_THREAD_LOCAL_P);
 void tcp_exit(TCP_THREAD_LOCAL_P);
-void process_tcp(u_char *, int, TCP_THREAD_LOCAL_P);
+struct tcp_stream *process_tcp(u_char *, int, TCP_THREAD_LOCAL_P);
 void process_icmp(u_char *, TCP_THREAD_LOCAL_P);
 void tcp_check_timeouts(struct timeval *, TCP_THREAD_LOCAL_P);
 

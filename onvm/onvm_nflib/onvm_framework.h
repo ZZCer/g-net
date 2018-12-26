@@ -13,6 +13,12 @@
 #define SYNC 0
 #define ASYNC 1
 
+// #define MEASURE_NF_END_TO_END
+
+#ifdef MEASURE_NF_END_TO_END
+	#include <sys/time.h>
+#endif
+
 /* Each CPU worker holds such a data structure */
 typedef struct nfv_batch_s
 {
@@ -31,6 +37,10 @@ typedef struct nfv_batch_s
 	void *host_mem_addr_cur;
 	int host_mem_size_total;
 	int host_mem_size_left;
+
+#ifdef MEASURE_NF_END_TO_END
+	struct timeval start_time;
+#endif
 } nfv_batch_t;
 
 enum {

@@ -10,7 +10,7 @@
 #define b_comp(x,y)	(!memcmp(&(x), &(y), sizeof(x)))
 
 struct proc_node {
-  void (*item)();
+  void* (*item)();
   struct proc_node *next;
 };
 

@@ -526,12 +526,13 @@ end_loop:
 // }
 
 #if defined(PARALLEL)
-void gen_ip_frag_proc(char *data, int len, int thread_id)
+void* gen_ip_frag_proc(char *data, int len, int thread_id)
 {
 	struct proc_node *i;
 	struct ip *iph = (struct ip *) data;
 	int need_free = 0;
 	int skblen;
+	void* res = NULL;
 
 	IP_THREAD_LOCAL_P ip_thread_local_p = ip_thread_local_struct + thread_id;
 //	if (!nids_params.ip_filter(iph, len))
@@ -540,15 +541,15 @@ void gen_ip_frag_proc(char *data, int len, int thread_id)
 	if (len < (int)sizeof(struct ip) || iph->ip_hl < 5 || iph->ip_v != 4 ||
 			ip_fast_csum((unsigned char *) iph, iph->ip_hl) != 0 ||
 			len < ntohs(iph->ip_len) || ntohs(iph->ip_len) < iph->ip_hl << 2) {
-		return;
+		return res;
 	}
 	if (iph->ip_hl > 5 && ip_options_compile((unsigned char *)data)) {
-		return;
+		return res;
 	}
 
 	switch (ip_defrag_stub((struct ip *) data, &iph, ip_thread_local_p)) {
 		case IPF_ISF:
-			return;
+			return res;
 		case IPF_NOTF:
 			need_free = 0;
 			iph = (struct ip *) data;
@@ -565,9 +566,11 @@ void gen_ip_frag_proc(char *data, int len, int thread_id)
 	skblen += nids_params.sk_buff_size;
 
 	for (i = ip_procs; i; i = i->next)
-		(i->item) (iph, skblen, ip_thread_local_p->self_cpu_id);
+		res = (i->item) (iph, skblen, ip_thread_local_p->self_cpu_id);
 	if (need_free)
 		free(iph);
+
+	return res;
 }
 #else
 static void gen_ip_frag_proc(u_char * data, int len)
@@ -664,13 +667,14 @@ static void process_udp(char *data)
 }
 
 #if defined(PARALLEL)
-static void gen_ip_proc(u_char * data, int skblen, int cpu_id)
+static void* gen_ip_proc(u_char * data, int skblen, int cpu_id)
 {
 	uint64_t time1, time2;
+	void* res = NULL;
 	TCP_THREAD_LOCAL_P t_ptr = &tcp_thread_local_struct[cpu_id];
 	switch (((struct ip *) data)->ip_p) {
 		case IPPROTO_TCP:
-			process_tcp(data, skblen, t_ptr);
+			res = (void *)process_tcp(data, skblen, t_ptr);
 			break;
 
 // /* Ignore UDP and ICMP
@@ -685,6 +689,7 @@ static void gen_ip_proc(u_char * data, int skblen, int cpu_id)
 		default:
 			break;
 	}
+	return res;
 }
 #else
 static void gen_ip_proc(u_char * data, int skblen)

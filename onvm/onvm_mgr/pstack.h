@@ -10,6 +10,6 @@ typedef struct pstack_thread_info_s {
 
 void pstack_init(pstack_thread_info info, int num_threads);
 
-void pstack_process(char *data, int len, int rx_queue_id);
+void* pstack_process(char *data, int len, int rx_queue_id);
 
 #endif // PSTACK_H
