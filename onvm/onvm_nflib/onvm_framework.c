@@ -59,6 +59,7 @@ int NF_REQUIRED_LATENCY = 1000; // us -- default latency
 int INIT_WORKER_THREAD_NUM = 1;
 
 unsigned last_assigned_core_id = 0;
+static __thread int current_rx_qid;
 
 struct thread_arg {
 	int thread_id;
@@ -137,8 +138,9 @@ onvm_framework_cpu(int thread_id)
 	uint64_t starve_gpu_counter = 0;
 	struct timespec start, end;
 	double diff;
+	current_rx_qid = thread_id;
 
-	rx_q = cl->rx_q_new;
+	// rx_q = cl->rx_q_new;
 
 	while (keep_running) {
 		batch = &batch_set[thread_id];
@@ -172,23 +174,17 @@ onvm_framework_cpu(int thread_id)
 		int num_packets = j;
 
 		// tx
-		while (keep_running && send_token != thread_id);
-		tx_q = *(struct rte_ring * const volatile*)&cl->tx_q_new;
+		// while (keep_running && send_token != thread_id);
+		// tx_q = *(struct rte_ring * const volatile*)&cl->tx_q_new;
+		tx_q = *(struct rte_ring * const volatile*)&cl->tx_qs[batch->queue_id];
 		int sent_packets = 0;
 		if (likely(tx_q != NULL && num_packets != 0)) {
 			sent_packets = rte_ring_enqueue_burst(tx_q, (void **)batch->pkt_ptr[buf_id], num_packets, NULL);
 		}
-		send_token = (send_token + 1) % (gpu_info->thread_num);
+		// send_token = (send_token + 1) % (gpu_info->thread_num);
 		if (sent_packets < cur_buf_size) {
 			onvm_pkt_drop_batch(batch->pkt_ptr[buf_id] + sent_packets, cur_buf_size - sent_packets);
 		}
-
-#ifdef MEASURE_NF_END_TO_END
-		struct timeval cur;
-		gettimeofday(&cur, NULL);
-		uint64_t timediff_usec = ((uint32_t) cur.tv_sec - batch->start_time.tv_sec) * 1e6 + ((cur.tv_usec - batch->start_time.tv_usec));
-        printf("NF latency: %f ms\n", timediff_usec / 1e3);
-#endif
 
 		clock_gettime(CLOCK_MONOTONIC, &end);
 		diff = (end.tv_sec - start.tv_sec) * 1000000.0 + (end.tv_nsec - start.tv_nsec) / 1000.0;
@@ -202,11 +198,14 @@ onvm_framework_cpu(int thread_id)
 
 		clock_gettime(CLOCK_MONOTONIC, &start);
 
-#ifdef MEASURE_NF_END_TO_END
-		gettimeofday(&batch->start_time, NULL);
-#endif
 		// rx
-		while (keep_running && recv_token != thread_id);
+		// while (keep_running && recv_token != thread_id);
+		assert(cl->worker_scale_finished <= ONVM_NUM_NF_QUEUES);
+		current_rx_qid = current_rx_qid + cl->worker_scale_finished;
+		if (current_rx_qid >= ONVM_NUM_NF_QUEUES) {
+			current_rx_qid = thread_id;
+		}
+		rx_q = cl->rx_qs[current_rx_qid];
 		do {
 			if (BATCH_SIZE != (int)cl->batch_size) {
 				BATCH_SIZE = (int)cl->batch_size;
@@ -216,11 +215,29 @@ onvm_framework_cpu(int thread_id)
 			if (num_packets == 0) {
 				starve_rx_counter++;
 				if (starve_rx_counter == STARVE_THRESHOLD) {
-					RTE_LOG(INFO, APP, "Rx starving\n");
+					RTE_LOG(INFO, APP, "Rx starving at thread %d\n", thread_id);
 				}
 			}
 		} while (num_packets == 0);
-		recv_token = (recv_token + 1) % (gpu_info->thread_num);
+#ifdef RING_QUEUING_LATENCY
+		for (i = 0; i < num_packets; i++) {
+			if (unlikely(batch->pkt_ptr[buf_id][i]->seqn == LATENCY_MAGIC)) {
+				struct timespec prev;
+				// prev.tv_sec = (uint32_t) batch->pkt_ptr[buf_id][i]->timestamp;
+				// prev.tv_usec = batch->pkt_ptr[buf_id][i]->udata64;
+				prev.tv_sec = batch->pkt_ptr[buf_id][i]->tv_sec;
+				prev.tv_nsec = batch->pkt_ptr[buf_id][i]->tv_nsec;
+				double timediff_usec = time_diff(prev);
+                printf("Ring latency: %.3f ms\n", timediff_usec / 1e3);
+
+				clock_gettime(CLOCK_MONOTONIC, &prev);
+				batch->pkt_ptr[buf_id][i]->tv_sec = prev.tv_sec;
+				batch->pkt_ptr[buf_id][i]->tv_nsec = prev.tv_nsec;
+				break;
+			}
+		}
+#endif
+		// recv_token = (recv_token + 1) % (gpu_info->thread_num);
 		starve_rx_counter = 0;
 		cur_buf_size = num_packets;
 		batch->buf_size[buf_id] = cur_buf_size;
@@ -325,7 +342,7 @@ onvm_framework_init(const char *module_file, const char *kernel_name)
 	rte_memcpy((void *)(gpu_info->module_file), module_file, strlen(module_file));
 	rte_memcpy((void *)(gpu_info->kernel_name), kernel_name, strlen(kernel_name));
 
-	recv_token = send_token = 0;
+	// recv_token = send_token = 0;
 #ifdef ENABLE_PSTACK
 	pstack_info.ip_thread_local = rte_malloc(PSTACK_IP_INFO_NAME, MAX_CPU_THREAD_NUM * PSTACK_IP_INFO_SIZE, 0);
 	pstack_info.tcp_thread_local = rte_malloc(PSTACK_TCP_INFO_NAME, MAX_CPU_THREAD_NUM * PSTACK_TCP_INFO_SIZE, 0);
@@ -417,7 +434,7 @@ onvm_framework_start_gpu(gpu_htod_t user_gpu_htod, gpu_dtoh_t user_gpu_dtoh, gpu
 			int base = cl->worker_scale_finished;
 			unsigned lcore = last_assigned_core_id;
 			for (int i = base; i < num + base; i++) {
-				sleep(1);
+				// sleep(1);
         		lcore =	rte_get_next_lcore(lcore, 1, 1);
 				rte_eal_wait_lcore(lcore);
 				onvm_framework_spawn_thread(i, lcore);

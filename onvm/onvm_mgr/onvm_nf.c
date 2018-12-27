@@ -205,19 +205,23 @@ onvm_nf_start(struct onvm_nf_info *nf_info) {
 			if (nf_per_service_count[prev_service] > 0) {
 					uint16_t prev_instance = services[prev_service][0];
 					clients[prev_instance].tx_q_new = clients[instance_id].rx_q_new;
+					clients[prev_instance].tx_qs = clients[instance_id].rx_qs;
 			}
 	}
 	// setup next
 	clients[instance_id].tx_q_new = NULL; // default to drop
+	clients[instance_id].tx_qs = NULL; // default to drop
 	if (default_chain->sc[cur_chain+1].action == ONVM_NF_ACTION_TONF) {
 			uint16_t next_service = default_chain->sc[cur_chain+1].destination;
 			if (nf_per_service_count[next_service] > 0) {
 					uint16_t next_instance = services[next_service][0];
 					clients[instance_id].tx_q_new = clients[next_instance].rx_q_new;
+					clients[instance_id].tx_qs = clients[next_instance].rx_qs;
 			}
 	} else if (default_chain->sc[cur_chain+1].action == ONVM_NF_ACTION_OUT) {
 			uint16_t port = default_chain->sc[cur_chain+1].destination;
 			clients[instance_id].tx_q_new = ports->tx_q_new[port];
+			clients[instance_id].tx_qs = ports->tx_qs[port];
 	}
 
 	// Let the NF continue its init process

@@ -146,7 +146,7 @@ struct port_info {
 	uint8_t num_ports;
 	uint8_t id[RTE_MAX_ETHPORTS];
 	struct rte_ring *tx_q_new[RTE_MAX_ETHPORTS];
-	struct rte_ring *tx_q_gpu[RTE_MAX_ETHPORTS];
+	struct rte_ring *tx_qs[RTE_MAX_ETHPORTS][ONVM_NUM_NF_QUEUES];
 	volatile struct rx_stats rx_stats;
 	volatile struct tx_stats tx_stats;
 };

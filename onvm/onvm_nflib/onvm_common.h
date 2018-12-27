@@ -78,15 +78,18 @@
 
 #include "gpu_packet.h"
 
-#define RX_GPU_QUEUE "rx_gpu_q"
 #define PORT_TX_QUEUE "port_tx_q_%u"
+#define PORT_TX_QUEUES "port_tx_qs_%u_%u"
 
 /*****************************Original Below**********************************/
 
 #define ONVM_NUM_RX_THREADS	4
 #define ONVM_NUM_TX_THREADS_PER_PORT 8
+
+#define ONVM_NUM_NF_QUEUES ONVM_NUM_RX_THREADS
+
 #define BQUEUE_SWITCH	1      /* Use BQueue to transfer packets */
-//#define MEASURE_LATENCY	1     /* Measure the latency of each NF */
+#define MEASURE_LATENCY     /* Measure the latency of the system */
 
 #define BATCH_DRIVEN_BUFFER_PASS 1 /* Launch kernel with exact the batch assigned by the Manager */
 #define B_PARA	0.9 /* Pass buffer between threads before reaching the set batch size, 
@@ -147,6 +150,21 @@
 	#define PKT_LEN 64
 #endif
 
+#ifdef MEASURE_LATENCY
+    #define LATENCY_MAGIC 0xcafebabe
+
+    // #define MEASURE_RX_LATENCY
+    // #define MEASURE_TX_LATENCY
+    // #define END_TO_END_LATENCY
+    // #define RING_QUEUING_LATENCY
+
+	inline double time_diff(struct timespec prev) {
+		struct timespec cur;
+		clock_gettime(CLOCK_MONOTONIC, &cur);
+		return ((cur.tv_sec - prev.tv_sec) * 1000000) + (cur.tv_nsec - prev.tv_nsec) / 1000;
+	}
+#endif
+
 // #define MAX_BATCH_SIZE 8192
 #define MAX_BATCH_SIZE 32768
 
@@ -197,6 +215,10 @@ struct client {
 	uint16_t position_in_chain;
 	struct rte_ring *rx_q_new;
 	struct rte_ring *tx_q_new;
+
+	/* new: NF rss support */
+	struct rte_ring *rx_qs[ONVM_NUM_NF_QUEUES];
+	struct rte_ring **tx_qs;
 
 	double throughput_mpps; /* Throughput in mpps */
 	double latency_us; /* latency in microseconds (us) */
@@ -540,6 +562,13 @@ static inline const char *
 get_port_tx_queue_name(uint16_t port_id) {
        static char buffer[sizeof(PORT_TX_QUEUE) + 2];
        snprintf(buffer, sizeof(buffer) - 1, PORT_TX_QUEUE, port_id);
+       return buffer;
+}
+
+static inline const char *
+get_port_tx_multi_queue_name(uint16_t port_id, unsigned queue_id) {
+       static char buffer[sizeof(PORT_TX_QUEUE) + 2];
+       snprintf(buffer, sizeof(buffer) - 1, PORT_TX_QUEUES, port_id, queue_id);
        return buffer;
 }
 

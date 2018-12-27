@@ -145,7 +145,7 @@ init(int argc, char *argv[]) {
 	init_pstack_info_pool();
 
 	/* Choose service chain, copy one and paste out of "if 0" to use it */
-	const int service_chain[MAX_SERVICES] = {NF_ROUTER, NF_FIREWALL, NF_END};
+	const int service_chain[MAX_SERVICES] = {NF_ROUTER, NF_END};
 
 #if 0
 	/* 1 NF */
@@ -331,15 +331,18 @@ init_port(uint8_t port_num) {
 	retval = rte_eth_dev_start(port_num);
 	if (retval < 0) return retval;
 
-	ports->tx_q_new[port_num] = rte_ring_create(get_port_tx_queue_name(port_num),
-			BATCH_QUEUE_FACTOR * MAX_BATCH_SIZE, rte_socket_id(), NO_FLAGS);
-	if (!ports->tx_q_new[port_num])
-		return -1;
+	// ports->tx_q_new[port_num] = rte_ring_create(get_port_tx_queue_name(port_num),
+	// 		BATCH_QUEUE_FACTOR * MAX_BATCH_SIZE, rte_socket_id(), NO_FLAGS);
+	// if (!ports->tx_q_new[port_num])
+	// 	return -1;
 
-	ports->tx_q_gpu[port_num] = rte_ring_create(get_port_tx_gpu_queue_name(port_num),
-			BATCH_QUEUE_FACTOR * MAX_BATCH_SIZE, rte_socket_id(), NO_FLAGS);
-	if (!ports->tx_q_new[port_num])
-		return -1;
+	for (q = 0; q < ONVM_NUM_NF_QUEUES; q++) {
+		printf("Doing: %d\n", q);
+		ports->tx_qs[port_num][q] = rte_ring_create(get_port_tx_queue_name(q),
+			BATCH_QUEUE_FACTOR * MAX_BATCH_SIZE, rte_socket_id(), RING_F_SP_ENQ);
+		if (!ports->tx_qs[port_num][q])
+			return -1;
+	}
 
 	printf("done: \n");
 
@@ -353,7 +356,7 @@ init_port(uint8_t port_num) {
  */
 static int
 init_shm_rings(void) {
-	unsigned i;
+	unsigned i, j;
 	unsigned socket_id;
 	const struct rte_memzone *mz;
 
@@ -379,8 +382,15 @@ init_shm_rings(void) {
 		socket_id = rte_socket_id();
 		clients[i].instance_id = i;
 
-		clients[i].rx_q_new = rte_ring_create(get_rx_queue_name(i, 0), BATCH_QUEUE_FACTOR * MAX_BATCH_SIZE, socket_id, NO_FLAGS);
+		// clients[i].rx_q_new = rte_ring_create(get_rx_queue_name(i, 0), BATCH_QUEUE_FACTOR * MAX_BATCH_SIZE, socket_id, NO_FLAGS);
 		clients[i].tx_q_new = NULL;
+
+		/* rss ring for NF */
+		for (j = 0; j < ONVM_NUM_NF_QUEUES; j++) {
+			clients[i].rx_qs[j] = rte_ring_create(get_rx_queue_name(i, j), 
+						BATCH_QUEUE_FACTOR * MAX_BATCH_SIZE, socket_id, RING_F_SP_ENQ | RING_F_SC_DEQ); // single producer & consumer
+		}
+		clients[i].tx_qs = NULL;
 
 		rte_spinlock_init(&clients[i].stats.update_lock);
 	}
