@@ -339,7 +339,7 @@ init_port(uint8_t port_num) {
 	for (q = 0; q < ONVM_NUM_NF_QUEUES; q++) {
 		printf("Doing: %d\n", q);
 		ports->tx_qs[port_num][q] = rte_ring_create(get_port_tx_queue_name(q),
-			BATCH_QUEUE_FACTOR * MAX_BATCH_SIZE, rte_socket_id(), RING_F_SP_ENQ);
+			BATCH_QUEUE_FACTOR * MAX_BATCH_SIZE, rte_socket_id(), NO_FLAGS);
 		if (!ports->tx_qs[port_num][q])
 			return -1;
 	}
@@ -384,7 +384,7 @@ init_shm_rings(void) {
 
 		// clients[i].rx_q_new = rte_ring_create(get_rx_queue_name(i, 0), BATCH_QUEUE_FACTOR * MAX_BATCH_SIZE, socket_id, NO_FLAGS);
 		clients[i].tx_q_new = NULL;
-
+		// UNUSED(j);
 		/* rss ring for NF */
 		for (j = 0; j < ONVM_NUM_NF_QUEUES; j++) {
 			clients[i].rx_qs[j] = rte_ring_create(get_rx_queue_name(i, j), 

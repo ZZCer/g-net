@@ -319,7 +319,7 @@ rx_gpu_thread_main(void *arg) {
     checkCudaErrors( cuStreamCreate(&stream, CU_STREAM_NON_BLOCKING) );
 
     int batch_id = 0, tonf_id = 0;
-    unsigned i, j;
+    unsigned i;
     unsigned rx_count, rx_count_total, rx_len_total;
     UNUSED(rx_count);
     struct rte_ring **rx_q_new = NULL;
@@ -371,19 +371,13 @@ rx_gpu_thread_main(void *arg) {
                     // while (rx_count == 0)
                     //     rx_count = rte_ring_enqueue_bulk(rx_q_new, (void **)batch->pkt_ptr[i], batch->pkt_cnt[i], NULL);
 
-                    for (j = 0; j < batch->pkt_cnt[i]; j++) {
-                        struct rte_mbuf *ptr = batch->pkt_ptr[i][j];
-                        int queue_hash = ptr->hash.rss % ONVM_NUM_NF_QUEUES;
-                        int res = rte_ring_enqueue(rx_q_new[queue_hash], (void *)ptr);
-                        if (unlikely(!res)) {
-                            onvm_pkt_drop(ptr);
-                        }
-                    }
+                    while (rx_count == 0)
+                         rx_count = rte_ring_enqueue_bulk(rx_q_new[i], (void **)batch->pkt_ptr[i], batch->pkt_cnt[i], NULL);
                 }
-                // if (rx_count < batch->pkt_cnt[i]) {
-                //     // it takes some time so performance is worse if all dropped
-                //     onvm_pkt_drop_batch(batch->pkt_ptr[i] + rx_count, batch->pkt_cnt[i] - rx_count);
-                // }
+                if (rx_count < batch->pkt_cnt[i]) {
+                    // it takes some time so performance is worse if all dropped
+                    onvm_pkt_drop_batch(batch->pkt_ptr[i] + rx_count, batch->pkt_cnt[i] - rx_count);
+                }
                 batch->full[i] = 0;
                 rx_count_total += batch->pkt_cnt[i];
                 rx_len_total += batch->pkt_cnt[i] == 0 ? 0 : batch->pkt_cnt[i] * batch->pkt_ptr[i][0]->pkt_len;
