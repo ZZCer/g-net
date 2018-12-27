@@ -373,7 +373,7 @@ rx_gpu_thread_main(void *arg) {
 
                     for (j = 0; j < batch->pkt_cnt[i]; j++) {
                         struct rte_mbuf *ptr = batch->pkt_ptr[i][j];
-                        int queue_hash = ptr->port % ONVM_NUM_NF_QUEUES;
+                        int queue_hash = ptr->hash.rss % ONVM_NUM_NF_QUEUES;
                         int res = rte_ring_enqueue(rx_q_new[queue_hash], (void *)ptr);
                         if (unlikely(!res)) {
                             onvm_pkt_drop(ptr);
