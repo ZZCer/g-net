@@ -66,16 +66,6 @@
 // #define DISABLE_TX
 
 // #define ENABLE_PSTACK
-#define MEASURE_LATENCY
-#ifdef MEASURE_LATENCY
-    #include <sys/time.h>
-    #define LATENCY_MAGIC 0xcafebabe
-
-    // #define MEASURE_RX_LATENCY
-    // #define MEASURE_TX_LATENCY
-    // #define END_TO_END_LATENCY
-    #define RING_QUEUING_LATENCY
-#endif
 
 extern struct onvm_service_chain *default_chain;
 extern struct rx_perf rx_stats[ONVM_NUM_RX_THREADS]; 
@@ -87,7 +77,7 @@ extern CUstream rx_stream;
 extern rte_spinlock_t gpu_pkts_lock;
 extern CUcontext context;
 
-#define RX_BUF_SIZE (1024*64)
+#define RX_BUF_SIZE (1024*512)
 #define RX_BUF_PKT_MAX_NUM (RX_BUF_SIZE / 32)
 #define RX_NUM_THREADS ONVM_NUM_RX_THREADS
 #define RX_NUM_BATCHES 4
@@ -100,7 +90,7 @@ typedef struct rx_batch_s {
     struct rte_mbuf *pkt_ptr[RX_NUM_THREADS][RX_BUF_PKT_MAX_NUM];
     uint8_t buf[RX_NUM_THREADS][RX_BUF_SIZE];
 #ifdef MEASURE_RX_LATENCY
-    struct timeval batch_start_time[RX_NUM_THREADS];
+    struct timespec batch_start_time[RX_NUM_THREADS];
 #endif
 } rx_batch_t;
 
@@ -113,7 +103,7 @@ typedef struct tx_batch_s {
     uint8_t *buf;
     CUdeviceptr buf_base;
 #ifdef MEASURE_TX_LATENCY
-    struct timeval batch_start_time[ONVM_NUM_TX_THREADS_PER_PORT];
+    struct timespec batch_start_time[ONVM_NUM_TX_THREADS_PER_PORT];
 #endif
 } tx_batch_t;
 
@@ -180,15 +170,15 @@ static size_t load_packet(uint8_t *buffer, struct rte_mbuf *pkt) {
 
 #ifdef END_TO_END_LATENCY
         static long freq = 0;
-        struct timeval timestamp;
+        struct timespec timestamp;
         if (freq % 1000000 == 0) {
             freq = 0;
-            gettimeofday(&timestamp, NULL);
+            clock_gettime(CLOCK_MONOTONIC, &timestamp);
             // measure time by inserting magic number and current time in packet
             gpkt->src_addr = LATENCY_MAGIC;
             gpkt->dst_addr = (uint32_t) timestamp.tv_sec;
-            gpkt->sent_seq = (uint32_t) timestamp.tv_usec;
-            gpkt->recv_ack = (uint32_t) (timestamp.tv_usec >> 32);
+            gpkt->sent_seq = (uint32_t) timestamp.tv_nsec;
+            gpkt->recv_ack = (uint32_t) (timestamp.tv_nsec >> 32);
         }
         freq++;
 #endif
@@ -235,14 +225,11 @@ static size_t unload_packet(uint8_t *buffer, struct rte_mbuf *pkt) {
     }
 #ifdef END_TO_END_LATENCY
     if (unlikely(gpkt->src_addr == LATENCY_MAGIC)) {
-        struct timeval cur, prev;
-        gettimeofday(&cur, NULL);
+        struct timespec prev;
         prev.tv_sec = gpkt->dst_addr;
-        prev.tv_usec = (uint64_t) gpkt->sent_seq | ((uint64_t) gpkt->recv_ack << 32);
-        uint64_t timediff_usec = ((uint32_t) cur.tv_sec - prev.tv_sec) * 1e6 + ((cur.tv_usec - prev.tv_usec));
+        prev.tv_nsec = (uint64_t) gpkt->sent_seq | ((uint64_t) gpkt->recv_ack << 32);
+        double timediff_usec = time_diff(prev);
         printf("End to end latency: %.3f ms\n", timediff_usec / 1e3);
-        // printf("Prev: %ld", prev.tv_usec);
-        // printf("End to end: %f ms\n", (cur.tv_usec - prev.tv_usec) / 1e3);
     }
 #endif
     return bsz;
@@ -363,6 +350,21 @@ rx_gpu_thread_main(void *arg) {
             for (i = 0; i < RX_NUM_THREADS; i++) {
                 rx_count = 0;
                 if (rx_q_new != NULL) {
+#ifdef RING_QUEUING_LATENCY
+                    static int freq = 0;
+                    if (likely(batch->pkt_cnt[i] > 0)) { 
+                        if (freq % 10000 == 0) {                   
+                            struct timespec cur;
+                            clock_gettime(CLOCK_MONOTONIC, &cur);
+                            batch->pkt_ptr[i][0]->seqn = LATENCY_MAGIC;
+                            
+                            batch->pkt_ptr[i][0]->tv_nsec = cur.tv_nsec;
+                            batch->pkt_ptr[i][0]->tv_sec = cur.tv_sec;
+                            freq = 0;
+                        }
+                        freq++;
+                    }
+#endif
                     while (rx_count == 0)
                         rx_count = rte_ring_enqueue_bulk(rx_q_new, (void **)batch->pkt_ptr[i], batch->pkt_cnt[i], NULL);
                 }
@@ -374,12 +376,10 @@ rx_gpu_thread_main(void *arg) {
                 rx_count_total += batch->pkt_cnt[i];
                 rx_len_total += batch->pkt_cnt[i] == 0 ? 0 : batch->pkt_cnt[i] * batch->pkt_ptr[i][0]->pkt_len;
 #ifdef MEASURE_RX_LATENCY
-                struct timeval cur;
-                gettimeofday(&cur, NULL);
-                uint64_t timediff_usec = ((uint32_t) cur.tv_sec - batch->batch_start_time[i].tv_sec) * 1e6 + ((cur.tv_usec - batch->batch_start_time[i].tv_usec));
+                double timediff_usec = time_diff(batch->batch_start_time[i]);
                 printf("RX latency: %.3f ms\n", timediff_usec / 1e3);
 
-                gettimeofday(&(batch->batch_start_time[i]), NULL);
+                clock_gettime(CLOCK_MONOTONIC, &(batch->batch_start_time[i]));
 #endif
             }
         }
@@ -521,10 +521,7 @@ tx_thread_main(void *arg) {
         tx_batch[batch_id].ready[thread_id] = 0;
 
 #ifdef MEASURE_TX_LATENCY
-        struct timeval cur;
-        gettimeofday(&cur, NULL);
-        uint64_t timediff_usec = ((uint32_t) cur.tv_sec - tx_batch[batch_id].batch_start_time[thread_id].tv_sec) * 1e6 + ((cur.tv_usec - tx_batch[batch_id].batch_start_time[thread_id].tv_usec));
-        printf("Tx latency: %.3f ms\n", timediff_usec / 1e3);
+        printf("Tx latency: %.3f ms\n", time_diff(tx_batch[batch_id].batch_start_time[thread_id]));
 
         gettimeofday(&(tx_batch[batch_id].batch_start_time[thread_id]), NULL);
 #endif

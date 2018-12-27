@@ -147,6 +147,22 @@
 	#define PKT_LEN 64
 #endif
 
+#define MEASURE_LATENCY
+#ifdef MEASURE_LATENCY
+    #define LATENCY_MAGIC 0xcafebabe
+
+    // #define MEASURE_RX_LATENCY
+    // #define MEASURE_TX_LATENCY
+    #define END_TO_END_LATENCY
+    // #define RING_QUEUING_LATENCY
+
+	inline double time_diff(struct timespec prev) {
+		struct timespec cur;
+		clock_gettime(CLOCK_MONOTONIC, &cur);
+		return ((cur.tv_sec - prev.tv_sec) * 1000000) + (cur.tv_nsec - prev.tv_nsec) / 1000;
+	}
+#endif
+
 // #define MAX_BATCH_SIZE 8192
 #define MAX_BATCH_SIZE 32768
 

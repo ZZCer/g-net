@@ -462,7 +462,7 @@ schedule_dynamic(int timediff) {
 				RTE_LOG(INFO, APP, "Client %d surpasses the latency limit.\n", c->instance_id);
 				// latency optimization is required
 				// c->batch_size *= 0.8; // todo
-				if (c->worker_scale_target < 1) { // TODO thread limit
+				if (c->worker_scale_target < 2) { // TODO thread limit
 					unsigned int old_target = c->worker_scale_target;
 					c->worker_scale_target += 1;
 					allocated_sm_num -= c->blk_num * old_target;

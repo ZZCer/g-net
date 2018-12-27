@@ -220,6 +220,24 @@ onvm_framework_cpu(int thread_id)
 				}
 			}
 		} while (num_packets == 0);
+#ifdef RING_QUEUING_LATENCY
+		for (i = 0; i < num_packets; i++) {
+			if (unlikely(batch->pkt_ptr[buf_id][i]->seqn == LATENCY_MAGIC)) {
+				struct timespec prev;
+				// prev.tv_sec = (uint32_t) batch->pkt_ptr[buf_id][i]->timestamp;
+				// prev.tv_usec = batch->pkt_ptr[buf_id][i]->udata64;
+				prev.tv_sec = batch->pkt_ptr[buf_id][i]->tv_sec;
+				prev.tv_nsec = batch->pkt_ptr[buf_id][i]->tv_nsec;
+				double timediff_usec = time_diff(prev);
+                printf("Ring latency: %.3f ms\n", timediff_usec / 1e3);
+
+				clock_gettime(CLOCK_MONOTONIC, &prev);
+				batch->pkt_ptr[buf_id][i]->tv_sec = prev.tv_sec;
+				batch->pkt_ptr[buf_id][i]->tv_nsec = prev.tv_nsec;
+				break;
+			}
+		}
+#endif
 		recv_token = (recv_token + 1) % (gpu_info->thread_num);
 		starve_rx_counter = 0;
 		cur_buf_size = num_packets;
