@@ -77,7 +77,7 @@ extern CUstream rx_stream;
 extern rte_spinlock_t gpu_pkts_lock;
 extern CUcontext context;
 
-#define RX_BUF_SIZE (1024*32)
+#define RX_BUF_SIZE (1024*64)
 #define RX_BUF_PKT_MAX_NUM (RX_BUF_SIZE / 32)
 #define RX_NUM_THREADS ONVM_NUM_RX_THREADS
 #define RX_NUM_BATCHES 4
@@ -372,7 +372,7 @@ rx_gpu_thread_main(void *arg) {
                     //     rx_count = rte_ring_enqueue_bulk(rx_q_new, (void **)batch->pkt_ptr[i], batch->pkt_cnt[i], NULL);
 
                     while (rx_count == 0)
-                         rx_count = rte_ring_enqueue_bulk(rx_q_new[i], (void **)batch->pkt_ptr[i], batch->pkt_cnt[i], NULL);
+                         rx_count = rte_ring_enqueue_bulk(rx_q_new[i % ONVM_NUM_NF_QUEUES], (void **)batch->pkt_ptr[i], batch->pkt_cnt[i], NULL);
                 }
                 if (rx_count < batch->pkt_cnt[i]) {
                     // it takes some time so performance is worse if all dropped
@@ -445,6 +445,7 @@ tx_thread_main(void *arg) {
 	RTE_LOG(INFO, APP, "Core %d: Running TX thread for port %d\n", core_id, tx->port_id);
 
     uint8_t iterate_queue = ONVM_NUM_NF_QUEUES > ONVM_NUM_TX_THREADS_PER_PORT;
+    uint8_t multi_consumers = ONVM_NUM_NF_QUEUES < ONVM_NUM_TX_THREADS_PER_PORT;
     current_tx_qid = iterate_queue ? thread_id : (thread_id % ONVM_NUM_NF_QUEUES);
 
     for (;;) {
@@ -485,11 +486,17 @@ tx_thread_main(void *arg) {
             if (ready == 0) {
                 memmove(gpu_batching, gpu_batching + gpu_batch->pkt_cnt, remain * sizeof(struct rte_mbuf *));
                 gpu_packet = remain;
-                if (gpu_packet < TX_GPU_BATCH_SIZE / 2)
+                if (gpu_packet < TX_GPU_BATCH_SIZE / 2) {
                     // gpu_packet += rte_ring_dequeue_burst(
                     //     ports->tx_q_new[tx->port_id], (void **)(gpu_batching + remain), TX_GPU_BATCH_SIZE - remain, NULL);
-                    gpu_packet += rte_ring_dequeue_burst(
+                    if (multi_consumers) {
+                        gpu_packet += rte_ring_mc_dequeue_burst(
                             ports->tx_qs[tx->port_id][current_tx_qid], (void **)(gpu_batching + remain), TX_GPU_BATCH_SIZE - remain, NULL);
+                    } else {
+                        gpu_packet += rte_ring_sc_dequeue_burst(
+                            ports->tx_qs[tx->port_id][current_tx_qid], (void **)(gpu_batching + remain), TX_GPU_BATCH_SIZE - remain, NULL);
+                    }
+                }
                 if (likely(gpu_packet > 0)) {
                     batch_buffer_base = onvm_pkt_gpu_ptr(gpu_batching[0]);
                     checkCudaErrors( cuMemcpyDtoHAsync(batch_buffer, batch_buffer_base, TX_GPU_BUF_SIZE, stream) );

@@ -338,8 +338,8 @@ init_port(uint8_t port_num) {
 
 	for (q = 0; q < ONVM_NUM_NF_QUEUES; q++) {
 		printf("Doing: %d\n", q);
-		ports->tx_qs[port_num][q] = rte_ring_create(get_port_tx_queue_name(q),
-			BATCH_QUEUE_FACTOR * MAX_BATCH_SIZE, rte_socket_id(), NO_FLAGS);
+		ports->tx_qs[port_num][q] = rte_ring_create(get_port_tx_multi_queue_name(port_num, q),
+			BATCH_QUEUE_FACTOR * MAX_BATCH_SIZE, rte_socket_id(), RING_F_SP_ENQ);
 		if (!ports->tx_qs[port_num][q])
 			return -1;
 	}

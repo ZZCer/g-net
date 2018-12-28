@@ -86,7 +86,7 @@
 #define ONVM_NUM_RX_THREADS	4
 #define ONVM_NUM_TX_THREADS_PER_PORT 8
 
-#define ONVM_NUM_NF_QUEUES ONVM_NUM_RX_THREADS
+#define ONVM_NUM_NF_QUEUES 2
 
 #define BQUEUE_SWITCH	1      /* Use BQueue to transfer packets */
 #define MEASURE_LATENCY     /* Measure the latency of the system */
@@ -155,7 +155,7 @@
 
     // #define MEASURE_RX_LATENCY
     // #define MEASURE_TX_LATENCY
-    // #define END_TO_END_LATENCY
+    #define END_TO_END_LATENCY
     // #define RING_QUEUING_LATENCY
 
 	inline double time_diff(struct timespec prev) {
@@ -566,8 +566,8 @@ get_port_tx_queue_name(uint16_t port_id) {
 }
 
 static inline const char *
-get_port_tx_multi_queue_name(uint16_t port_id, unsigned queue_id) {
-       static char buffer[sizeof(PORT_TX_QUEUE) + 2];
+get_port_tx_multi_queue_name(uint16_t port_id, uint16_t queue_id) {
+       static char buffer[sizeof(PORT_TX_QUEUES) + 2];
        snprintf(buffer, sizeof(buffer) - 1, PORT_TX_QUEUES, port_id, queue_id);
        return buffer;
 }
