@@ -275,6 +275,9 @@ rx_thread_main(void *arg) {
 #endif
                     rx_batch_id = next_id;
                 }
+#ifdef RING_QUEUING_LATENCY
+                pkts[j]->seqn = 0;
+#endif
                 rx_batch[rx_batch_id].pkt_ptr[thread_id][batch_cnt++] = pkts[j];
                 uint8_t *pos = rx_batch[rx_batch_id].buf[thread_id] + batch_head;
                 onvm_pkt_gpu_ptr(pkts[j]) = rx_batch[rx_batch_id].buf_head + (pos - (uint8_t *)&rx_batch[rx_batch_id].buf);
