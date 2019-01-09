@@ -212,7 +212,8 @@ onvm_framework_cpu(int thread_id)
 				BATCH_SIZE = (int)cl->batch_size;
 				RTE_LOG(INFO, APP, "Batch size changed to %d\n", BATCH_SIZE);
 			}
-			num_packets = rte_ring_dequeue_bulk(rx_q, (void **)batch->pkt_ptr[buf_id], BATCH_SIZE, NULL);
+			// num_packets = rte_ring_dequeue_bulk(rx_q, (void **)batch->pkt_ptr[buf_id], BATCH_SIZE, NULL);
+			num_packets = rte_ring_dequeue_burst(rx_q, (void **)batch->pkt_ptr[buf_id], BATCH_SIZE, NULL);
 			if (num_packets == 0) {
 				starve_rx_counter++;
 				if (starve_rx_counter == STARVE_THRESHOLD) {
@@ -220,22 +221,7 @@ onvm_framework_cpu(int thread_id)
 				}
 			}
 		} while (num_packets == 0);
-#ifdef RING_QUEUING_LATENCY
-		for (i = 0; i < num_packets; i++) {
-			if (unlikely(batch->pkt_ptr[buf_id][i]->seqn == LATENCY_MAGIC)) {
-				struct timespec prev;
-				prev.tv_sec = batch->pkt_ptr[buf_id][i]->tv_sec;
-				prev.tv_nsec = batch->pkt_ptr[buf_id][i]->tv_nsec;
-				double timediff_usec = time_diff(prev);
-                printf("Ring latency: %.3f ms\n", timediff_usec / 1e3);
 
-				clock_gettime(CLOCK_MONOTONIC, &prev);
-				batch->pkt_ptr[buf_id][i]->tv_sec = prev.tv_sec;
-				batch->pkt_ptr[buf_id][i]->tv_nsec = prev.tv_nsec;
-				break;
-			}
-		}
-#endif
 		recv_token = (recv_token + 1) % (gpu_info->thread_num);
 		starve_rx_counter = 0;
 		cur_buf_size = num_packets;
@@ -246,6 +232,19 @@ onvm_framework_cpu(int thread_id)
 		// pre-processing // todo: pass param i insteadof modify the struct
 		uint64_t rx_datalen_sample = 0;
 		for (i = 0; i < cur_buf_size; i++) {
+#ifdef RING_QUEUING_LATENCY
+			if (unlikely(batch->pkt_ptr[buf_id][i]->seqn == LATENCY_MAGIC)) {
+				struct timespec prev;
+				prev.tv_sec = batch->pkt_ptr[buf_id][i]->tv_sec;
+				prev.tv_nsec = batch->pkt_ptr[buf_id][i]->tv_nsec;
+				double timediff_usec = time_diff(prev);
+                printf("Ring latency: %.3f ms, num_packets: %d\n", timediff_usec / 1e3, num_packets);
+
+				clock_gettime(CLOCK_MONOTONIC, &prev);
+				batch->pkt_ptr[buf_id][i]->tv_sec = prev.tv_sec;
+				batch->pkt_ptr[buf_id][i]->tv_nsec = prev.tv_nsec;
+			}
+#endif
 #ifdef ENABLE_PSTACK
 			pstack_process((char *)onvm_pkt_ipv4_hdr(batch->pkt_ptr[buf_id][i]), batch->pkt_ptr[buf_id][i]->data_len - sizeof(struct ether_hdr), thread_id);
 #endif

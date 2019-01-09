@@ -58,6 +58,8 @@
 #include "scheduler.h"
 #include "onvm_pkt_helper.h"
 
+#include "onvm_common.h"
+
 #include <rte_memory.h>
 
 // Test flags to test pure RX performance
@@ -77,7 +79,7 @@ extern CUstream rx_stream;
 extern rte_spinlock_t gpu_pkts_lock;
 extern CUcontext context;
 
-#define RX_BUF_SIZE (1024*512)
+#define RX_BUF_SIZE (1024*256)
 #define RX_BUF_PKT_MAX_NUM (RX_BUF_SIZE / 32)
 #define RX_NUM_THREADS ONVM_NUM_RX_THREADS
 #define RX_NUM_BATCHES 4
@@ -89,7 +91,7 @@ typedef struct rx_batch_s {
     unsigned pkt_cnt[RX_NUM_THREADS];
     struct rte_mbuf *pkt_ptr[RX_NUM_THREADS][RX_BUF_PKT_MAX_NUM];
     uint8_t buf[RX_NUM_THREADS][RX_BUF_SIZE];
-#ifdef MEASURE_RX_LATENCY
+#if defined(MEASURE_RX_LATENCY) || defined(MEASURE_GPUCOPY_LATENCY)
     struct timespec batch_start_time[RX_NUM_THREADS];
 #endif
 } rx_batch_t;
@@ -171,7 +173,7 @@ static size_t load_packet(uint8_t *buffer, struct rte_mbuf *pkt) {
 #ifdef END_TO_END_LATENCY
         static long freq = 0;
         struct timespec timestamp;
-        if (freq % 1000000 == 0) {
+        if (freq % END_TO_END_REPORT_FREQ == 0) {
             freq = 0;
             clock_gettime(CLOCK_MONOTONIC, &timestamp);
             // measure time by inserting magic number and current time in packet
@@ -356,7 +358,7 @@ rx_gpu_thread_main(void *arg) {
 #ifdef RING_QUEUING_LATENCY
                     static int freq = 0;
                     if (likely(batch->pkt_cnt[i] > 0)) { 
-                        if (freq % 10000 == 0) {                   
+                        if (freq % RING_LATENCY_REPORT_FREQ == 0) {                   
                             struct timespec cur;
                             clock_gettime(CLOCK_MONOTONIC, &cur);
                             batch->pkt_ptr[i][0]->seqn = LATENCY_MAGIC;
@@ -364,12 +366,14 @@ rx_gpu_thread_main(void *arg) {
                             batch->pkt_ptr[i][0]->tv_nsec = cur.tv_nsec;
                             batch->pkt_ptr[i][0]->tv_sec = cur.tv_sec;
                             freq = 0;
+
+                            printf("Free entries: %d, inserting %d packets.\n", rte_ring_free_count(rx_q_new), batch->pkt_cnt[i]);
                         }
                         freq++;
                     }
 #endif
-                    while (rx_count == 0)
-                        rx_count = rte_ring_enqueue_bulk(rx_q_new, (void **)batch->pkt_ptr[i], batch->pkt_cnt[i], NULL);
+                    // while (rx_count == 0)
+                    rx_count = rte_ring_enqueue_burst(rx_q_new, (void **)batch->pkt_ptr[i], batch->pkt_cnt[i], NULL);
                 }
                 if (rx_count < batch->pkt_cnt[i]) {
                     // it takes some time so performance is worse if all dropped
@@ -379,10 +383,17 @@ rx_gpu_thread_main(void *arg) {
                 rx_count_total += batch->pkt_cnt[i];
                 rx_len_total += batch->pkt_cnt[i] == 0 ? 0 : batch->pkt_cnt[i] * batch->pkt_ptr[i][0]->pkt_len;
 #ifdef MEASURE_RX_LATENCY
-                double timediff_usec = time_diff(batch->batch_start_time[i]);
-                printf("RX latency: %.3f ms\n", timediff_usec / 1e3);
-
-                clock_gettime(CLOCK_MONOTONIC, &(batch->batch_start_time[i]));
+                static int freq = 0;
+                if (unlikely(batch->batch_start_time[i].tv_sec != 0)) {
+                    double timediff_usec = time_diff(batch->batch_start_time[i]);
+                    printf("RX latency: %.3f ms\n", timediff_usec / 1e3);
+                    batch->batch_start_time[i].tv_sec = 0;
+                }
+                if (freq % RX_LATENCY_REPORT_FREQ == 0) {
+                    freq = 0;
+                    clock_gettime(CLOCK_MONOTONIC, &(batch->batch_start_time[i]));
+                }
+                freq++;
 #endif
             }
         }
@@ -524,9 +535,18 @@ tx_thread_main(void *arg) {
         tx_batch[batch_id].ready[thread_id] = 0;
 
 #ifdef MEASURE_TX_LATENCY
-        printf("Tx latency: %.3f ms\n", time_diff(tx_batch[batch_id].batch_start_time[thread_id]));
-
-        gettimeofday(&(tx_batch[batch_id].batch_start_time[thread_id]), NULL);
+        static int freq = 0;
+        if (unlikely(tx_batch[batch_id].batch_start_time[thread_id].tv_sec != 0)) {
+            double timediff_usec = time_diff(tx_batch[batch_id].batch_start_time[thread_id]);
+            printf("TX latency: %.3f ms\n", timediff_usec / 1e3);
+        }
+        if (freq % TX_LATENCY_REPORT_FREQ == 0) {
+            freq = 0;
+            clock_gettime(CLOCK_MONOTONIC, &(tx_batch[batch_id].batch_start_time[thread_id]));
+        } else {
+            tx_batch[batch_id].batch_start_time[thread_id].tv_sec = 0;
+        }
+        freq++;
 #endif
         // ports->tx_stats.tx[tx->port_id] += cnt;
         rte_atomic64_add((rte_atomic64_t *)(uintptr_t)&ports->tx_stats.tx[tx->port_id], cnt);

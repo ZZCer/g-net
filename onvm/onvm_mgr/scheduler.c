@@ -375,7 +375,7 @@ schedule(void) {
 }
 
 #define STATE_SAMPLES 5
-#define STEADY_STATE_D_THRESHOLD 10000
+#define STEADY_STATE_D_THRESHOLD 20000
 
 static int detect_steady_state(int timediff) {
 	// We define that the system is in steady state if
@@ -434,6 +434,7 @@ schedule_dynamic(int timediff) {
 	int chain_ids[ONVM_MAX_CHAIN_LENGTH];
 
 	// Make decisions only when in steady state
+	// TODO: dirty implementation
 	if (!detect_steady_state(timediff)) {
 		RTE_LOG(INFO, APP, "Steady state not detected.\n");
 		return;
@@ -471,7 +472,7 @@ schedule_dynamic(int timediff) {
 						c->blk_num = 1;
 					allocated_sm_num += c->blk_num * c->worker_scale_target;
 					c->batch_size *= old_target / (double) c->worker_scale_target;
-				} else if (c->stats.kernel_time / c->stats.gpu_time > 0.4 && allocated_sm_num + c->worker_scale_target < SM_TOTAL_NUM) {
+				} else if (c->stats.kernel_time / c->stats.gpu_time > 0.4 && allocated_sm_num + c->worker_scale_target <= SM_TOTAL_NUM) {
 					c->blk_num++;
 					RTE_LOG(INFO, APP, "Client %d: Allocating %d SMs.\n", c->instance_id, c->worker_scale_target * c->blk_num);
 				} else {
@@ -497,12 +498,19 @@ schedule_dynamic(int timediff) {
 					}
 				}
 			}
+			// batch size limitation
+			if (c->batch_size > MAX_BATCH_SIZE) {
+				c->batch_size = MAX_BATCH_SIZE;
+			}
 		}
 		// no scheduling decision yet, increase throughput of first nf.
 		if (default_chain->chain_length >= 2) {
 			// TODO: do not increase if the speed is approaching the input rate.
 			RTE_LOG(INFO, APP, "Increasing the performance of head client of the service chain.\n");
 			clients[chain_ids[1]].batch_size *= 1.1;
+			if (clients[chain_ids[1]].batch_size > MAX_BATCH_SIZE) {
+				clients[chain_ids[1]].batch_size = MAX_BATCH_SIZE;
+			}
 		}
 	}
 
@@ -538,7 +546,7 @@ schedule_static(void) {
 				break;
 			case NF_FIREWALL:
 				cl->blk_num = 2;				// blk_num * stream_num <= total #SM	// 6.1 device max #SM: 28
-				cl->batch_size = 8192; 		// max definition in onvm_common.h
+				cl->batch_size = 4096; 		// max definition in onvm_common.h
 				cl->threads_per_blk = 1024;		// 6.1 device max: 1024
 				cl->worker_scale_target = 2;
 				break;
@@ -550,7 +558,7 @@ schedule_static(void) {
 				break;
 			case NF_IPSEC:
 				cl->blk_num = 6;				// blk_num * stream_num <= total #SM	// 6.1 device max #SM: 28
-				cl->batch_size = 8192; 		// max definition in onvm_common.h
+				cl->batch_size = 4096; 		// max definition in onvm_common.h
 				cl->threads_per_blk = 1024;		// 6.1 device max: 1024
 				break;
 		}
@@ -574,8 +582,8 @@ scheduler_thread_main(void *arg) {
 		onvm_nf_check_status();
 		onvm_stats_display_all(sleeptime);
 		// schedule();
-		schedule_dynamic(sleeptime);
-		// schedule_static();
+		// schedule_dynamic(sleeptime);
+		schedule_static();
 		onvm_stats_clear_all_clients();
 	}
 

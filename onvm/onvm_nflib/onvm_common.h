@@ -64,7 +64,7 @@
 #define BATCH_POOL_SIZE 1024
 #define BATCH_CACHE_SIZE 32
 //#define USE_BATCH_SWITCHING 1
-#define BATCH_QUEUE_FACTOR 4
+#define BATCH_QUEUE_FACTOR 1
 #define STARVE_THRESHOLD 1000000
 
 #define RX_GPU_BATCH_SIZE 512
@@ -151,12 +151,17 @@
 #ifdef MEASURE_LATENCY
     #define LATENCY_MAGIC 0xcafebabe
 
-    // #define MEASURE_RX_LATENCY
+    // #define MEASURE_RX_LATENCY	
     // #define MEASURE_TX_LATENCY
     #define END_TO_END_LATENCY
-    // #define RING_QUEUING_LATENCY
+    #define RING_QUEUING_LATENCY
+	
+	#define RX_LATENCY_REPORT_FREQ		100000
+	#define TX_LATENCY_REPORT_FREQ		100000
+	#define END_TO_END_REPORT_FREQ		300000
+	#define RING_LATENCY_REPORT_FREQ	1000
 
-	inline double time_diff(struct timespec prev) {
+	static inline double time_diff(struct timespec prev) {
 		struct timespec cur;
 		clock_gettime(CLOCK_MONOTONIC, &cur);
 		return ((cur.tv_sec - prev.tv_sec) * 1000000) + (cur.tv_nsec - prev.tv_nsec) / 1000;
@@ -164,7 +169,7 @@
 #endif
 
 // #define MAX_BATCH_SIZE 8192
-#define MAX_BATCH_SIZE 32768
+#define MAX_BATCH_SIZE 4096
 
 #define NUM_BATCH_BUF 3
 
