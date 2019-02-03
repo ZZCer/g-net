@@ -17,6 +17,7 @@
 #include "../onvm_mgr/pstack.h"
 
 // #define ENABLE_PSTACK
+#define ENABLE_PSTACK_LATENCY_TEST
 
 extern struct rte_mempool *nf_request_mp;
 extern struct rte_mempool *nf_response_mp;
@@ -250,6 +251,29 @@ onvm_framework_cpu(int thread_id)
 #endif
 			PRE_FUNC(batch->user_bufs[buf_id], batch->pkt_ptr[buf_id][i], i);
 		}
+
+#ifdef ENABLE_PSTACK_LATENCY_TEST
+{
+		static int diff_count = 0;
+		static double diff_total = 0;
+		struct timespec start_tcp, end_tcp;
+		clock_gettime(CLOCK_MONOTONIC, &start_tcp);
+		/* Only for measuring time for TCP processing */
+		for (i = 0; i < cur_buf_size; i++) {
+			pstack_process((char *)onvm_pkt_ipv4_hdr(batch->pkt_ptr[buf_id][i]), batch->pkt_ptr[buf_id][i]->data_len - sizeof(struct ether_hdr), thread_id);
+		}
+		clock_gettime(CLOCK_MONOTONIC, &end_tcp);
+		diff = (end_tcp.tv_sec - start_tcp.tv_sec) * 1000000.0 + (end_tcp.tv_nsec - start_tcp.tv_nsec) / 1000.0;
+		diff_total += diff;
+		diff_count++;
+		if (diff_count % 1000 == 0) {
+			printf("%f\n", diff_total / diff_count);
+			diff_total = 0;
+			diff_count = 0;
+		}
+}
+#endif
+
 		rx_datalen_sample = cur_buf_size > 0 ? cur_buf_size * batch->pkt_ptr[buf_id][0]->data_len : 0;
 
 		clock_gettime(CLOCK_MONOTONIC, &end);
@@ -341,7 +365,7 @@ onvm_framework_init(const char *module_file, const char *kernel_name)
 	rte_memcpy((void *)(gpu_info->kernel_name), kernel_name, strlen(kernel_name));
 
 	recv_token = send_token = 0;
-#ifdef ENABLE_PSTACK
+#if defined(ENABLE_PSTACK) || defined(ENABLE_PSTACK_LATENCY_TEST)
 	pstack_info.ip_thread_local = rte_malloc(PSTACK_IP_INFO_NAME, MAX_CPU_THREAD_NUM * PSTACK_IP_INFO_SIZE, 0);
 	pstack_info.tcp_thread_local = rte_malloc(PSTACK_TCP_INFO_NAME, MAX_CPU_THREAD_NUM * PSTACK_TCP_INFO_SIZE, 0);
 

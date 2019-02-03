@@ -153,8 +153,8 @@
 
     // #define MEASURE_RX_LATENCY	
     // #define MEASURE_TX_LATENCY
-    #define END_TO_END_LATENCY
-    #define RING_QUEUING_LATENCY
+    // #define END_TO_END_LATENCY
+    // #define RING_QUEUING_LATENCY
 	
 	#define RX_LATENCY_REPORT_FREQ		100000
 	#define TX_LATENCY_REPORT_FREQ		100000
