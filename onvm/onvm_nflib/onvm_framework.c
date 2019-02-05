@@ -176,10 +176,14 @@ onvm_framework_cpu(int thread_id)
 		// tx
 		// while (keep_running && send_token != thread_id);
 		// tx_q = *(struct rte_ring * const volatile*)&cl->tx_q_new;
-		tx_q = *(struct rte_ring * const volatile*)&cl->tx_qs[batch->queue_id];
+		if (cl->tx_qs == NULL)
+			tx_q = NULL;
+		else
+			tx_q = *(struct rte_ring * const volatile*)&cl->tx_qs[batch->queue_id];
 		int sent_packets = 0;
 		if (likely(tx_q != NULL && num_packets != 0)) {
-			sent_packets = rte_ring_enqueue_burst(tx_q, (void **)batch->pkt_ptr[buf_id], num_packets, NULL);
+			// sent_packets = rte_ring_enqueue_burst(tx_q, (void **)batch->pkt_ptr[buf_id], num_packets, NULL);
+			sent_packets = rte_ring_enqueue_bulk(tx_q, (void **)batch->pkt_ptr[buf_id], num_packets, NULL);
 		}
 		// send_token = (send_token + 1) % (gpu_info->thread_num);
 		if (sent_packets < cur_buf_size) {
@@ -201,17 +205,19 @@ onvm_framework_cpu(int thread_id)
 		// rx
 		// while (keep_running && recv_token != thread_id);
 		assert(cl->worker_scale_finished <= ONVM_NUM_NF_QUEUES);
-		current_rx_qid = current_rx_qid + cl->worker_scale_finished;
-		if (current_rx_qid >= ONVM_NUM_NF_QUEUES) {
-			current_rx_qid = thread_id;
-		}
-		rx_q = cl->rx_qs[current_rx_qid];
 		do {
+			current_rx_qid = current_rx_qid + cl->worker_scale_finished;
+			if (current_rx_qid >= ONVM_NUM_NF_QUEUES) {
+				current_rx_qid = thread_id;
+			}
+			rx_q = cl->rx_qs[current_rx_qid];
+			
 			if (BATCH_SIZE != (int)cl->batch_size) {
 				BATCH_SIZE = (int)cl->batch_size;
 				RTE_LOG(INFO, APP, "Batch size changed to %d\n", BATCH_SIZE);
 			}
-			num_packets = rte_ring_dequeue_bulk(rx_q, (void **)batch->pkt_ptr[buf_id], BATCH_SIZE, NULL);
+			// num_packets = rte_ring_dequeue_bulk(rx_q, (void **)batch->pkt_ptr[buf_id], BATCH_SIZE, NULL);
+			num_packets = rte_ring_dequeue_burst(rx_q, (void **)batch->pkt_ptr[buf_id], BATCH_SIZE, NULL);
 			if (num_packets == 0) {
 				starve_rx_counter++;
 				if (starve_rx_counter == STARVE_THRESHOLD) {

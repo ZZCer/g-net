@@ -540,7 +540,7 @@ schedule_static(void) {
 				cl->blk_num = 2;				// blk_num * stream_num <= total #SM	// 6.1 device max #SM: 28
 				cl->batch_size = 8192; 		// max definition in onvm_common.h
 				cl->threads_per_blk = 1024;		// 6.1 device max: 1024
-				cl->worker_scale_target = 2;
+				cl->worker_scale_target = 1;
 				break;
 			case NF_NIDS:
 				cl->blk_num = 6;				// blk_num * stream_num <= total #SM	// 6.1 device max #SM: 28
@@ -574,8 +574,8 @@ scheduler_thread_main(void *arg) {
 		onvm_nf_check_status();
 		onvm_stats_display_all(sleeptime);
 		// schedule();
-		schedule_dynamic(sleeptime);
-		// schedule_static();
+		// schedule_dynamic(sleeptime);
+		schedule_static();
 		onvm_stats_clear_all_clients();
 	}
 

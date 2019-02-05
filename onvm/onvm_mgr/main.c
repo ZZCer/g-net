@@ -283,7 +283,6 @@ rx_thread_main(void *arg) {
                 // Use pstack to process TCP/IP
 #ifdef ENABLE_PSTACK
                 void* res = pstack_process((char *)onvm_pkt_ipv4_hdr(pkts[j]), pkts[j]->data_len - sizeof(struct ether_hdr), thread_id);
-                pkts[j]->userdata = res;
 #endif
             }
 #ifndef DROP_RX_PKTS

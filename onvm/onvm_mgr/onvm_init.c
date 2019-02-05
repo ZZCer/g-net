@@ -145,7 +145,7 @@ init(int argc, char *argv[]) {
 	init_pstack_info_pool();
 
 	/* Choose service chain, copy one and paste out of "if 0" to use it */
-	const int service_chain[MAX_SERVICES] = {NF_ROUTER, NF_END};
+	const int service_chain[MAX_SERVICES] = {NF_IPSEC, NF_FIREWALL, NF_NIDS, NF_ROUTER, NF_END};
 
 #if 0
 	/* 1 NF */
@@ -389,8 +389,8 @@ init_shm_rings(void) {
 		for (j = 0; j < ONVM_NUM_NF_QUEUES; j++) {
 			clients[i].rx_qs[j] = rte_ring_create(get_rx_queue_name(i, j), 
 						BATCH_QUEUE_FACTOR * MAX_BATCH_SIZE, socket_id, RING_F_SP_ENQ | RING_F_SC_DEQ); // single producer & consumer
+			clients[i].tx_qs[j] = NULL;
 		}
-		clients[i].tx_qs = NULL;
 
 		rte_spinlock_init(&clients[i].stats.update_lock);
 	}

@@ -155,7 +155,7 @@
 
     // #define MEASURE_RX_LATENCY
     // #define MEASURE_TX_LATENCY
-    #define END_TO_END_LATENCY
+    // #define END_TO_END_LATENCY
     // #define RING_QUEUING_LATENCY
 
 	inline double time_diff(struct timespec prev) {
@@ -218,7 +218,7 @@ struct client {
 
 	/* new: NF rss support */
 	struct rte_ring *rx_qs[ONVM_NUM_NF_QUEUES];
-	struct rte_ring **tx_qs;
+	struct rte_ring *tx_qs[ONVM_NUM_NF_QUEUES];
 
 	double throughput_mpps; /* Throughput in mpps */
 	double latency_us; /* latency in microseconds (us) */
