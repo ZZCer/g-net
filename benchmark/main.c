@@ -45,6 +45,7 @@
 #include <rte_string_fns.h>
 #include <rte_ip.h>
 #include <rte_udp.h>
+#include <rte_tcp.h>
 #include <rte_random.h>
 #include <sys/stat.h>
 
@@ -74,6 +75,7 @@
 // #define INCREASE_TTL
 
 int PKTLEN;
+int TCP_PACKETS = 1;
 
 #ifdef INCREASE_TTL
 uint8_t ttl = 0;
@@ -140,10 +142,14 @@ packet_ipv4hdr_constructor(struct ipv4_hdr *iph, int payload_len)
 	iph->time_to_live = ttl;
 
 	/* Total length of L3 */
-	iph->total_length = htons(sizeof(struct ipv4_hdr) + sizeof(struct
+	if (TCP_PACKETS)
+		iph->total_length = htons(sizeof(struct ipv4_hdr) + sizeof(struct
+			tcp_hdr) + payload_len);
+	else
+		iph->total_length = htons(sizeof(struct ipv4_hdr) + sizeof(struct
 				udp_hdr) + payload_len);
 
-	iph->next_proto_id = IPPROTO_UDP;
+	iph->next_proto_id = TCP_PACKETS ? IPPROTO_TCP : IPPROTO_UDP;
 	iph->src_addr = LOCAL_IP_ADDR;
 	iph->dst_addr = KV_IP_ADDR;
 }
@@ -160,6 +166,49 @@ void display_mac_address(struct ether_hdr *ethh, uint8_t port_id)
 			ethh->s_addr.addr_bytes[4], ethh->s_addr.addr_bytes[5]);
 }
 #endif
+
+static void
+packet_constructor_tcp(char *pkt, uint8_t port_id, int payload_len)
+{
+	struct ether_hdr *ethh;
+	struct ipv4_hdr *iph;
+	struct tcp_hdr *tcph;
+	char *data;
+	uint16_t ip_ihl;
+
+	ethh = (struct ether_hdr *)pkt;
+	iph = (struct ipv4_hdr *)((unsigned char *)ethh + sizeof(struct ether_hdr));
+
+	/* 1. Ethernet headers for the packet */
+	ethh->ether_type = htons(ETHER_TYPE_IPv4);
+	rte_eth_macaddr_get(port_id, &(ethh->s_addr));
+	
+	/* 2. construct IP header */
+	packet_ipv4hdr_constructor(iph, payload_len);
+
+	/* 3. construct tcp header */
+	ip_ihl = (iph->version_ihl & 0x0f) * 4;
+	assert(ip_ihl == sizeof(struct ipv4_hdr));
+	tcph = (struct tcp_hdr *)((char *)iph + ip_ihl);
+
+	tcph->src_port = htons(LOCAL_UDP_PORT);
+	tcph->dst_port = htons(KV_UDP_PORT);
+	tcph->data_off = sizeof(struct tcp_hdr) >> 2 << 4;
+	
+	/* Init IPV4 and TCP checksum with 0 */
+	iph->hdr_checksum = 0;
+	tcph->cksum = 0;
+
+	/* calculate IPV4 and UDP checksum in SW */
+	tcph->cksum = rte_ipv4_udptcp_cksum(iph, tcph);
+	iph->hdr_checksum = rte_ipv4_cksum(iph);
+
+	/* 4. payload */
+	data = ((char *)tcph + sizeof(struct tcp_hdr));
+	for(int i = 0; i < payload_len; i++) {
+		*(data + i) = 1;
+	}
+}
 
 static void
 packet_constructor_udp(char *pkt, uint8_t port_id, int payload_len)
@@ -208,7 +257,7 @@ static void
 setup_mbuf(uint8_t port_id, struct rte_mempool *mp, struct rte_mbuf **tx_packets)
 {
 	char *pkt;
-	int payload_len = PKTLEN - sizeof(struct ether_hdr) - sizeof(struct ipv4_hdr) - sizeof(struct udp_hdr);
+	int payload_len = PKTLEN - sizeof(struct ether_hdr) - sizeof(struct ipv4_hdr) - TCP_PACKETS ? sizeof(struct tcp_hdr) : sizeof(struct udp_hdr);
 	printf("Pkt len is %d, payload len is %d\n", PKTLEN, payload_len);
 
 	for (int i = 0; i < MBUF_NUM; i++) {
@@ -220,7 +269,10 @@ setup_mbuf(uint8_t port_id, struct rte_mempool *mp, struct rte_mbuf **tx_packets
 		rte_pktmbuf_reset_headroom(tx_packets[i]);
 
 		pkt = rte_pktmbuf_mtod(tx_packets[i], char *);
-		packet_constructor_udp(pkt, port_id, payload_len);
+		if (TCP_PACKETS)
+			packet_constructor_tcp(pkt, port_id, payload_len);
+		else 
+			packet_constructor_udp(pkt, port_id, payload_len);
 
 		/*update mbuf metadata */
 		//tx_packets[i]->pkt_len = sizeof(struct ipv4_hdr) + sizeof(struct udp_hdr) + payload_len;
