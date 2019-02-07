@@ -539,20 +539,20 @@ schedule_static(void) {
 		
 		switch (cl->info->service_id) {
 			case NF_ROUTER:
-				cl->blk_num = 1;				// blk_num * stream_num <= total #SM	// 6.1 device max #SM: 28
+				cl->blk_num = 6;				// blk_num * stream_num <= total #SM	// 6.1 device max #SM: 28
 				cl->batch_size = 4096; 		// max definition in onvm_common.h
 				cl->threads_per_blk = 1024;		// 6.1 device max: 1024
 				cl->worker_scale_target = 1;
 				break;
 			case NF_FIREWALL:
-				cl->blk_num = 2;				// blk_num * stream_num <= total #SM	// 6.1 device max #SM: 28
-				cl->batch_size = 4096; 		// max definition in onvm_common.h
+				cl->blk_num = 6;				// blk_num * stream_num <= total #SM	// 6.1 device max #SM: 28
+				cl->batch_size = 512; 		// max definition in onvm_common.h
 				cl->threads_per_blk = 1024;		// 6.1 device max: 1024
-				cl->worker_scale_target = 2;
+				cl->worker_scale_target = 1;
 				break;
 			case NF_NIDS:
 				cl->blk_num = 6;				// blk_num * stream_num <= total #SM	// 6.1 device max #SM: 28
-				cl->batch_size = 2048; 		// max definition in onvm_common.h
+				cl->batch_size = 4096; 		// max definition in onvm_common.h
 				cl->threads_per_blk = 1024;		// 6.1 device max: 1024
 				cl->worker_scale_target = 1;
 				break;

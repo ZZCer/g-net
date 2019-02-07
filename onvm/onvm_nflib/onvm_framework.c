@@ -16,8 +16,8 @@
 #include "../onvm_mgr/onvm_init.h"
 #include "../onvm_mgr/pstack.h"
 
-// #define ENABLE_PSTACK
-#define ENABLE_PSTACK_LATENCY_TEST
+#define ENABLE_PSTACK
+// #define ENABLE_PSTACK_LATENCY_TEST
 
 extern struct rte_mempool *nf_request_mp;
 extern struct rte_mempool *nf_response_mp;
