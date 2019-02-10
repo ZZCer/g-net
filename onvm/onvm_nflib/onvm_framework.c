@@ -225,6 +225,16 @@ onvm_framework_cpu(int thread_id)
 				}
 			}
 		} while (num_packets == 0);
+		
+#ifdef PRINT_ACTUAL_BATCH_SIZE
+		static int batch_freq = 0;
+		if (batch_freq % 10000 == 0) {
+			printf("Actual batch size: %d\n", num_packets);
+			batch_freq = 0;
+		}
+		batch_freq++;
+#endif
+
 #ifdef RING_QUEUING_LATENCY
 		for (i = 0; i < num_packets; i++) {
 			if (unlikely(batch->pkt_ptr[buf_id][i]->seqn == LATENCY_MAGIC)) {

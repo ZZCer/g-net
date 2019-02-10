@@ -64,7 +64,7 @@
 #define BATCH_POOL_SIZE 1024
 #define BATCH_CACHE_SIZE 32
 //#define USE_BATCH_SWITCHING 1
-#define BATCH_QUEUE_FACTOR 4
+#define BATCH_QUEUE_FACTOR 2
 #define STARVE_THRESHOLD 1000000
 
 #define RX_GPU_BATCH_SIZE 512
@@ -155,7 +155,7 @@
 
     // #define MEASURE_RX_LATENCY
     // #define MEASURE_TX_LATENCY
-    // #define END_TO_END_LATENCY
+    #define END_TO_END_LATENCY
     // #define RING_QUEUING_LATENCY
 
 	inline double time_diff(struct timespec prev) {
@@ -166,7 +166,7 @@
 #endif
 
 // #define MAX_BATCH_SIZE 8192
-#define MAX_BATCH_SIZE 32768
+#define MAX_BATCH_SIZE 4096
 
 #define NUM_BATCH_BUF 3
 

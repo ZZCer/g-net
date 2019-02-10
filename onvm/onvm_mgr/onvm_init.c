@@ -388,7 +388,7 @@ init_shm_rings(void) {
 		/* rss ring for NF */
 		for (j = 0; j < ONVM_NUM_NF_QUEUES; j++) {
 			clients[i].rx_qs[j] = rte_ring_create(get_rx_queue_name(i, j), 
-						BATCH_QUEUE_FACTOR * MAX_BATCH_SIZE, socket_id, RING_F_SP_ENQ | RING_F_SC_DEQ); // single producer & consumer
+						BATCH_QUEUE_FACTOR * MAX_BATCH_SIZE / ONVM_NUM_NF_QUEUES, socket_id, RING_F_SP_ENQ | RING_F_SC_DEQ); // single producer & consumer
 			clients[i].tx_qs[j] = NULL;
 		}
 

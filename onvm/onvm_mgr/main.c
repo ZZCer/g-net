@@ -354,8 +354,10 @@ rx_gpu_thread_main(void *arg) {
                 if (rx_q_new != NULL) {
 #ifdef RING_QUEUING_LATENCY
                     static int freq = 0;
-                    if (likely(batch->pkt_cnt[i] > 0)) { 
-                        if (freq % 10000 == 0) {                   
+                    if (likely(batch->pkt_cnt[i] > 0)) {
+                        for (unsigned n = 0; n < batch->pkt_cnt[i]; n++)
+                                batch->pkt_ptr[i][n]->seqn = 0;
+                        if (freq % 50000 == 0) {
                             struct timespec cur;
                             clock_gettime(CLOCK_MONOTONIC, &cur);
                             batch->pkt_ptr[i][0]->seqn = LATENCY_MAGIC;
@@ -546,7 +548,7 @@ tx_thread_main(void *arg) {
 #ifdef MEASURE_TX_LATENCY
         printf("Tx latency: %.3f ms\n", time_diff(tx_batch[batch_id].batch_start_time[thread_id]));
 
-        gettimeofday(&(tx_batch[batch_id].batch_start_time[thread_id]), NULL);
+        clock_gettime(CLOCK_MONOTONIC, &(tx_batch[batch_id].batch_start_time[thread_id]));
 #endif
         // ports->tx_stats.tx[tx->port_id] += cnt;
         rte_atomic64_add((rte_atomic64_t *)(uintptr_t)&ports->tx_stats.tx[tx->port_id], cnt);
