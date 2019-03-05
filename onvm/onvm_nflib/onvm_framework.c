@@ -247,7 +247,8 @@ onvm_framework_cpu(int thread_id)
 			}
 #endif
 #ifdef ENABLE_PSTACK
-			pstack_process((char *)onvm_pkt_ipv4_hdr(batch->pkt_ptr[buf_id][i]), batch->pkt_ptr[buf_id][i]->data_len - sizeof(struct ether_hdr), thread_id);
+			// pstack_process((char *)onvm_pkt_ipv4_hdr(batch->pkt_ptr[buf_id][i]), batch->pkt_ptr[buf_id][i]->data_len - sizeof(struct ether_hdr), thread_id);
+			// pstack_locate_state((char *)onvm_pkt_ipv4_hdr(batch->pkt_ptr[buf_id][i]), batch->pkt_ptr[buf_id][i]->data_len - sizeof(struct ether_hdr), thread_id);
 #endif
 			PRE_FUNC(batch->user_bufs[buf_id], batch->pkt_ptr[buf_id][i], i);
 		}
@@ -267,7 +268,7 @@ onvm_framework_cpu(int thread_id)
 		diff_total += diff;
 		diff_count++;
 		if (diff_count % 1000 == 0) {
-			printf("%f\n", diff_total / diff_count);
+			printf("%.3f\n", diff_total / diff_count);
 			diff_total = 0;
 			diff_count = 0;
 		}

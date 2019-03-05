@@ -308,6 +308,21 @@ tcp_init(int size, TCP_THREAD_LOCAL_P  tcp_thread_local_p)
 }
 
 struct tcp_stream *
+process_tcp_locate_state(u_char * data, int skblen, TCP_THREAD_LOCAL_P tcp_thread_local_p) {
+	struct tuple4 this_addr;
+	struct ip *this_iphdr = (struct ip *)data;
+	struct tcphdr *this_tcphdr = (struct tcphdr *)(data + 4 * this_iphdr->ip_hl);
+	struct tcp_stream *a_tcp = NULL;
+
+	this_addr.source = ntohs(this_tcphdr->th_sport);
+	this_addr.dest = ntohs(this_tcphdr->th_dport);
+	this_addr.saddr = this_iphdr->ip_src.s_addr;
+	this_addr.daddr = this_iphdr->ip_dst.s_addr;
+	a_tcp = nids_find_tcp_stream(&this_addr, tcp_thread_local_p);
+	return a_tcp;
+}
+
+struct tcp_stream *
 process_tcp(u_char * data, int skblen, TCP_THREAD_LOCAL_P tcp_thread_local_p)
 {
 	struct ip *this_iphdr = (struct ip *)data;

@@ -10,3 +10,7 @@ inline void* pstack_process(char *data, int len, int rx_queue_id) {
     return gen_ip_frag_proc(data, len, rx_queue_id);
 }
 
+inline void* pstack_locate_state(char *data, int len, int rx_queue_id) {
+    return simulate_locate_state(data, len, rx_queue_id);
+}
+

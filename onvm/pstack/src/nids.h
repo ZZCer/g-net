@@ -13,6 +13,8 @@
 # include <netinet/tcp.h>
 # include "../pcap-1.1.1/pcap.h"
 
+// #define LOCATE_STATE_ONLY
+
 #ifdef PARALLEL
 #include "parallel.h"
 #endif
@@ -174,6 +176,7 @@ void nids_pcap_handler(u_char *, struct pcap_pkthdr *, u_char *);
 //void nids_free_tcp_stream(struct tcp_stream *);
 
 void* gen_ip_frag_proc(char *data, int len, int thread_id);
+void* simulate_locate_state(char *data, int len, int thread_id);
 
 extern struct nids_prm nids_params;
 extern char *nids_warnings[];

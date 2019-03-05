@@ -526,6 +526,17 @@ end_loop:
 // }
 
 #if defined(PARALLEL)
+void* simulate_locate_state(char *data, int len, int thread_id) {
+	IP_THREAD_LOCAL_P ip_thread_local_p = ip_thread_local_struct + thread_id;
+	TCP_THREAD_LOCAL_P t_ptr = &tcp_thread_local_struct[ip_thread_local_p->self_cpu_id];
+	struct ip *iph = (struct ip *) data;
+	int skblen = ntohs(iph->ip_len) + 16;
+	skblen = (skblen + 15) & ~15;
+	skblen += nids_params.sk_buff_size;
+
+	return (void *)process_tcp_locate_state(data, skblen, t_ptr);
+}
+
 void* gen_ip_frag_proc(char *data, int len, int thread_id)
 {
 	struct proc_node *i;
