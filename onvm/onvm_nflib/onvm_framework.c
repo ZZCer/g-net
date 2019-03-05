@@ -213,8 +213,8 @@ onvm_framework_cpu(int thread_id)
 				BATCH_SIZE = (int)cl->batch_size;
 				RTE_LOG(INFO, APP, "Batch size changed to %d\n", BATCH_SIZE);
 			}
-			// num_packets = rte_ring_dequeue_bulk(rx_q, (void **)batch->pkt_ptr[buf_id], BATCH_SIZE, NULL);
-			num_packets = rte_ring_dequeue_burst(rx_q, (void **)batch->pkt_ptr[buf_id], BATCH_SIZE, NULL);
+			num_packets = rte_ring_dequeue_bulk(rx_q, (void **)batch->pkt_ptr[buf_id], BATCH_SIZE, NULL);
+			// num_packets = rte_ring_dequeue_burst(rx_q, (void **)batch->pkt_ptr[buf_id], BATCH_SIZE, NULL);
 			if (num_packets == 0) {
 				starve_rx_counter++;
 				if (starve_rx_counter == STARVE_THRESHOLD) {
