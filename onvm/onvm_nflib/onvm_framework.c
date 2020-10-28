@@ -17,7 +17,7 @@
 #include "../onvm_mgr/pstack.h"
 
 // #define ENABLE_PSTACK
-
+// 这些extern变量都定义在onvm_init onvm_common onvm_nflib
 extern struct rte_mempool *nf_request_mp;
 extern struct rte_mempool *nf_response_mp;
 extern struct rte_ring *nf_request_queue;
@@ -35,12 +35,16 @@ typedef struct pseudo_struct_s {
 	int64_t job_num;
 } pseudo_struct_t;
 
+//如果只在这个文件中使用的话，那么是如何获取对应数据的
 static nfv_batch_t batch_set[MAX_CPU_THREAD_NUM];
 
 static init_func_t INIT_FUNC;
 static pre_func_t  PRE_FUNC;
 static post_func_t POST_FUNC;
+static cpu_batch_handle CPU_BATCH_FUNC;
 
+//当程序仅仅只跑在cpu上面时，使用cpu_only模块
+static int onvm_framework_cpu_only(int thread);
 static int onvm_framework_cpu(int thread_id);
 static void gcudaRecordStart(int thread_id);
 static void gcudaStreamSynchronize(int thread_id);
@@ -50,6 +54,9 @@ static pthread_key_t my_batch;
 static pthread_mutex_t lock;
 
 static volatile int recv_token, send_token;
+
+//用来表示nf的处理类型
+extern int nf_handle_tag;
 
 /* NOTE: The batch size should be at least 10x? larger than the number of items 
  * in PKTMBUF_POOL when running local. Or not enough mbufs to loop */
@@ -75,22 +82,32 @@ static void
 onvm_framework_thread_init(int thread_id)
 {
 	int i = 0;
-
+       
+	printf("------------------start get thread %d -------------------------\n",thread_id);
 	nfv_batch_t *batch = &(batch_set[thread_id]);
 	/* The main thread set twice, elegant plan? */
+	printf("------------------get thread %d success------------------------\n",thread_id);
 	pthread_setspecific(my_batch, (void *)batch);
 	batch->thread_id = thread_id;
 
 	/* the last 1 is used to mark the allocation for not the first thread */
-	if (thread_id != 0) {
+	if (thread_id != 0&&nf_handle_tag==GPU_NF) {
 		gcudaAllocSize(0, 0, 1);
 	}
+	
+	printf("------------------start init thread %d batch info---------------\n",thread_id);
 
 	for (i = 0; i < NUM_BATCH_BUF; i ++) {
-		batch->user_bufs[i] = INIT_FUNC();
+		//在cpu模块下，用户层数据包就直接是两个uint8指针
+		if(nf_handle_tag==GPU_NF)
+		{	
+			batch->user_bufs[i] = INIT_FUNC();
+			batch->gpu_buf_id = -1;
+			batch->gpu_next_buf_id = 0;
+		}
 		batch->pkt_ptr[i] = (struct rte_mbuf **)malloc(sizeof(struct rte_mbuf *) * MAX_BATCH_SIZE);
-		batch->gpu_buf_id = -1;
-		batch->gpu_next_buf_id = 0;
+		//batch->gpu_buf_id = -1;
+		//batch->gpu_next_buf_id = 0;
 	}
 }
 
@@ -100,68 +117,73 @@ cpu_thread(void *arg)
 	struct thread_arg *my_arg = (struct thread_arg *)arg;
 	unsigned cur_lcore = rte_lcore_id();
 
+	if(my_arg==NULL)
+		printf("-----------------------------my_arg is nullptr-----------------------\n");
+
 	onvm_framework_thread_init(my_arg->thread_id);
+	printf("------------------thread batch data init completed---------------------\n");
 
+	if(nf_handle_tag==GPU_NF){
+		pthread_mutex_lock(&lock);
+		gpu_info->thread_num++;
+		pthread_mutex_unlock(&lock);			
+		RTE_LOG(INFO, APP, "New CPU thread %d is spawned, running on lcore %u, total_thread %d\n", my_arg->thread_id, cur_lcore, gpu_info->thread_num);
+	}
+	else
+		RTE_LOG(INFO, APP, "New CPU thread %d is spawned, running on lcore %u\n", my_arg->thread_id, cur_lcore);
+
+	/*
 	pthread_mutex_lock(&lock);
-	gpu_info->thread_num ++;
+	gpu_info->thread_num++;
 	pthread_mutex_unlock(&lock);
-
-	RTE_LOG(INFO, APP, "New CPU thread %d is spawned, running on lcore %u, total_thread %d\n", my_arg->thread_id, cur_lcore, gpu_info->thread_num);
+	*/
 	
-	onvm_nflib_run(&(onvm_framework_cpu), my_arg->thread_id);
-
+	if(nf_handle_tag==GPU_NF)
+		onvm_nflib_run(&(onvm_framework_cpu), my_arg->thread_id);
+	else
+		onvm_nflib_run(&(onvm_framework_cpu_only),my_arg->thread_id);
+		
+	
 	RTE_LOG(INFO, APP, "Thread %d terminated on core %d\n", my_arg->thread_id, cur_lcore);
 
 	return 0;
 }
+
+
 
 static void 
 onvm_framework_spawn_thread(int thread_id, unsigned core_id)
 {
 	struct thread_arg *arg = (struct thread_arg *)malloc(sizeof(struct thread_arg));
 	arg->thread_id = thread_id;
-
+        printf("--------------------start nf thread %d---------------------\n",thread_id);
 	if (rte_eal_remote_launch(cpu_thread, (void *)arg, core_id) == -EBUSY) {
 		rte_exit(EXIT_FAILURE, "Core %d is busy, cannot allocate to run threads\n", core_id);
 	}
 }
 
-static int
-onvm_framework_cpu(int thread_id)
-{
+static int onvm_framework_cpu_only(int thread_id){
+	printf("--------------------start cpu only thread----------------------\n");
 	int i, j;
-	int buf_id = 0;
+	int buf_id = 0;//这个buf_id会在主循环中迭代，每个cpu最多能跑的线程个数就是其大小
 	struct rte_ring *rx_q, *tx_q;
 	nfv_batch_t *batch;
 	int cur_buf_size;
 	uint64_t starve_rx_counter = 0;
-	uint64_t starve_gpu_counter = 0;
 	struct timespec start, end;
 	double diff;
 	current_rx_qid = thread_id;
 
 	// rx_q = cl->rx_q_new;
-
 	while (keep_running) {
 		batch = &batch_set[thread_id];
-        if (batch->buf_state[buf_id] != BUF_STATE_CPU_READY) {
-			starve_gpu_counter++;
-			if (starve_gpu_counter == STARVE_THRESHOLD) {
-				RTE_LOG(INFO, APP, "GPU starving\n");
-			}
-			continue;
-		}
-		starve_gpu_counter = 0;
 		cur_buf_size = batch->buf_size[buf_id];
 
 		clock_gettime(CLOCK_MONOTONIC, &start);
 
-		// post-processing
-		for (i = 0; i < cur_buf_size; i++) {
-			POST_FUNC(batch->user_bufs[buf_id], batch->pkt_ptr[buf_id][i], i);
-		}
-
 		// handle dropped packets
+		// 下面这个操纵是在丢弃数据的同时，使得不丢弃的数据变得连续都在数组前面，要丢弃的则都在数组后面
+		// 这里先进行合并，将连续数据转发后，再将丢弃的数据进行内存释放
 		for (i = j = 0; i < cur_buf_size; i++) {
 			struct onvm_pkt_meta *meta = onvm_get_pkt_meta(batch->pkt_ptr[buf_id][i]);
 			if (meta->action != ONVM_NF_ACTION_DROP) {
@@ -181,11 +203,16 @@ onvm_framework_cpu(int thread_id)
 		else
 			tx_q = *(struct rte_ring * const volatile*)&cl->tx_qs[batch->queue_id];
 		int sent_packets = 0;
+
+		
 		if (likely(tx_q != NULL && num_packets != 0)) {
+			//rte_ring_enqueue生产者函数，用这个函数来转发？
 			// sent_packets = rte_ring_enqueue_burst(tx_q, (void **)batch->pkt_ptr[buf_id], num_packets, NULL);
 			sent_packets = rte_ring_enqueue_bulk(tx_q, (void **)batch->pkt_ptr[buf_id], num_packets, NULL);
 		}
+
 		// send_token = (send_token + 1) % (gpu_info->thread_num);
+		//相当于把发送位置后的值都丢弃，具体操作就是释放内存
 		if (sent_packets < cur_buf_size) {
 			onvm_pkt_drop_batch(batch->pkt_ptr[buf_id] + sent_packets, cur_buf_size - sent_packets);
 		}
@@ -193,6 +220,7 @@ onvm_framework_cpu(int thread_id)
 		clock_gettime(CLOCK_MONOTONIC, &end);
 		diff = (end.tv_sec - start.tv_sec) * 1000000.0 + (end.tv_nsec - start.tv_nsec) / 1000.0;
 
+		//自旋锁
 		rte_spinlock_lock(&cl->stats.update_lock);
 		cl->stats.tx += sent_packets;
 		cl->stats.tx_drop += num_packets - sent_packets;
@@ -202,7 +230,7 @@ onvm_framework_cpu(int thread_id)
 
 		clock_gettime(CLOCK_MONOTONIC, &start);
 
-		// rx
+		// rx 尽最大能力接受数据到接受不到数据了为止
 		// while (keep_running && recv_token != thread_id);
 		assert(cl->worker_scale_finished <= ONVM_NUM_NF_QUEUES);
 		do {
@@ -212,10 +240,163 @@ onvm_framework_cpu(int thread_id)
 			}
 			rx_q = cl->rx_qs[current_rx_qid];
 			
+			//会根据实际接受到的数据包去修改batch_size
 			if (BATCH_SIZE != (int)cl->batch_size) {
 				BATCH_SIZE = (int)cl->batch_size;
 				RTE_LOG(INFO, APP, "Batch size changed to %d\n", BATCH_SIZE);
 			}
+
+			// num_packets = rte_ring_dequeue_bulk(rx_q, (void **)batch->pkt_ptr[buf_id], BATCH_SIZE, NULL);
+			num_packets = rte_ring_dequeue_burst(rx_q, (void **)batch->pkt_ptr[buf_id], BATCH_SIZE, NULL);
+			if (num_packets == 0) {
+				starve_rx_counter++;
+				if (starve_rx_counter == STARVE_THRESHOLD) {
+					RTE_LOG(INFO, APP, "Rx starving at thread %d\n", thread_id);
+				}
+			}
+		} while (num_packets == 0 && keep_running);
+		
+		if(!keep_running)
+			break;
+
+		// recv_token = (recv_token + 1) % (gpu_info->thread_num);
+		starve_rx_counter = 0;
+		cur_buf_size = num_packets;
+		batch->buf_size[buf_id] = cur_buf_size;
+
+		// clock_gettime(CLOCK_MONOTONIC, &start);
+
+		// pre-processing // todo: pass param i insteadof modify the struct
+		//仅仅在预处理直接处理pkt数据包
+		uint64_t rx_datalen_sample = 0;
+		for (i = 0; i < cur_buf_size; i++) 
+		{
+			//batch_handle
+			CPU_BATCH_FUNC(batch->pkt_ptr[buf_id][i]);
+		}
+		rx_datalen_sample = cur_buf_size > 0 ? cur_buf_size * batch->pkt_ptr[buf_id][0]->data_len : 0;
+
+		clock_gettime(CLOCK_MONOTONIC, &end);
+		diff = (end.tv_sec - start.tv_sec) * 1000000.0 + (end.tv_nsec - start.tv_nsec) / 1000.0;
+
+		rte_spinlock_lock(&cl->stats.update_lock);
+		cl->stats.rx += cur_buf_size;		
+		cl->stats.rx_datalen += rx_datalen_sample;
+		cl->stats.cpu_time += diff;
+		rte_spinlock_unlock(&cl->stats.update_lock);
+
+		// launch kernel
+		// 这里相当于判断其接受数据是否大于0，大于0，那么接下来可以进入gpu模式操作
+		if (cur_buf_size > 0) {
+			buf_id = (buf_id + 1) % NUM_BATCH_BUF;
+		}
+	}
+
+	return 0;
+}
+
+//cpu处理模块
+static int
+onvm_framework_cpu(int thread_id)
+{
+	int i, j;
+	int buf_id = 0;//这个buf_id会在主循环中迭代，每个cpu最多能跑的线程个数就是其大小
+	struct rte_ring *rx_q, *tx_q;
+	nfv_batch_t *batch;
+	int cur_buf_size;
+	uint64_t starve_rx_counter = 0;
+	uint64_t starve_gpu_counter = 0;
+	struct timespec start, end;
+	double diff;
+	current_rx_qid = thread_id;
+
+	// rx_q = cl->rx_q_new;
+	while (keep_running) {
+		batch = &batch_set[thread_id];
+		//gpu饿了是什么意思，必须当前cpu_ready后才会进行接下来的操作
+        if (batch->buf_state[buf_id] != BUF_STATE_CPU_READY) {
+			starve_gpu_counter++;
+			if (starve_gpu_counter == STARVE_THRESHOLD) {
+				RTE_LOG(INFO, APP, "GPU starving\n");
+			}
+			continue;
+		}
+		starve_gpu_counter = 0;
+		cur_buf_size = batch->buf_size[buf_id];
+
+		clock_gettime(CLOCK_MONOTONIC, &start);
+
+		// post-processing
+		// 这里所谓的后处理是将用户数据传递给rte_mem why?
+		for (i = 0; i < cur_buf_size; i++) {
+			POST_FUNC(batch->user_bufs[buf_id], batch->pkt_ptr[buf_id][i], i);
+		}
+
+		// handle dropped packets
+		// 下面这个操纵是在丢弃数据的同时，使得不丢弃的数据变得连续都在数组前面，要丢弃的则都在数组后面
+		// 这里先进行合并，将连续数据转发后，再将丢弃的数据进行内存释放
+		for (i = j = 0; i < cur_buf_size; i++) {
+			struct onvm_pkt_meta *meta = onvm_get_pkt_meta(batch->pkt_ptr[buf_id][i]);
+			if (meta->action != ONVM_NF_ACTION_DROP) {
+				// swap
+				struct rte_mbuf *p = batch->pkt_ptr[buf_id][i];
+				batch->pkt_ptr[buf_id][i] = batch->pkt_ptr[buf_id][j];
+				batch->pkt_ptr[buf_id][j++] = p;
+			}
+		}
+		int num_packets = j;
+
+		// tx
+		// while (keep_running && send_token != thread_id);
+		// tx_q = *(struct rte_ring * const volatile*)&cl->tx_q_new;
+		if (cl->tx_qs == NULL)
+			tx_q = NULL;
+		else
+			tx_q = *(struct rte_ring * const volatile*)&cl->tx_qs[batch->queue_id];
+		int sent_packets = 0;
+
+		
+		if (likely(tx_q != NULL && num_packets != 0)) {
+			//rte_ring_enqueue生产者函数，用这个函数来转发？
+			// sent_packets = rte_ring_enqueue_burst(tx_q, (void **)batch->pkt_ptr[buf_id], num_packets, NULL);
+			sent_packets = rte_ring_enqueue_bulk(tx_q, (void **)batch->pkt_ptr[buf_id], num_packets, NULL);
+		}
+
+		// send_token = (send_token + 1) % (gpu_info->thread_num);
+		//相当于把发送位置后的值都丢弃，具体操作就是释放内存
+		if (sent_packets < cur_buf_size) {
+			onvm_pkt_drop_batch(batch->pkt_ptr[buf_id] + sent_packets, cur_buf_size - sent_packets);
+		}
+
+		clock_gettime(CLOCK_MONOTONIC, &end);
+		diff = (end.tv_sec - start.tv_sec) * 1000000.0 + (end.tv_nsec - start.tv_nsec) / 1000.0;
+
+		//自旋锁
+		rte_spinlock_lock(&cl->stats.update_lock);
+		cl->stats.tx += sent_packets;
+		cl->stats.tx_drop += num_packets - sent_packets;
+		cl->stats.act_drop += cur_buf_size - num_packets;
+		cl->stats.cpu_time += diff;
+		rte_spinlock_unlock(&cl->stats.update_lock);
+
+		clock_gettime(CLOCK_MONOTONIC, &start);
+
+		// rx 尽最大能力接受数据到接受不到数据了为止
+		// while (keep_running && recv_token != thread_id);
+		assert(cl->worker_scale_finished <= ONVM_NUM_NF_QUEUES);
+		do {
+			current_rx_qid = current_rx_qid + cl->worker_scale_finished;
+			if (current_rx_qid >= ONVM_NUM_NF_QUEUES) {
+				current_rx_qid = thread_id;
+			}
+			rx_q = cl->rx_qs[current_rx_qid];
+			
+			//会根据实际接受到的数据包去修改batch_size
+			if (BATCH_SIZE != (int)cl->batch_size) {
+				BATCH_SIZE = (int)cl->batch_size;
+				RTE_LOG(INFO, APP, "Batch size changed to %d\n", BATCH_SIZE);
+			}
+
 			// num_packets = rte_ring_dequeue_bulk(rx_q, (void **)batch->pkt_ptr[buf_id], BATCH_SIZE, NULL);
 			num_packets = rte_ring_dequeue_burst(rx_q, (void **)batch->pkt_ptr[buf_id], BATCH_SIZE, NULL);
 			if (num_packets == 0) {
@@ -265,7 +446,8 @@ onvm_framework_cpu(int thread_id)
 		for (i = 0; i < cur_buf_size; i++) {
 #ifdef ENABLE_PSTACK
 			pstack_process((char *)onvm_pkt_ipv4_hdr(batch->pkt_ptr[buf_id][i]), batch->pkt_ptr[buf_id][i]->data_len - sizeof(struct ether_hdr), thread_id);
-#endif
+#endif		
+			//将接受到的数据传递给user_bufs
 			PRE_FUNC(batch->user_bufs[buf_id], batch->pkt_ptr[buf_id][i], i);
 		}
 		rx_datalen_sample = cur_buf_size > 0 ? cur_buf_size * batch->pkt_ptr[buf_id][0]->data_len : 0;
@@ -280,6 +462,7 @@ onvm_framework_cpu(int thread_id)
 		rte_spinlock_unlock(&cl->stats.update_lock);
 
 		// launch kernel
+		// 这里相当于判断其接受数据是否大于0，大于0，那么接下来可以进入gpu模式操作
 		if (cur_buf_size > 0) {
 			batch->buf_state[buf_id] = BUF_STATE_GPU_READY;
             buf_id = (buf_id + 1) % NUM_BATCH_BUF;
@@ -367,19 +550,37 @@ onvm_framework_init(const char *module_file, const char *kernel_name)
 #endif
 }
 
-void
-onvm_framework_start_cpu(init_func_t user_init_buf_func, pre_func_t user_pre_func, post_func_t user_post_func)
-{
-	INIT_FUNC = user_init_buf_func;
-	PRE_FUNC = user_pre_func;
-	POST_FUNC = user_post_func;
 
+void 
+onvm_framework_cpu_only_wait(){
+	signal(SIGINT,onvm_nflib_handle_signal);
+	while(keep_running);
+	onvm_nflib_stop();
+}
+
+void
+onvm_framework_start_cpu(init_func_t user_init_buf_func, pre_func_t user_pre_func, post_func_t user_post_func,cpu_batch_handle cpu_batch_func,int handle_tag)
+{
+	printf("-------------------start load cpu-----------\n");
+	nf_handle_tag= handle_tag;
+
+	if(nf_handle_tag==GPU_NF)
+	{
+		INIT_FUNC = user_init_buf_func;
+		PRE_FUNC = user_pre_func;
+		POST_FUNC = user_post_func;
+	}
+	else
+		CPU_BATCH_FUNC=cpu_batch_func;
+
+	printf("-------------------finsh load cpu/gpu function---------------\n");
+	
 	int i;
     unsigned cur_lcore = rte_lcore_id();
 	for (i = 0; i < INIT_WORKER_THREAD_NUM; i ++) {
 		/* Better to wait for a while between launching two threads, don't know why */
 		sleep(1);
-        cur_lcore =	rte_get_next_lcore(cur_lcore, 1, 1);
+        	cur_lcore =rte_get_next_lcore(cur_lcore, 1, 1);
 		cl->worker_scale_finished++;
 		onvm_framework_spawn_thread(i, cur_lcore);
 		last_assigned_core_id = cur_lcore;
@@ -401,6 +602,7 @@ onvm_framework_start_gpu(gpu_htod_t user_gpu_htod, gpu_dtoh_t user_gpu_dtoh, gpu
 		rte_exit(EXIT_FAILURE, "GPU function is NULL\n");
 	}
 
+	//通过自旋来确保cpu已经完成了cpu_thread的执行，开始进入onvm_framework_cpu
 	while (gpu_info->thread_num != (unsigned int)INIT_WORKER_THREAD_NUM && keep_running) ;
 
 	unsigned cur_lcore = rte_lcore_id();
@@ -412,12 +614,20 @@ onvm_framework_start_gpu(gpu_htod_t user_gpu_htod, gpu_dtoh_t user_gpu_dtoh, gpu
 		 * We have load balance among all threads, so their batch size are the same. */
 		RTE_LOG(DEBUG, APP, "GPU thread is launching kernel\n");
 
+		//处理d2h
 		for (i = 0; i < gpu_info->thread_num; i++) {
 			batch = &batch_set[i];
+			//试图获得该gpu线程对应的数据包
+			//如果获得不到响应，并且之前已经处理过数据包的话就退出循环
 			if (batch->gpu_buf_id != -1 && gcudaPollForStreamSyncResponse(i)) {
+				//gpu_state指得应该是gpu_ready
 				if (batch->gpu_state == 1) {
+					//将gpu数据拷贝给用户缓冲区
 					user_gpu_dtoh(batch->user_bufs[batch->gpu_buf_id], batch->buf_size[batch->gpu_buf_id], i);
+					//gpu流同步请求的申请和加入队列
 					gcudaStreamSynchronize(i);
+
+					//自旋锁更新缓冲区数据
 					rte_spinlock_lock(&cl->stats.update_lock);
 					cl->stats.batch_size += batch->buf_size[batch->gpu_buf_id];
 					cl->stats.batch_cnt++;
@@ -431,19 +641,24 @@ onvm_framework_start_gpu(gpu_htod_t user_gpu_htod, gpu_dtoh_t user_gpu_dtoh, gpu
 			}
 		}
 
+		//处理h2d
 		gpu_buf_id = -1;
 		for (i = 0; gpu_buf_id == -1 && i < gpu_info->thread_num; i++) {
 			batch = &batch_set[i];
 			if (batch->gpu_buf_id != -1) continue;
 			batch_id = i;
+			//在gpu ready也就是数据包已经从pkt复制到user_buf的情况下，获得数据包id
 			gpu_buf_id = gpu_get_batch(batch);
 		}
+
+		//判断是否继续运行和是否获得了正确的数据包
 		if (!keep_running) break;
 		if (gpu_buf_id == -1) continue;
 		batch->gpu_buf_id = gpu_buf_id;
 		batch->gpu_next_buf_id = (gpu_buf_id + 1) % NUM_BATCH_BUF;
 
 		// Automatic scaling
+		// 目标cpu需要数量比当前执行数量多，那么uhi通过spawn_thread去开辟更多的cpu线程
 		if (cl->worker_scale_target > cl->worker_scale_finished) {
 			RTE_LOG(INFO, APP, "CPU Scaling: %u -> %u\n", cl->worker_scale_finished, cl->worker_scale_target);
 			int num = cl->worker_scale_target - cl->worker_scale_finished;
@@ -521,6 +736,7 @@ gcudaAllocSize(int size_per_thread, int size_global, int first)
 	if (mz == NULL)
 		rte_exit(EXIT_FAILURE, "Cannot find memzone\n");
 
+	//给host内存分配dpdk层空间
 	batch->host_mem_addr_base = mz->addr;
 	batch->host_mem_addr_cur = mz->addr;
 	batch->host_mem_size_total = mz->len;
@@ -746,6 +962,7 @@ gcudaRecordStart(int thread_id)
 	}
 }
 
+//从请求内存池中申请内存，再将请求压入请求环形队列和内存池，这里的请求是gpu同步流请求
 static void
 gcudaStreamSynchronize(int thread_id)
 {
@@ -766,6 +983,7 @@ gcudaStreamSynchronize(int thread_id)
 	}
 }
 
+//从响应的环形缓冲区中获取数据，并将响应放入到dpdk的nf_response_mp中
 static int
 gcudaPollForStreamSyncResponse(int thread_id)
 {

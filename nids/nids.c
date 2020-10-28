@@ -156,7 +156,7 @@ int main(int argc, char *argv[])
 	int arg_offset;
 
 	/* Initialize nflib */
-	if ((arg_offset = onvm_nflib_init(argc, argv, NF_TAG, NF_NIDS, &(init_gpu_schedule))) < 0)
+	if ((arg_offset = onvm_nflib_init(argc, argv, NF_TAG, NF_NIDS, GPU_NF ,&(init_gpu_schedule))) < 0)
 		return -1;
 	argc -= arg_offset;
 	argv += arg_offset;
@@ -166,7 +166,7 @@ int main(int argc, char *argv[])
 	init_main();
 
 	/* Initialization is done, start threads */
-	onvm_framework_start_cpu(&(init_host_buf), &(user_batch_func), &(user_post_func));
+	onvm_framework_start_cpu(&(init_host_buf), &(user_batch_func), &(user_post_func), NULL ,GPU_NF);
 
 	onvm_framework_start_gpu(&(user_gpu_htod), &(user_gpu_dtoh), &(user_gpu_set_arg));
 

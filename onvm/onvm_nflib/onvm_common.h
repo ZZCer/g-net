@@ -158,7 +158,7 @@
     #define END_TO_END_LATENCY
     // #define RING_QUEUING_LATENCY
 
-	inline double time_diff(struct timespec prev) {
+	static inline double time_diff(struct timespec prev) {
 		struct timespec cur;
 		clock_gettime(CLOCK_MONOTONIC, &cur);
 		return ((cur.tv_sec - prev.tv_sec) * 1000000) + (cur.tv_nsec - prev.tv_nsec) / 1000;
@@ -403,6 +403,7 @@ struct gpu_schedule_info {
 #define NF_RAW			7
 #define NF_FRAMEWORK	8
 #define NF_END			9
+#define NF_NAT 			10
 
 /* Scheduling strategies */
 #define NO_SCHED	0
@@ -426,6 +427,7 @@ static struct nf_str nf_id_to_name[] =
 	{ "Pktgen", 6, NO_SCHED },
 	{ "NF Raw", 7, NO_SCHED },
 	{ "NF Framework", 8, NO_SCHED },
+	{ "NF NAT", 10, NO_SCHED },
 	{ NULL, -1, NO_SCHED }
 };
 

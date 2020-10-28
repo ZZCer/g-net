@@ -80,6 +80,9 @@ struct onvm_nf_info *nf_info;
 
 struct client *cl;
 
+//处理类型标签
+int nf_handle_tag;
+
 // Shared pool for all clients info
 static struct rte_mempool *nf_info_mp;
 
@@ -101,6 +104,7 @@ struct rte_mempool *nf_response_mp;
 
 // request and response queue
 struct rte_ring *nf_request_queue;
+struct rte_ring *nf_response_queue;
 
 extern int NF_REQUIRED_LATENCY;
 extern int INIT_WORKER_THREAD_NUM;
@@ -160,9 +164,9 @@ onvm_nflib_cleanup(void);
 
 /************************************API**************************************/
 
-
+//多添加了一个handle_tag的标签表示当前nf是在cpu上跑还是在gpu上跑
 int
-onvm_nflib_init(int argc, char *argv[], const char *nf_tag, int service_id,
+onvm_nflib_init(int argc, char *argv[], const char *nf_tag, int service_id,int handle_tag,
 		void (*user_install_gpu_rule)(void)) {
 	const struct rte_memzone *mz;
 	const struct rte_memzone *mz_scp;
@@ -173,6 +177,7 @@ onvm_nflib_init(int argc, char *argv[], const char *nf_tag, int service_id,
 	if (service_id < 0)
 		rte_exit(EXIT_FAILURE, "Service ID not set");
 
+	//启动dpdk环境层
 	if ((retval_eal = rte_eal_init(argc, argv)) < 0)
 		return -1;
 
@@ -199,17 +204,20 @@ onvm_nflib_init(int argc, char *argv[], const char *nf_tag, int service_id,
 	opterr = 0; optind = 1;
 
 	/* Lookup mempool for nf_info struct */
+	// 找到nf内存
 	nf_info_mp = rte_mempool_lookup(_NF_MEMPOOL_NAME);
 	if (nf_info_mp == NULL)
 		rte_exit(EXIT_FAILURE, "No Client Info mempool - bye\n");
 
 	/* Initialize the info struct */
+	// 从nf内存中分配内存给nf_info
 	nf_info = onvm_nflib_info_init(nf_tag, service_id);
 
 	mp = rte_mempool_lookup(PKTMBUF_POOL_NAME);
 	if (mp == NULL)
 		rte_exit(EXIT_FAILURE, "Cannot get mempool for mbufs\n");
 
+	//service chain info
 	mz_scp = rte_memzone_lookup(MZ_SCP_INFO);
 	if (mz_scp == NULL)
 		rte_exit(EXIT_FAILURE, "Cannot get service chain info structre\n");
@@ -223,6 +231,7 @@ onvm_nflib_init(int argc, char *argv[], const char *nf_tag, int service_id,
 		rte_exit(EXIT_FAILURE, "Cannot get nf_info ring");
 
 	/* Put this NF's info struct onto queue for manager to process startup */
+	//rte_mempool_put相当于归还内存
 	if (rte_ring_enqueue(nf_info_ring, nf_info) < 0) {
 		rte_mempool_put(nf_info_mp, nf_info); // give back mermory
 		rte_exit(EXIT_FAILURE, "Cannot send nf_info to manager");
@@ -254,8 +263,8 @@ onvm_nflib_init(int argc, char *argv[], const char *nf_tag, int service_id,
 	cl = &((struct client *)mz->addr)[nf_info->instance_id];
 
 	/* Install GPU rules, including required latency and so on */
-	if ((service_id != NF_PKTGEN) && (service_id != NF_RAW)) {
-		assert(user_install_gpu_rule != NULL);
+	if ((service_id != NF_PKTGEN) && (service_id != NF_RAW) && (handle_tag==GPU_NF)) {
+		//assert(user_install_gpu_rule != NULL);
 		user_install_gpu_rule();
 	}
 

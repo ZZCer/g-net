@@ -75,7 +75,7 @@
  *   On error, a negative value .
  */
 int
-onvm_nflib_init(int argc, char *argv[], const char *nf_tag, int service_id,
+onvm_nflib_init(int argc, char *argv[], const char *nf_tag, int service_id,int handle_tag,
 		void (*user_install_gpu_rule)(void));
 
 
@@ -117,6 +117,9 @@ onvm_nflib_return_pkt(struct rte_mbuf* pkt);
  */
 void
 onvm_nflib_stop(void);
+
+void
+onvm_nflib_handle_signal(int sig);
 
 int
 onvm_nflib_instance_id(void);

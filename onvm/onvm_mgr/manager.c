@@ -19,6 +19,7 @@ static pthread_mutex_t lock;
 static struct nf_req *pending_req_header = NULL, *pending_req_tail = NULL;
 
 struct rte_mempool *nf_request_pool, *nf_response_pool;
+//全局环形的请求缓冲区，用来接受nf给manager的gpu调用指令，在头文件onvm_init.h中
 struct rte_ring *nf_request_queue;
 
 static int allocated_sm = 0;
@@ -140,15 +141,27 @@ manager_nf_init(int instance_id)
 	if (cl->init == 1)
 		rte_exit(EXIT_FAILURE, "Network function %d has been inited\n", instance_id);
 
+	//if (cl->gpu_info->init != 1)
+	//	rte_exit(EXIT_FAILURE, "GPU INFO for this client has not been filled\n");
 	if (cl->gpu_info->init != 1)
-		rte_exit(EXIT_FAILURE, "GPU INFO for this client has not been filled\n");
-
+		rte_log(RTE_LOG_DEBUG,RTE_LOGTYPE_APP, "Client run in cpu\n");
+	else
+	{
 #if !defined(PKTGEN_FRAMEWORK)
-	/* load GPU kernel */
+	        /* load GPU kernel */
+	        RTE_LOG(INFO, APP, "Loading CUDA, module_file: %s, function: %s\n", cl->gpu_info->module_file, cl->gpu_info->kernel_name);
+	        checkCudaErrors( cuModuleLoad(&(cl->module), cl->gpu_info->module_file) );
+	        checkCudaErrors( cuModuleGetFunction(&(cl->function), cl->module, cl->gpu_info->kernel_name) );
+#endif
+		rte_log(RTE_LOG_DEBUG,RTE_LOGTYPE_APP, "Client run in gpu\n");
+	}
+/*
+#if !defined(PKTGEN_FRAMEWORK)
 	RTE_LOG(INFO, APP, "Loading CUDA, module_file: %s, function: %s\n", cl->gpu_info->module_file, cl->gpu_info->kernel_name);
 	checkCudaErrors( cuModuleLoad(&(cl->module), cl->gpu_info->module_file) );
 	checkCudaErrors( cuModuleGetFunction(&(cl->function), cl->module, cl->gpu_info->kernel_name) );
 #endif
+*/
 
 	/* Default values, waiting to be changed by the Scheduler.
 	 * This works correctly, as the client would not use the batch size when it equals to 0 */
@@ -399,9 +412,12 @@ int
 manager_thread_main(void *arg)
 {
 	UNUSED(arg);
+	//客户端数组，从gpu中返回得到的响应和请i去
 	struct client *cl;
 	struct nf_req *req;
 	struct nf_rsp *rsp;
+
+	//一块指定名字的连续物理
 	const struct rte_memzone *mz;
 
 	int blk_num;
@@ -416,6 +432,7 @@ manager_thread_main(void *arg)
 	unsigned int record_blk_num_thread[MAX_CLIENTS][MAX_CPU_THREAD_NUM];
 #endif
 
+	//创建上下文，使得所有程序都能够在一个上下文里面跑，所以定义成全局变量
 	checkCudaErrors( cuCtxSetCurrent(context) );
 
 	RTE_LOG(INFO, APP, "Core %d: Manager is running\n", rte_lcore_id());
@@ -455,6 +472,7 @@ manager_thread_main(void *arg)
 				rsp->instance_id = req->instance_id;
 
 				/* Enqueue and tell */
+				//谁来处理
 				cl = &(clients[req->instance_id]);
 				if (rte_ring_enqueue(cl->response_q[req->thread_id], rsp) < 0) {
 					rte_mempool_put(nf_response_pool, rsp);
@@ -769,6 +787,5 @@ manager_thread_main(void *arg)
 				break;
 		}
 	}	
-
 	return 0;
 }

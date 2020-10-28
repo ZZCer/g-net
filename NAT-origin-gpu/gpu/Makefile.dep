@@ -1,0 +1,1 @@
+objs/nat.o: nat.cu

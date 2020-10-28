@@ -553,6 +553,11 @@ schedule_static(void) {
 				cl->batch_size = 2048; 		// max definition in onvm_common.h
 				cl->threads_per_blk = 1024;		// 6.1 device max: 1024
 				break;
+			default:
+				cl->blk_num = 1;				// blk_num * stream_num <= total #SM	// 6.1 device max #SM: 28
+				cl->batch_size = 2048; 		// max definition in onvm_common.h
+				cl->threads_per_blk = 1024;		// 6.1 device max: 1024
+				cl->worker_scale_target = 1;
 		}
 
 		assert(cl->batch_size <= MAX_BATCH_SIZE);

@@ -13,9 +13,14 @@
 #define SYNC 0
 #define ASYNC 1
 
+//表示网络功能的计算是在CPU计算还是在GPU计算
+#define CPU_NF 0
+#define GPU_NF 1
+
 /* Each CPU worker holds such a data structure */
 typedef struct nfv_batch_s
 {
+	//下述这两个存储数据的数组有什么区别么,共享内存/用户空间之分
 	void *user_bufs[NUM_BATCH_BUF];
 	struct rte_mbuf **pkt_ptr[NUM_BATCH_BUF];
 
@@ -45,13 +50,14 @@ typedef struct context_s{
 } context_t;
 
 typedef void *(*init_func_t)(void);
+typedef void (*cpu_batch_handle)(struct rte_mbuf*);
 typedef void (*pre_func_t)(void *, struct rte_mbuf *, int);
 typedef void (*post_func_t)(void *, struct rte_mbuf *, int);
 typedef void (*gpu_htod_t)(void *, int, unsigned int);
 typedef void (*gpu_dtoh_t)(void *, int, unsigned int);
 typedef void (*gpu_set_arg_t)(void *, void *, void *, int);
 
-void onvm_framework_start_cpu(init_func_t, pre_func_t, post_func_t);
+void onvm_framework_start_cpu(init_func_t, pre_func_t, post_func_t,cpu_batch_handle,int nf_handle_tag);
 void onvm_framework_start_gpu(gpu_htod_t, gpu_dtoh_t, gpu_set_arg_t);
 
 void onvm_framework_install_kernel_perf_parameter(double k1, double b1, double k2, double b2);

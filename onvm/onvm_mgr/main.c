@@ -64,8 +64,7 @@
 // #define DROP_RX_PKTS
 // #define DISABLE_GPU_RX
 // #define DISABLE_TX
-
-// #define ENABLE_PSTACK
+#define ENABLE_PSTACK
 
 extern struct onvm_service_chain *default_chain;
 extern struct rx_perf rx_stats[ONVM_NUM_RX_THREADS]; 
@@ -82,6 +81,7 @@ extern CUcontext context;
 #define RX_NUM_THREADS ONVM_NUM_RX_THREADS
 #define RX_NUM_BATCHES 4
 
+//rx对于从以太网接收到的数据是通过批来处理的，这是单个批的数据结构
 typedef struct rx_batch_s {
     volatile int gpu_sync __rte_cache_aligned;
     volatile int full[RX_NUM_THREADS] __rte_cache_aligned;
@@ -96,6 +96,7 @@ typedef struct rx_batch_s {
 
 static rx_batch_t rx_batch[RX_NUM_BATCHES];
 
+//tx_batch中ready是针对每个端口号其threads来进行处理的
 typedef struct tx_batch_s {
     volatile int ready[ONVM_NUM_TX_THREADS_PER_PORT];
     unsigned pkt_cnt;
@@ -239,7 +240,9 @@ static size_t unload_packet(uint8_t *buffer, struct rte_mbuf *pkt) {
 static int
 rx_thread_main(void *arg) {
     unsigned i, j, rx_count, rx_len;
+    //64
     struct rte_mbuf *pkts[PACKET_READ_SIZE];
+    //这里的rx代表rx队列
     struct thread_info *rx = (struct thread_info*)arg;
     unsigned int core_id = rte_lcore_id();
     int thread_id = rx->queue_id;
@@ -255,6 +258,7 @@ rx_thread_main(void *arg) {
 		/* Read ports */
 		for (i = 0; i < ports->num_ports; i++) {
             rx_len = 0;
+            //读取端口号数据
 			rx_count = rte_eth_rx_burst(ports->id[i], rx->queue_id, pkts, PACKET_READ_SIZE);
             if (rx_count > 0) {
                 rx_len += (*pkts[0]).pkt_len * rx_count;
@@ -263,9 +267,12 @@ rx_thread_main(void *arg) {
             for (j = 0; j < rx_count; j++) {
                 struct onvm_pkt_meta *meta = onvm_get_pkt_meta(pkts[j]);
                 meta->action = ONVM_NF_ACTION_TONF;
+                //得到每一个接受到的数据包的大小，这个函数最终返回的数据包大小是应用层数据大小加上gpu头部信息
                 unsigned pkt_sz = size_packet(pkts[j]);
                 
                 if (batch_head + pkt_sz > RX_BUF_SIZE) {
+                    //rx_batch_id有何用？？？
+                    //rx线程是按批来处理数据包的，一次最多处理四个，rx_batch可以理解为批处理数组？
                     unsigned next_id = (rx_batch_id + 1) % RX_NUM_BATCHES;
                     if (rx_batch[next_id].full[thread_id]) break;
                     rx_batch[rx_batch_id].pkt_cnt[thread_id] = batch_cnt;
@@ -276,10 +283,17 @@ rx_thread_main(void *arg) {
 #endif
                     rx_batch_id = next_id;
                 }
+                //在指定批的指定处理线程上添加所得到的数据
+                //首先是dpdk层数据得到
                 rx_batch[rx_batch_id].pkt_ptr[thread_id][batch_cnt++] = pkts[j];
+                //接着是用户层数据得到，并且转换成cuda能用的形式，pos表示用户层能用的数据
                 uint8_t *pos = rx_batch[rx_batch_id].buf[thread_id] + batch_head;
+                //这个buf_head本来就是指的gpu层的信息
                 onvm_pkt_gpu_ptr(pkts[j]) = rx_batch[rx_batch_id].buf_head + (pos - (uint8_t *)&rx_batch[rx_batch_id].buf);
+                
+                //将已经转换成cuda模式的pkts数据包传递给用户空间，最终得到下一个数据包的头部位置 
                 batch_head += load_packet(pos, pkts[j]);
+
                 // Use pstack to process TCP/IP
 #ifdef ENABLE_PSTACK
                 void* res = pstack_process((char *)onvm_pkt_ipv4_hdr(pkts[j]), pkts[j]->data_len - sizeof(struct ether_hdr), thread_id);
@@ -308,6 +322,7 @@ static void cu_memcpy_cb(CUstream stream, CUresult result, void *data) {
     *sync = 1;
 }
 
+//将rx数据给服务链第一个服务的rss数组，并且将其传递给cuda内存
 static int
 rx_gpu_thread_main(void *arg) {
     UNUSED(arg);
@@ -323,21 +338,27 @@ rx_gpu_thread_main(void *arg) {
     UNUSED(rx_count);
     struct rte_ring **rx_q_new = NULL;
     if (default_chain->sc[1].action == ONVM_NF_ACTION_OUT)
-        // rx_q_new = ports->tx_q_new[default_chain->sc[1].destination];
+    {
+	// rx_q_new = ports->tx_q_new[default_chain->sc[1].destination];
         rx_q_new = ports->tx_qs[default_chain->sc[1].destination];
+	printf("get port tx\n");
+    }
     else if (default_chain->sc[1].action != ONVM_NF_ACTION_TONF)
         rte_exit(EXIT_FAILURE, "Failed to find first nf");
     uint16_t first_service_id = default_chain->sc[1].destination;
 
+    //当前得到的局部rx批
     rx_batch_t *batch;
 
     for (;;) {
         rx_count_total = 0, rx_len_total = 0;
+        //从0开始处理rx批，每次都会
         batch = &rx_batch[tonf_id];
         if (batch->gpu_sync) {
             if (gpu_pkts_head + sizeof(batch->buf) > gpu_pkts_buf + GPU_BUF_SIZE * GPU_MAX_PKT_LEN) {
                 gpu_pkts_head = gpu_pkts_buf;
             }
+            //gpu_pkts_head更像是指向头部的指针信息
             batch->buf_head = gpu_pkts_head;
             gpu_pkts_head += sizeof(batch->buf);
             batch->gpu_sync = 0;
@@ -349,6 +370,8 @@ rx_gpu_thread_main(void *arg) {
                     rx_q_new = clients[services[first_service_id][0]].rx_qs;
                 }
             }
+
+            //遍历当前批中所有线程缓冲区的数据
             for (i = 0; i < RX_NUM_THREADS; i++) {
                 rx_count = 0;
                 if (rx_q_new != NULL) {
@@ -372,6 +395,7 @@ rx_gpu_thread_main(void *arg) {
                     // while (rx_count == 0)
                     //     rx_count = rte_ring_enqueue_bulk(rx_q_new, (void **)batch->pkt_ptr[i], batch->pkt_cnt[i], NULL);
 
+                    //这一部操作就相当于把dpdk层获得的数据复制给了对应的nf层的缓冲区中rss helper
                     while (rx_count == 0)
                          rx_count = rte_ring_enqueue_bulk(rx_q_new[i % ONVM_NUM_NF_QUEUES], (void **)batch->pkt_ptr[i], batch->pkt_cnt[i], NULL);
                 }
@@ -411,19 +435,24 @@ rx_gpu_thread_main(void *arg) {
 	return 0;
 }
 
+//从gpu中获取数据，并且进行转发
 static int
 tx_thread_main(void *arg) {
 	struct thread_info *tx = (struct thread_info*)arg;
 	unsigned int core_id = rte_lcore_id();
     int thread_id = tx->queue_id;
+
+    //tx线程也是批处理的
     tx_batch_t *gpu_batch = &tx_batch[thread_id];
 
 	unsigned i, sent;
     unsigned gpu_packet = 0;
     unsigned remain = 0;
 
+    //dpdk数据
     struct rte_mbuf **gpu_batching;
 
+    //用户层数据
     uint8_t *batch_buffer;
     CUdeviceptr batch_buffer_base;
 
@@ -432,6 +461,7 @@ tx_thread_main(void *arg) {
     unsigned batch_id = 0;
 
 	checkCudaErrors( cuInit(0) );
+    //这些个线程都是共享一个由manager创建的上下文的
 	checkCudaErrors( cuCtxSetCurrent(context) );
 
 	gpu_batching = rte_calloc("tx gpu batch", TX_GPU_BATCH_SIZE, sizeof(struct rte_mbuf *), 0);
@@ -445,17 +475,22 @@ tx_thread_main(void *arg) {
 
 	RTE_LOG(INFO, APP, "Core %d: Running TX thread for port %d\n", core_id, tx->port_id);
 
+    //表示是否要遍历nf
     uint8_t iterate_queue = ONVM_NUM_NF_QUEUES > ONVM_NUM_TX_THREADS_PER_PORT;
+    //表示是否要遍历端口信息
     uint8_t multi_consumers = ONVM_NUM_NF_QUEUES < ONVM_NUM_TX_THREADS_PER_PORT;
     current_tx_qid = iterate_queue ? thread_id : (thread_id % ONVM_NUM_NF_QUEUES);
 
     for (;;) {
         if (sync) {
             if (gpu_packet > 0) {
+                //这个unloadable是用来干什么的
                 unsigned unloadable = 0;
                 while (unloadable < gpu_packet) {
                     unsigned pkt_off = onvm_pkt_gpu_ptr(gpu_batching[unloadable]) - batch_buffer_base;
+                    //偏移量越界
                     if (pkt_off > TX_GPU_BUF_SIZE - sizeof(gpu_packet_t)) break;
+                    //负载越界
                     if (((gpu_packet_t *)(batch_buffer + pkt_off))->payload_size > 
                             TX_GPU_BUF_SIZE - sizeof(gpu_packet_t) - pkt_off) break;
                     //unload_packet(batch_buffer + pkt_off, gpu_batching[unloaded]);
@@ -480,10 +515,15 @@ tx_thread_main(void *arg) {
                     gpu_batch->ready[i] = 1;
                 }
             }
+            
+            //ready表示准备转发,下述循环表示是否每个线程都准备进行批处理了
+            //只要有一个可以进入ready状态，就对那一个进行批处理
             int ready = 0;
             for (i = 0; i < ONVM_NUM_TX_THREADS_PER_PORT; i++) {
                 ready = (ready || gpu_batch->ready[i]);
             }
+
+            //如果上述过程中，batch的每个线都都为0
             if (ready == 0) {
                 memmove(gpu_batching, gpu_batching + gpu_batch->pkt_cnt, remain * sizeof(struct rte_mbuf *));
                 gpu_packet = remain;
@@ -596,12 +636,14 @@ main(int argc, char *argv[]) {
 	num_clients = 0;
 
 	/* Launch Manager thread as the GPU proxy */
+    //启动状态机和调度器线程
 	cur_lcore = rte_get_next_lcore(cur_lcore, 1, 1);
 	if (rte_eal_remote_launch(manager_thread_main, NULL, cur_lcore) == -EBUSY) {
 		RTE_LOG(ERR, APP, "Core %d is already busy, can't use for Manager\n", cur_lcore);
 		return -1;
 	}
 #ifndef DISABLE_TX
+    //启动端口号*tx个数各线程
 	/* Assign each port with a TX thread */
 	for (i = 0; i < ports->num_ports; i++) {
         for (j = 0; j < ONVM_NUM_TX_THREADS_PER_PORT; j++) {
@@ -629,6 +671,7 @@ main(int argc, char *argv[]) {
     }
 
 	/* Launch RX thread main function for each RX queue on cores */
+    //启动rx个数各线程
 	for (i = 0; i < rx_lcores; i++) {
 		struct thread_info *rx = calloc(1, sizeof(struct thread_info));
 		rx->queue_id = i;
@@ -641,6 +684,7 @@ main(int argc, char *argv[]) {
 		}
 	}
 #ifndef DISABLE_GPU_RX
+    //gpu线程
     cur_lcore = rte_get_next_lcore(cur_lcore, 1, 1);
     if (rte_eal_remote_launch(rx_gpu_thread_main, NULL, cur_lcore) == -EBUSY) {
         RTE_LOG(ERR, APP, "Core %d is already busy, can't use for RX GPU\n", cur_lcore);
@@ -648,6 +692,7 @@ main(int argc, char *argv[]) {
     }
 #endif
 	/* Master thread handles statistics and resource allocation */
+    //当前线程用来充当调度器
 	scheduler_thread_main(NULL);
 	return 0;
 }

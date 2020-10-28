@@ -432,24 +432,30 @@ rx_loop(int core_id, int queue_id)
 
 int main(int argc, char **argv)
 {
+	/*
 	if (argc == 1) {
-		PKTLEN = 64;
+	 	PKTLEN = 64;
 	} else if (argc == 2) {
-		PKTLEN = atoi(argv[1]);
+	  	PKTLEN = atoi(argv[1]);
 	} else {
 		printf("Please specify pkt size as the argument\n");
 		exit(0);
 	}
+	*/
+
+	PKTLEN=64;
 	printf("======= Packet size %d =======\n", PKTLEN);
 
 	uint8_t port_id = 0, nb_ports;
 	struct rte_eth_conf port_conf;
 	int ret;
 
-	int t_argc = 5;
-	const char *t_argv[] = {"./build/basicfwd", "-c", "0x3f", "-n", "4"};
+	//int t_argc = 5;
+	//const char *t_argv[] = {"./build/basicfwd", "-c", "0x3f", "-n", "4"};
 
-	ret = rte_eal_init(t_argc, t_argv);
+	//ret = rte_eal_init(t_argc, t_argv);
+	ret=rte_eal_init(argc,argv);
+
 	if (ret < 0)
 		rte_exit(EXIT_FAILURE, "Error with EAL initialization\n");
 
