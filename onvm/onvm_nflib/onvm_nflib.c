@@ -265,8 +265,6 @@ onvm_nflib_init(int argc, char *argv[],hints hint,const char *nf_tag, int servic
 	cl = &((struct client *)mz->addr)[nf_info->instance_id];
 
 	cl->hint=hint;
-	rte_log(RTE_LOG_DEBUG,RTE_LOGTYPE_EAL,"EAL: %d nf 's hint GR:%c  GW:%c\n",cl->instance_id,hint.GR,hint.GW);
-	rte_log(RTE_LOG_DEBUG,RTE_LOGTYPE_EAL,"EAL: %d nf 's gpu hint GR:%c  GW:%c\n",cl->instance_id,cl->hint.GR,cl->hint.GW);
 	nf_info->status = NF_WAITING_FOR_HINT;
 	while (nf_info->status != NF_GET_PLAN);
 	sync_plan = cl->plan;

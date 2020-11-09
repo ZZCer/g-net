@@ -72,6 +72,7 @@ static void *init_host_buf(void)
 }
 
 //在预处理阶段，解析出要传递的字节数组信息
+//取数据是没有办法优化掉的，但是获取我要取那些数据，这个是可以优化掉的。
 static inline void user_batch_func(void *cur_buf, struct rte_mbuf *pkt, int pkt_idx)
 {
 	buf_t *buf = (buf_t *)cur_buf;

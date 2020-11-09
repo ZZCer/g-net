@@ -148,7 +148,7 @@ init(int argc, char *argv[]) {
 	init_pstack_info_pool();
 
 	/* Choose service chain, copy one and paste out of "if 0" to use it */
-	const int service_chain[MAX_SERVICES] = {NF_ROUTER,NF_END,NF_NAT,NF_FIREWALL,NF_NIDS,NF_IPSEC};
+	const int service_chain[MAX_SERVICES] = {NF_NAT ,NF_ROUTER,NF_END,NF_FIREWALL,NF_NIDS,NF_IPSEC};
 
 #if 0
 	/* 1 NF */
