@@ -58,7 +58,6 @@
 
 /*****************************Internal headers********************************/
 
-
 #include "onvm_nflib.h"
 #include "onvm_includes.h"
 #include "onvm_sc_common.h"
@@ -79,6 +78,9 @@ static struct rte_ring *tx_ring, *rx_ring[MAX_CPU_THREAD_NUM];
 struct onvm_nf_info *nf_info;
 
 struct client *cl;
+
+//每个NF自己的同步计划
+uint16_t sync_plan;
 
 //处理类型标签
 int nf_handle_tag;
@@ -166,7 +168,7 @@ onvm_nflib_cleanup(void);
 
 //多添加了一个handle_tag的标签表示当前nf是在cpu上跑还是在gpu上跑
 int
-onvm_nflib_init(int argc, char *argv[], const char *nf_tag, int service_id,int handle_tag,
+onvm_nflib_init(int argc, char *argv[],hints hint,const char *nf_tag, int service_id,int handle_tag,
 		void (*user_install_gpu_rule)(void)) {
 	const struct rte_memzone *mz;
 	const struct rte_memzone *mz_scp;
@@ -261,6 +263,14 @@ onvm_nflib_init(int argc, char *argv[], const char *nf_tag, int service_id,int h
 	if (!mz || !mz->addr)
 		rte_exit(EXIT_FAILURE, "clients not found");
 	cl = &((struct client *)mz->addr)[nf_info->instance_id];
+
+	cl->hint=hint;
+	rte_log(RTE_LOG_DEBUG,RTE_LOGTYPE_EAL,"EAL: %d nf 's hint GR:%c  GW:%c\n",cl->instance_id,hint.GR,hint.GW);
+	rte_log(RTE_LOG_DEBUG,RTE_LOGTYPE_EAL,"EAL: %d nf 's gpu hint GR:%c  GW:%c\n",cl->instance_id,cl->hint.GR,cl->hint.GW);
+	nf_info->status = NF_WAITING_FOR_HINT;
+	while (nf_info->status != NF_GET_PLAN);
+	sync_plan = cl->plan;
+	printf("EAL: %d nf 's sync_plan is %d\n",cl->instance_id,sync_plan);
 
 	/* Install GPU rules, including required latency and so on */
 	if ((service_id != NF_PKTGEN) && (service_id != NF_RAW) && (handle_tag==GPU_NF)) {

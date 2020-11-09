@@ -201,6 +201,14 @@
 #define ONVM_NF_ACTION_OUT	3    // send the packet out the NIC port set in the argument field
 #define ONVM_NF_ACTION_LOOP	4  // For test, loop to the start of the service chain.
 
+//每个client的cpu gpu读写标记
+typedef struct ioHints{
+	uint8_t CR;
+	uint8_t CW;
+	uint8_t GR;
+	uint8_t GW;
+} hints;
+
 //extern uint8_t rss_symmetric_key[40];
 
 /*
@@ -208,6 +216,11 @@
  * stats from the clients.
  */
 struct client {
+	//不管有多少个线程运行一个nf,每个nf的plan应该都是一样的
+	//hint是读写标记位 plan则是全局的同步标记位
+	hints hint;
+	uint16_t plan;
+
 	struct rte_ring *response_q[MAX_CPU_THREAD_NUM];
 	struct rte_ring *global_response_q;
 	struct onvm_nf_info *info;
@@ -493,7 +506,8 @@ static inline int get_nf_type(int service_id)
 #define NF_STOPPED 4            // NF has stopped and in the shutdown process
 #define NF_ID_CONFLICT 5        // NF is trying to declare an ID already in use
 #define NF_NO_IDS 6             // There are no available IDs for this NF
-
+#define NF_WAITING_FOR_HINT 7	// Waiting for a synchroniztion hint of a nf
+#define NF_GET_PLAN 8           // Getting Plan
 #define NF_NO_ID -1
 
 /*

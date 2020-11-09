@@ -75,7 +75,7 @@
  *   On error, a negative value .
  */
 int
-onvm_nflib_init(int argc, char *argv[], const char *nf_tag, int service_id,int handle_tag,
+onvm_nflib_init(int argc, char *argv[], hints hint,const char *nf_tag, int service_id,int handle_tag,
 		void (*user_install_gpu_rule)(void));
 
 

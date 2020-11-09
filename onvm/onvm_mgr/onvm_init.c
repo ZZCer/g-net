@@ -49,17 +49,16 @@
 ******************************************************************************/
 
 // CLEAR: 1
-
 #include "onvm_init.h"
 #include "manager.h"
-
-
+#include "onvm_common.h"
 /********************************Global variables*****************************/
 
 
 struct client *clients = NULL;
 struct port_info *ports = NULL;
 
+//where to user pktmbuf_pool
 struct rte_mempool *pktmbuf_pool;
 struct rte_mempool *nf_info_pool;
 pstack_thread_info pstack_info;
@@ -70,6 +69,10 @@ uint16_t **services;
 uint16_t *nf_per_service_count;
 struct onvm_service_chain *default_chain;
 struct onvm_service_chain **default_sc_p;
+
+//synchronization data defined in onvm_init.h
+uint16_t plan[MAX_CLIENTS];
+uint16_t last_plan;
 
 
 /*************************Internal Functions Prototypes***********************/
@@ -145,7 +148,7 @@ init(int argc, char *argv[]) {
 	init_pstack_info_pool();
 
 	/* Choose service chain, copy one and paste out of "if 0" to use it */
-	const int service_chain[MAX_SERVICES] = {NF_FIREWALL, NF_NIDS,NF_ROUTER,NF_IPSEC,NF_NAT,NF_END};
+	const int service_chain[MAX_SERVICES] = {NF_ROUTER,NF_END,NF_NAT,NF_FIREWALL,NF_NIDS,NF_IPSEC};
 
 #if 0
 	/* 1 NF */
@@ -377,13 +380,28 @@ init_shm_rings(void) {
 	if (services == NULL || nf_per_service_count == NULL)
 		rte_exit(EXIT_FAILURE, "Cannot allocate memory for service to NF mapping\n");
 
+	hints hint={
+		.CR=0,
+		.CW=0,
+		.GW=0,
+		.GR=0
+	};
+	last_plan=0;
+
 	for (i = 0; i < MAX_CLIENTS; i++) {
 		/* Create an RX queue for each client */
 		socket_id = rte_socket_id();
 		clients[i].instance_id = i;
 
+		clients[i].plan = 0;
+		clients[i].hint = hint;
+
 		// clients[i].rx_q_new = rte_ring_create(get_rx_queue_name(i, 0), BATCH_QUEUE_FACTOR * MAX_BATCH_SIZE, socket_id, NO_FLAGS);
 		clients[i].tx_q_new = NULL;
+
+		//初始化每个client同步计划数组
+		plan[i]=0;
+
 		// UNUSED(j);
 		/* rss ring for NF */
 		for (j = 0; j < ONVM_NUM_NF_QUEUES; j++) {

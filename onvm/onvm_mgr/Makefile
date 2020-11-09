@@ -57,7 +57,7 @@ endif
 APP = onvm_mgr
 
 # all source are stored in SRCS-y
-SRCS-y := main.c onvm_init.c onvm_args.c onvm_stats.c onvm_nf.c manager.c scheduler.c pstack.c
+SRCS-y := main.c onvm_init.c onvm_args.c onvm_stats.c onvm_nf.c manager.c scheduler.c pstack.c synchronize.c
 
 INC :=
 

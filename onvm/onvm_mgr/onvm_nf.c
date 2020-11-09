@@ -52,6 +52,7 @@
 #include "onvm_nf.h"
 #include "onvm_stats.h"
 #include "manager.h"
+#include "synchronize.h"
 
 uint16_t next_instance_id = 0;
 
@@ -229,6 +230,11 @@ onvm_nf_start(struct onvm_nf_info *nf_info) {
 
 	// Let the NF continue its init process
 	nf_info->status = NF_STARTING;
+
+	//等待nf的分配
+	while (nf_info->status != NF_WAITING_FOR_HINT)
+	clients[instance_id].plan = getSyncPlan();
+	nf_info -> status = NF_GET_PLAN;
 
 	/* Wait for the NF to install GPU rules before manager initiation */
 	while (nf_info->status != NF_RUNNING) ;

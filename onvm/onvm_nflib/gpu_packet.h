@@ -6,6 +6,17 @@
 #define GPU_MAX_PKT_LEN 1600
 #define GPU_PKT_ALIGN 16
 
+//Synchronization Global variable
+#define SYNC_DATA_COUNT 5
+#define SYNC_DATA_SIZE 13
+
+//GPU同步数据类型
+#define SYNC_SOURCE_IP   0
+#define SYNC_DEST_IP     1
+#define SYNC_SOURCE_PORT 2
+#define SYNC_DEST_PORT   3
+#define SYNC_TCP_FLAGS   4
+
 typedef struct gpu_packet_s {
 	uint8_t  proto_id;
 	uint8_t  tcp_flags;     /**< TCP flags if present */

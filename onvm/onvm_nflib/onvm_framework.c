@@ -23,10 +23,12 @@ extern struct rte_mempool *nf_response_mp;
 extern struct rte_ring *nf_request_queue;
 extern struct onvm_nf_info *nf_info;
 extern struct client *cl;
+extern uint16_t sync_plan;
 extern volatile uint8_t keep_running;
 extern void onvm_nflib_handle_signal(int sig);
 
 pstack_thread_info pstack_info;
+
 
 /* shared data from server. */
 struct gpu_schedule_info *gpu_info;
@@ -72,6 +74,7 @@ struct thread_arg {
 	int thread_id;
 };
 
+
 static inline int gpu_get_batch(nfv_batch_t *batch) {
        int i = batch->gpu_next_buf_id;
        if (batch->buf_state[i] != BUF_STATE_GPU_READY) return -1;
@@ -97,7 +100,7 @@ onvm_framework_thread_init(int thread_id)
 	
 	printf("------------------start init thread %d batch info---------------\n",thread_id);
 
-	for (i = 0; i < NUM_BATCH_BUF; i ++) {
+	for (i = 0; i < NUM_BATCH_BUF; i++) {
 		//在cpu模块下，用户层数据包就直接是两个uint8指针
 		if(nf_handle_tag==GPU_NF)
 		{	
@@ -684,6 +687,14 @@ onvm_framework_start_gpu(gpu_htod_t user_gpu_htod, gpu_dtoh_t user_gpu_dtoh, gpu
 
 	onvm_nflib_stop(); // clean up
 }
+/* ======================================= */
+
+void onvm_framework_get_hint(uint8_t* h2d_hint,uint8_t* d2h_hint)
+{
+	*d2h_hint=(uint8_t)((sync_plan & 0xFF)>>3);
+	*h2d_hint=(uint8_t)(((sync_plan >> 8) & 0xFF)>>3);
+}
+
 
 /* ======================================= */
 
