@@ -555,7 +555,7 @@ onvm_framework_init(const char *module_file, const char *kernel_name)
 
 
 void 
-onvm_framework_cpu_only_wait(){
+onvm_framework_cpu_only_wait(void){
 	signal(SIGINT,onvm_nflib_handle_signal);
 	while(keep_running);
 	onvm_nflib_stop();
