@@ -53,7 +53,7 @@
 #include "onvm_nf.h"
 #include "onvm_common.h"
 #include "onvm_init.h"
-
+#include "record.h"
 
 struct rx_perf rx_stats[ONVM_NUM_RX_THREADS]; 
 
@@ -174,14 +174,18 @@ onvm_stats_display_ports(unsigned difftime) {
 		uint64_t tx_count = rte_atomic64_read((rte_atomic64_t *)(uintptr_t)&ports->tx_stats.tx[ports->id[i]]);
 		uint64_t tx_len = rte_atomic64_read((rte_atomic64_t *)(uintptr_t)&ports->tx_stats.tx_len[ports->id[i]]);
 
+		double rx_gbps = (double)(rx_len - rx_len_last[i] + (rx_count - rx_last[i]) * PKT_LEN_ETH_SPEC) / 1e9 * 8 
+				/difftime;
+		double tx_gbps = (double)(tx_len - tx_len_last[i] + (tx_count - tx_last[i]) * PKT_LEN_ETH_SPEC) / 1e9 * 8 
+				/difftime;
+
 		printf("Port %u - \trx:\t %9"PRIu64"  (%9"PRIu64" pps, %.6lf Gbps)\n"
 				"\t\tgpucopy: %9"PRIu64"  (%9"PRIu64" pps, %.6lf Gbps)\n"
 				"\t\ttx:\t %9"PRIu64"  (%9"PRIu64" pps, %.6lf Gbps)\n",
 				(unsigned)ports->id[i],
 				rx_count,
 				(rx_count - rx_last[i]) / difftime,
-				(double)(rx_len - rx_len_last[i] + (rx_count - rx_last[i]) * PKT_LEN_ETH_SPEC) / 1e9 * 8 
-				/difftime,
+				rx_gbps,
 
 				rx_gpucopy,
 				(rx_gpucopy - rx_gpucopy_last) / difftime,
@@ -191,8 +195,10 @@ onvm_stats_display_ports(unsigned difftime) {
 				tx_count,
 				(tx_count - tx_last[i])
 				/difftime,
-				(double)(tx_len - tx_len_last[i] + (tx_count - tx_last[i]) * PKT_LEN_ETH_SPEC) / 1e9 * 8 
-				/difftime);
+				tx_gbps);
+
+		if(tx_gbps != 0)
+			record_data(rx_gbps,tx_gbps);
 
 		printf("Tx GPU Batch: cnt %9"PRIu64", pkt %9"PRIu64", avg pkt %f\n",
 				ports->tx_stats.gpu_batch_cnt[ports->id[i]],
