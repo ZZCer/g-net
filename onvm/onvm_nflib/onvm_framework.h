@@ -73,4 +73,5 @@ void gcudaLaunchKernel(int thread_id);
 void gcudaLaunchKernel_allStream(void);
 void gcudaDeviceSynchronize(void);
 
+void onvm_framework_cpu_only_wait(void);
 #endif
