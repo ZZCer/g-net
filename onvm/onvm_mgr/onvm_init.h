@@ -178,7 +178,7 @@ extern pstack_thread_info pstack_info;
 
 //sychronization
 extern uint16_t plan[MAX_CLIENTS];//16是来源于MAX_CLIENTS
-extern uint16_t last_plan;
+extern uint8_t last_plan;
 
 /**********************************Functions**********************************/
 

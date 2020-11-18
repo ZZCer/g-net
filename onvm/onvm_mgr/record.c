@@ -32,14 +32,15 @@ void record_data(double rx_gbps,double tx_gbps)
     if(count == 0)
         open_record_file();
 
-    if(count < 100)
+    if(count < 300)
     {
         count++;
 
         char str[30];
         sprintf(str,"%.3f,%.3f\n",rx_gbps,tx_gbps);
         fputs(str,stream);
-        fflush(stream);
+        if(count % 100==0)
+            fflush(stream);
     }
     else 
     {

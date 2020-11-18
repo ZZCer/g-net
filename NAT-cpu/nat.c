@@ -51,6 +51,8 @@ uint16_t sync_offset[SYNC_DATA_COUNT]={4,4,2,2,1};
 #define IP_Hdr_Len 20
 #define TCP_Hdr_Len 20
 
+static char IPSet[UINT16_MAX];
+
 static inline void cpu_handle(struct rte_mbuf *data)
 {	
 	u_char* pkt=rte_pktmbuf_mtod(data,u_char*);
@@ -85,15 +87,20 @@ static inline void cpu_handle(struct rte_mbuf *data)
 
 	if((InIp & Mask)==( SrcIP & Mask))
 	{
-		//内网
 		uint16_t src=SrcPort;
-		while(PortSet[src]!=0)
-			src=(src+1)%65535;
-		
-		//映射处理
-		PortSet[src]=1;
-		Port2Port[src]=SrcPort;
-		Port2Ip[src]=SrcIP;
+		//内网
+		if(IPSet[(uint16_t)(SrcIP & 0xFFFF)]==1)
+			src=Port2Port[src];
+		else
+		{
+			while(PortSet[src]!=0)
+				src=(src+1)%65535;
+
+			PortSet[src]=1;
+			IPSet[(uint16_t)(SrcIP & 0xFFFF)]=1;
+			Port2Port[src]=SrcPort;
+			Port2Ip[src]=SrcIP;
+		}	
 		
 		(*SrcIP_ptr)=OutIp;
 		(*SrcPort_ptr)=src;
@@ -106,18 +113,20 @@ static inline void cpu_handle(struct rte_mbuf *data)
 			DropTag=1;
 		else
 		{
-			uint32_t dst=Port2Port[DesPort];
-			uint16_t dstip0=Port2Ip[DesPort];
+			uint16_t dst=Port2Port[DesPort];
+			uint32_t dstip0=Port2Ip[DesPort];
 
 			Port2Ip[DesPort]=0;
 			Port2Port[DesPort]=0;
+			IPSet[(uint16_t)(dstip0 & 0xFFFF)]=0;
+			PortSet[DesPort]=0;
 
 			(*DesIP_ptr)=dstip0;
 			(*DesPort_ptr)=dst;
 		}
 	}
 
-	if(DropTag)
+	if(DropTag != 0)
 	{
 		struct onvm_pkt_meta *meta;
 		meta = onvm_get_pkt_meta((struct rte_mbuf *)pkt);
@@ -129,11 +138,13 @@ static void init_main(void)
 {
 	InIp=IPv4(192,168,0,0);
 	OutIp=IPv4(10,176,64,36);
-	Mask=IPv4(255,255,255,255);
+	Mask=IPv4(255,255,0,0);
 
 	Port2Port=malloc(sizeof(uint16_t)*MAX_SIZE_PORTS);
 	Port2Ip=malloc(sizeof(uint32_t)*MAX_SIZE_PORTS);
 	PortSet=malloc(sizeof(char)*MAX_SIZE_PORTS);
+
+	memset(IPSet,0,UINT16_MAX);
 
 	for(int i=0;i<MAX_SIZE_PORTS;i++)
 	{
@@ -145,7 +156,7 @@ static void init_main(void)
 	printf("global data init\n");
 }
 
-static void free_main()
+static void free_main(void)
 {
 	if(Port2Ip!=NULL)
 		free(Port2Ip);

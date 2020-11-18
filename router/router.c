@@ -24,9 +24,14 @@
 #define NF_TAG "ipv4fwd"
 
 //记录了每个数据的偏移量
-uint16_t sync_offset[SYNC_DATA_COUNT]={4,4,2,2,1};
+//uint16_t sync_offset[SYNC_DATA_COUNT]={4,4,2,2,1};
 
-static uint8_t CR=0;
+//从srcIP开始，用来记录需要同步的数据的idx
+uint16_t htod_index[SYNC_DATA_COUNT];
+uint16_t dtoh_index[SYNC_DATA_COUNT];
+
+//有那些位需要修改，这也应该要由用户自己提供
+static uint8_t CR=0b11000000;
 static uint8_t CW=0;
 static uint8_t GR=0b11000000;
 static uint8_t GW=0b11000000;
@@ -60,13 +65,13 @@ static void *init_host_buf(void)
 
 	gcudaHostAlloc((void **)&(buf->host_in), MAX_BATCH_SIZE * sizeof(CUdeviceptr));
 	gcudaHostAlloc((void **)&(buf->host_out), MAX_BATCH_SIZE * sizeof(uint8_t));
-	gcudaHostAlloc((void **)&(buf->gpu_sync), MAX_BATCH_SIZE * SYNC_DATA_SIZE * sizeof(char));
-	gcudaHostAlloc((void **)&(buf->cpu_sync), MAX_BATCH_SIZE * SYNC_DATA_SIZE * sizeof(char));
+	gcudaHostAlloc((void **)&(buf->gpu_sync), MAX_BATCH_SIZE * SYNC_DATA_SIZE * sizeof(uint8_t));
+	gcudaHostAlloc((void **)&(buf->cpu_sync), MAX_BATCH_SIZE * SYNC_DATA_SIZE * sizeof(uint8_t));
 
 	gcudaMalloc(&(buf->device_in), MAX_BATCH_SIZE * sizeof(CUdeviceptr));
 	gcudaMalloc(&(buf->device_out), MAX_BATCH_SIZE * sizeof(uint8_t));
-	gcudaMalloc(&(buf->device_sync_in), MAX_BATCH_SIZE * SYNC_DATA_SIZE * sizeof(char));
-	gcudaMalloc(&(buf->device_sync_out), MAX_BATCH_SIZE * SYNC_DATA_SIZE * sizeof(char));
+	gcudaMalloc(&(buf->device_sync_in), MAX_BATCH_SIZE * SYNC_DATA_SIZE * sizeof(uint8_t));
+	gcudaMalloc(&(buf->device_sync_out), MAX_BATCH_SIZE * SYNC_DATA_SIZE * sizeof(uint8_t));
 
 	return buf;
 }
@@ -78,6 +83,11 @@ static inline void user_batch_func(void *cur_buf, struct rte_mbuf *pkt, int pkt_
 	buf_t *buf = (buf_t *)cur_buf;
 
 	buf->host_in[pkt_idx] = onvm_pkt_gpu_ptr(pkt);
+
+	uint32_t offset = pkt_idx * SYNC_DATA_SIZE;
+	/*
+	//printf("Offset:%d\n",offset);
+
 	uint8_t tp_h2d_hint=h2d_hint;
 
 	int index = 0;
@@ -93,47 +103,31 @@ static inline void user_batch_func(void *cur_buf, struct rte_mbuf *pkt, int pkt_
 				case SYNC_SOURCE_IP:
 				{	
 					struct ipv4_hdr* hdr1=onvm_pkt_ipv4_hdr(pkt);
-					*((uint32_t*)(buf->gpu_sync))=hdr1->src_addr;
+					*((uint32_t*)(buf->gpu_sync + offset))=hdr1->src_addr;
 					break;
 				}
 				case SYNC_DEST_IP:
 				{	
-					int offset = 0;
-					for(int i=0;i<data_idx;i++)
-						offset += sync_offset[i];
-
 					struct ipv4_hdr* hdr2=onvm_pkt_ipv4_hdr(pkt);
-					*((uint32_t*)(buf->gpu_sync + offset))=hdr2->dst_addr;
+					*((uint32_t*)(buf->gpu_sync + offset + 4))=hdr2->dst_addr;
 					break;
 				}
 				case SYNC_SOURCE_PORT:
 				{	
-					int offset = 0;
-					for(int i=0;i<data_idx;i++)
-						offset += sync_offset[i];
-
 					struct tcp_hdr* hdr3=onvm_pkt_tcp_hdr(pkt);
-					*((uint16_t*)(buf->gpu_sync + offset))=hdr3->src_port;
+					*((uint16_t*)(buf->gpu_sync + offset + 8))=hdr3->src_port;
 					break;
 				}
 				case SYNC_DEST_PORT:
 				{
-					int offset = 0;
-					for(int i=0;i<data_idx;i++)
-						offset += sync_offset[i];
-
 					struct tcp_hdr* hdr4=onvm_pkt_tcp_hdr(pkt);
-					*((uint16_t*)(buf->gpu_sync + offset))=hdr4->dst_port;
+					*((uint16_t*)(buf->gpu_sync + offset + 10))=hdr4->dst_port;
 					break;
 				}
 				case SYNC_TCP_FLAGS:
 				{
-					int offset = 0;
-					for(int i=0;i<data_idx;i++)
-						offset += sync_offset[i];
-
 					struct tcp_hdr* hdr5=onvm_pkt_tcp_hdr(pkt);
-					*((uint8_t*)(buf->gpu_sync + offset))=hdr5->tcp_flags;
+					*((uint8_t*)(buf->gpu_sync + offset + 12))=hdr5->tcp_flags;
 					break;
 				}
 				default:
@@ -142,9 +136,14 @@ static inline void user_batch_func(void *cur_buf, struct rte_mbuf *pkt, int pkt_
 		}
 		tp_h2d_hint>>=1;
 	}
+	*/
+
+	
+	struct ipv4_hdr* hdr=onvm_pkt_ipv4_hdr(pkt);
+	*((uint32_t*)(buf->gpu_sync + offset)) = hdr->src_addr;
+	*((uint32_t*)(buf->gpu_sync + offset +4)) = hdr->dst_addr;
 }
 
-//再
 static inline void user_post_func(void *cur_buf, struct rte_mbuf *pkt, int pkt_idx)
 {
 	buf_t *buf = (buf_t *)cur_buf;
@@ -152,16 +151,19 @@ static inline void user_post_func(void *cur_buf, struct rte_mbuf *pkt, int pkt_i
 	/* Write the port */
 	pkt->port = buf->host_out[pkt_idx];
 
+	/*	
 	//这里面套个switch就结束了
 	//在d2h后，数据就已经从device获取到了
 	uint8_t tp_d2h_hint = buf->host_out;
+	uint32_t offset=pkt_idx*SYNC_DATA_SIZE;
+
 	int index = 0;
 
 	//根据d2h_hint，进行遍历，将其中每个位的数据解析出来
 	while (tp_d2h_hint!=0)
 	{
 		index ++;
-		if(tp_d2h_hint & 1 == 1)
+		if((tp_d2h_hint & 1) == 1)
 		{
 			int data_idx=SYNC_DATA_COUNT-index;
 			switch(data_idx)
@@ -169,47 +171,31 @@ static inline void user_post_func(void *cur_buf, struct rte_mbuf *pkt, int pkt_i
 				case SYNC_SOURCE_IP:
 				{	
 					struct ipv4_hdr* hdr1=onvm_pkt_ipv4_hdr(pkt);
-					hdr1->src_addr = *((uint32_t*)(buf->gpu_sync));
+					hdr1->src_addr = *((uint32_t*)(buf->cpu_sync + offset));
 					break;
 				}
 				case SYNC_DEST_IP:
 				{
-					int offset = 0;
-					for(int i=0;i<data_idx;i++)
-						offset += sync_offset[i];
-
 					struct ipv4_hdr* hdr2=onvm_pkt_ipv4_hdr(pkt);
-					hdr2->dst_addr = *((uint32_t*)(buf->gpu_sync + offset));
+					hdr2->dst_addr = *((uint32_t*)(buf->cpu_sync + offset +4));
 					break;
 				}
 				case SYNC_SOURCE_PORT:
 				{
-					int offset = 0;
-					for(int i=0;i<data_idx;i++)
-						offset += sync_offset[i];
-
 					struct tcp_hdr* hdr3=onvm_pkt_tcp_hdr(pkt);
-					hdr3->src_port = *((uint16_t*)(buf->gpu_sync + offset));
+					hdr3->src_port = *((uint16_t*)(buf->cpu_sync + offset +8));
 					break;
 				}
 				case SYNC_DEST_PORT:
 				{
-					int offset = 0;
-					for(int i=0;i<data_idx;i++)
-						offset += sync_offset[i];
-
 					struct tcp_hdr* hdr4=onvm_pkt_tcp_hdr(pkt);
-					hdr4->dst_port = *((uint16_t*)(buf->gpu_sync + offset));
+					hdr4->dst_port = *((uint16_t*)(buf->cpu_sync + offset + 10));
 					break;
 				}
 				case SYNC_TCP_FLAGS:
 				{
-					int offset = 0;
-					for(int i=0;i<data_idx;i++)
-						offset += sync_offset[i];
-
 					struct tcp_hdr* hdr5=onvm_pkt_tcp_hdr(pkt);
-					hdr5->tcp_flags = *((uint8_t*)(buf->gpu_sync + offset));
+					hdr5->tcp_flags = *((uint8_t*)(buf->cpu_sync + offset + 12));
 					break;
 				}
 				default:
@@ -217,21 +203,27 @@ static inline void user_post_func(void *cur_buf, struct rte_mbuf *pkt, int pkt_i
 			}
 		}
 		tp_d2h_hint>>=1;
-	}	
+	}
+	*/	
+	/*
+	struct ipv4_hdr* hdr = onvm_pkt_ipv4_hdr(pkt);
+	hdr->src_addr = *((uint32_t*)buf->cpu_sync);
+	hdr->dst_addr = *((uint32_t*)buf->cpu_sync + 4);
+	*/
 }
 
 static void user_gpu_htod(void *cur_buf, int job_num, unsigned int thread_id)
 {
 	buf_t *buf = (buf_t *)cur_buf;
 	gcudaMemcpyHtoD(buf->device_in, buf->host_in, job_num * sizeof(CUdeviceptr), ASYNC, thread_id);
-	gcudaMemcpyHtoD(buf->device_sync_in, buf->gpu_sync, job_num * SYNC_DATA_SIZE, ASYNC, thread_id);
+	gcudaMemcpyHtoD(buf->device_sync_in, buf->gpu_sync, job_num  * SYNC_DATA_SIZE * sizeof(uint8_t), ASYNC, thread_id);
 }
 
 static void user_gpu_dtoh(void *cur_buf, int job_num, unsigned int thread_id)
 {
 	buf_t *buf = (buf_t *)cur_buf;
 	gcudaMemcpyDtoH(buf->host_out, buf->device_out, job_num * sizeof(uint8_t), ASYNC, thread_id);
-	gcudaMemcpyDtoH(buf->cpu_sync, buf->device_sync_out, job_num * SYNC_DATA_SIZE, ASYNC, thread_id);
+	//gcudaMemcpyDtoH(buf->cpu_sync, buf->device_sync_out, job_num * SYNC_DATA_SIZE * sizeof(uint8_t), ASYNC, thread_id);
 }
 
 static void user_gpu_set_arg(void *cur_buf, void *arg_buf, void *arg_info, int job_num)
@@ -250,6 +242,7 @@ static void user_gpu_set_arg(void *cur_buf, void *arg_buf, void *arg_info, int j
 	offset += sizeof(buf->device_in);
 
 	info[2] = offset;
+	//printf("count of data:%d\n",job_num);
 	rte_memcpy((uint8_t *)arg_buf + offset, &(job_num), sizeof(job_num));
 	offset += sizeof(job_num);
 	
@@ -340,7 +333,7 @@ int main(int argc, char *argv[])
 	init_main();
 
 	//获取hint信息
-	onvm_framework_get_hint(&h2d_hint,&d2h_hint);
+	onvm_framework_get_hint(&h2d_hint , &d2h_hint);
 
 	printf("EAL: h2d_hint:%d d2h_hint:%d\n",h2d_hint,d2h_hint);
 

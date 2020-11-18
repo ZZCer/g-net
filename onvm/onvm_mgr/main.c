@@ -61,10 +61,10 @@
 #include <rte_memory.h>
 
 // Test flags to test pure RX performance
-// #define DROP_RX_PKTS
+// define DROP_RX_PKTS
 // #define DISABLE_GPU_RX
 // #define DISABLE_TX
-#define ENABLE_PSTACK
+ #define ENABLE_PSTACK
 
 extern struct onvm_service_chain *default_chain;
 extern struct rx_perf rx_stats[ONVM_NUM_RX_THREADS]; 
@@ -75,6 +75,8 @@ extern volatile CUdeviceptr gpu_pkts_tail;
 extern CUstream rx_stream;
 extern rte_spinlock_t gpu_pkts_lock;
 extern CUcontext context;
+
+extern uint8_t last_plan;
 
 #define RX_BUF_SIZE (1024*64)
 #define RX_BUF_PKT_MAX_NUM (RX_BUF_SIZE / 32)
@@ -140,6 +142,7 @@ static size_t load_packet(uint8_t *buffer, struct rte_mbuf *pkt) {
                gpkt->proto_id = 0xFF;
                return sizeof(gpu_packet_t);
        }
+       
        gpkt->src_addr = ipv4->src_addr;
        gpkt->dst_addr = ipv4->dst_addr;
        gpkt->proto_id = ipv4->next_proto_id;
@@ -197,15 +200,24 @@ static size_t unload_packet(uint8_t *buffer, struct rte_mbuf *pkt) {
     if (!ipv4) {
         return sizeof(gpu_packet_t);
     }
-    ipv4->src_addr = gpkt->src_addr;
-    ipv4->dst_addr = gpkt->dst_addr;
+
+    if(((last_plan>>7) & 1) == 1)
+        ipv4->src_addr = gpkt->src_addr;
+
+    if(((last_plan>>6) & 1) == 1)
+        ipv4->dst_addr = gpkt->dst_addr;
+
     //ipv4->next_proto_id = gpkt->proto_id;
     if (ipv4->next_proto_id == IPPROTO_TCP) {
         struct tcp_hdr *tcp = onvm_pkt_tcp_hdr(pkt);
         tcp->tcp_flags = gpkt->tcp_flags;
         // tcp->src_port = rte_be_to_cpu_16(gpkt->src_port);
-        tcp->src_port = rte_cpu_to_be_16(gpkt->src_port);
-        tcp->dst_port = rte_cpu_to_be_16(gpkt->dst_port);
+        if(((last_plan>>5) & 1) == 1)
+            tcp->src_port = rte_cpu_to_be_16(gpkt->src_port);
+
+        if(((last_plan>>4) & 1) == 1)  
+            tcp->dst_port = rte_cpu_to_be_16(gpkt->dst_port);
+
         tcp->sent_seq = rte_cpu_to_be_32(gpkt->sent_seq);
         tcp->recv_ack = rte_cpu_to_be_32(gpkt->recv_ack);
         datastart = (uint8_t *)tcp + (tcp->data_off >> 4 << 2);
@@ -213,8 +225,12 @@ static size_t unload_packet(uint8_t *buffer, struct rte_mbuf *pkt) {
         //ipv4->total_length = rte_be_to_cpu_16(dataend - (uint8_t *)ipv4);
     } else if (ipv4->next_proto_id == IPPROTO_UDP) {
         struct udp_hdr *udp = onvm_pkt_udp_hdr(pkt);
-        udp->src_port = rte_cpu_to_be_16(udp->src_port);
-        udp->dst_port = rte_cpu_to_be_16(udp->dst_port);
+        if(((last_plan>>5) & 1) == 1)
+            udp->src_port = rte_cpu_to_be_16(udp->src_port);
+
+        if(((last_plan>>4) & 1) == 1)  
+            udp->dst_port = rte_cpu_to_be_16(udp->dst_port);
+
         datastart = (uint8_t *)udp + 8;
         udp->dgram_len = rte_cpu_to_be_16(gpkt->payload_size + 8);
     }

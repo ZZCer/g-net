@@ -57,6 +57,7 @@
 #include <rte_mempool.h>
 #include <rte_cycles.h>
 
+#include "onvm_framework.h"
 #include "onvm_nflib.h"
 #include "onvm_pkt_helper.h"
 
@@ -218,7 +219,14 @@ int
 main(int argc, char *argv[]) {
 	int arg_offset;
 
-	if ((arg_offset = onvm_nflib_init(argc, argv, NF_TAG, NF_PKTGEN, NULL)) < 0)
+	hints hint={
+		.CR=0,
+		.CW=0,
+		.GR=0,
+		.GW=0
+	};
+
+	if ((arg_offset = onvm_nflib_init(argc, argv, hint,NF_TAG, NF_PKTGEN,CPU_NF,NULL)) < 0)
 		return -1;
 	argc -= arg_offset;
 	argv += arg_offset;

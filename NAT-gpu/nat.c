@@ -158,7 +158,7 @@ static void init_main(void)
 	gcudaHostAlloc((void **)&PortSet, MAX_SIZE_PORTS * sizeof(char));
 	gcudaHostAlloc((void **)&InternalIp, SIZE_IP);
 	gcudaHostAlloc((void **)&ExternalIp, SIZE_IP);
-    gcudaHostAlloc((void**)&Mask,SIZE_IP);
+    gcudaHostAlloc((void **)&Mask,SIZE_IP);
 
     //cuda内存分配
     gcudaMalloc(&devPort2Port,  MAX_SIZE_PORTS * SIZE_PORT);
@@ -191,7 +191,7 @@ static void init_main(void)
 static void init_gpu_schedule(void)
 {
 	/* Initialize the GPU info, onvm_framework_init should be performed before onvm_nflib_init */
-	const char *module_file = "../NAT-origin-gpu/gpu/nat.ptx";
+	const char *module_file = "../NAT-gpu/gpu/nat.ptx";
 	const char *kernel_name = "nat";
 	onvm_framework_init(module_file, kernel_name);
 
@@ -209,8 +209,14 @@ int main(int argc, char *argv[])
 	InIp=IPv4(192,168,0,0);
 	OutIp=IPv4(10,176,64,36);
 
+	hints hint={
+		.CR=0,
+		.GR=0b11110000,
+		.CW=0,
+		.GW=0b11110000
+	};
 	/* Initialize nflib */
-	if ((arg_offset = onvm_nflib_init(argc, argv, NF_TAG, NF_NAT,GPU_NF,(&init_gpu_schedule))) < 0)
+	if ((arg_offset = onvm_nflib_init(argc, argv, hint, NF_TAG, NF_NAT,GPU_NF,(&init_gpu_schedule))) < 0)
 		return -1;
 	argc -= arg_offset;
 	argv += arg_offset;

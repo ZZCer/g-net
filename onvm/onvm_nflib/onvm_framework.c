@@ -695,7 +695,6 @@ void onvm_framework_get_hint(uint8_t* h2d_hint,uint8_t* d2h_hint)
 	*h2d_hint=(uint8_t)(((sync_plan >> 8) & 0xFF)>>3);
 }
 
-
 /* ======================================= */
 
 void

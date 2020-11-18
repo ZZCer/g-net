@@ -120,8 +120,10 @@ onvm_nf_check_status(void) {
 		nf = (struct onvm_nf_info *) new_nfs[i];
 
 		if (nf->status == NF_WAITING_FOR_ID) {
-			if (!onvm_nf_start(nf))
-				num_clients++;
+			num_clients++;
+			if (onvm_nf_start(nf))
+				num_clients--;
+
 		} else if (nf->status == NF_STOPPED) {
 			if (!onvm_nf_stop(nf))
 				num_clients--;
