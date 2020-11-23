@@ -45,6 +45,7 @@ endif
 # Default target, can be overriden by command line or environment
 RTE_TARGET ?= x86_64-native-linuxapp-gcc
 CUDA_PATH  ?= /usr/local/cuda
+CJSON_PATH ?= /usr/local/cJSON
 
 include $(RTE_SDK)/mk/rte.vars.mk
 
@@ -62,6 +63,12 @@ SRCS-y := main.c onvm_init.c onvm_args.c onvm_stats.c onvm_nf.c manager.c schedu
 INC :=
 
 WERROR_FLAGS += -Wno-error=unused-function -Wno-error=maybe-uninitialized
+
+
+#cJSON lib
+#CFLAGS中通过-I指令指定头文件目录
+#LDFLAGS -L指定库文件路径 -l指定所使用的库
+LDFLAGS += -L$(CJSON_PATH)/build/lib  -lcjson 
 
 # CFLAGS += $(WERROR_FLAGS) -O3 -g -rdynamic $(USER_FLAGS)
 CFLAGS += $(WERROR_FLAGS) -O3 -g -rdynamic $(USER_FLAGS)

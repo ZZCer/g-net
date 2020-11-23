@@ -235,7 +235,7 @@ onvm_nf_start(struct onvm_nf_info *nf_info) {
 
 	//等待nf的分配
 	while (nf_info->status != NF_WAITING_FOR_HINT);
-	clients[instance_id].plan = getSyncPlan();
+	clients[instance_id].plan = get_sync_plan();
 	nf_info -> status = NF_GET_PLAN;
 
 	/* Wait for the NF to install GPU rules before manager initiation */

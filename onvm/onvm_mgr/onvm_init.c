@@ -49,6 +49,7 @@
 ******************************************************************************/
 
 // CLEAR: 1
+#include "synchronize.h"
 #include "onvm_init.h"
 #include "manager.h"
 #include "onvm_common.h"
@@ -74,6 +75,13 @@ struct onvm_service_chain **default_sc_p;
 uint16_t plan[MAX_CLIENTS];
 uint8_t last_plan = 0;
 
+//global info get from json
+char* global_service_chain[MAX_CLIENTS];
+//four hints(8-bit) get from json
+uint8_t CR_hints[MAX_CLIENTS]; 
+uint8_t CW_hints[MAX_CLIENTS]; 
+uint8_t GR_hints[MAX_CLIENTS]; 
+uint8_t GW_hints[MAX_CLIENTS]; 
 
 /*************************Internal Functions Prototypes***********************/
 
@@ -148,7 +156,11 @@ init(int argc, char *argv[]) {
 	init_pstack_info_pool();
 
 	/* Choose service chain, copy one and paste out of "if 0" to use it */
-	const int service_chain[MAX_SERVICES] = {NF_NAT,NF_ROUTER,NF_END,NF_FIREWALL,NF_NIDS,NF_IPSEC};
+	//const int service_chain[MAX_SERVICES] = {NF_NAT,NF_ROUTER,NF_END,NF_FIREWALL,NF_NIDS,NF_IPSEC};
+	int service_chain[MAX_SERVICES];
+	//get service_chain from nfv json
+	load_nfv_json(service_chain);
+	get_sync_plan();
 
 #if 0
 	/* 1 NF */
@@ -166,7 +178,6 @@ init(int argc, char *argv[]) {
 	/* 4 NFs */
 	const int service_chain[MAX_SERVICES] = {NF_FIREWALL, NF_NIDS, NF_IPSEC, NF_ROUTER, NF_END};
 #endif
-
 
 	/* initialize a default service chain*/
 	default_chain = onvm_sc_create();
