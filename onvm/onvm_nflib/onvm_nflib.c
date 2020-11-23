@@ -168,7 +168,7 @@ onvm_nflib_cleanup(void);
 
 //多添加了一个handle_tag的标签表示当前nf是在cpu上跑还是在gpu上跑
 int
-onvm_nflib_init(int argc, char *argv[],hints hint,const char *nf_tag, int service_id,int handle_tag,
+onvm_nflib_init(int argc, char *argv[],const char *nf_tag, int service_id,int handle_tag,
 		void (*user_install_gpu_rule)(void)) {
 	const struct rte_memzone *mz;
 	const struct rte_memzone *mz_scp;
@@ -264,7 +264,7 @@ onvm_nflib_init(int argc, char *argv[],hints hint,const char *nf_tag, int servic
 		rte_exit(EXIT_FAILURE, "clients not found");
 	cl = &((struct client *)mz->addr)[nf_info->instance_id];
 
-	cl->hint=hint;
+	//cl->hint=hint;
 	nf_info->status = NF_WAITING_FOR_HINT;
 	while (nf_info->status != NF_GET_PLAN);
 	sync_plan = cl->plan;

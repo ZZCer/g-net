@@ -391,12 +391,14 @@ init_shm_rings(void) {
 	if (services == NULL || nf_per_service_count == NULL)
 		rte_exit(EXIT_FAILURE, "Cannot allocate memory for service to NF mapping\n");
 
+	/*
 	hints hint={
 		.CR=0,
 		.CW=0,
 		.GW=0,
 		.GR=0
 	};
+	*/
 	last_plan=0;
 
 	for (i = 0; i < MAX_CLIENTS; i++) {
@@ -405,7 +407,7 @@ init_shm_rings(void) {
 		clients[i].instance_id = i;
 
 		clients[i].plan = 0;
-		clients[i].hint = hint;
+		//clients[i].hint = hint;
 
 		// clients[i].rx_q_new = rte_ring_create(get_rx_queue_name(i, 0), BATCH_QUEUE_FACTOR * MAX_BATCH_SIZE, socket_id, NO_FLAGS);
 		clients[i].tx_q_new = NULL;

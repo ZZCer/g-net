@@ -218,7 +218,7 @@ typedef struct ioHints{
 struct client {
 	//不管有多少个线程运行一个nf,每个nf的plan应该都是一样的
 	//hint是读写标记位 plan则是全局的同步标记位
-	hints hint;
+	//hints hint;
 	uint16_t plan;
 
 	struct rte_ring *response_q[MAX_CPU_THREAD_NUM];

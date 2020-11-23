@@ -38,7 +38,7 @@ static uint8_t parse_str_to_binary(char* hint)
 
 static void get_service_chain(int* service_chain)
 {
-	for(size_t i = 1 ; i<=num_clients + 1 && service_chain!=NULL ; i++)
+	for(size_t i = 1 ; i <= (num_clients + 1) && service_chain!=NULL ; i++)
 	{
 		if(strcmp(global_service_chain[i],"NF_ROUTER") ==0 )
 			service_chain[i-1] = NF_ROUTER;
@@ -133,7 +133,7 @@ int load_nfv_json(int* service_chain)
 	}
 
 	printf("NF service chain\n");
-	for(size_t i = 1 ; i <= num_clients+1 ; i++)
+	for(size_t i = 1 ; i <= (num_clients+1) ; i++)
 	{
 		printf("NF %ld is %s  CR:%d\n",i,global_service_chain[i],CR_hints[i]);
 	}

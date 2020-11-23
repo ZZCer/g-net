@@ -59,6 +59,8 @@ uint16_t next_instance_id = 0;
 extern struct onvm_service_chain *default_chain;
 extern struct port_info *ports;
 
+extern uint16_t plan[MAX_CLIENTS];
+
 /************************Internal functions prototypes************************/
 
 
@@ -235,7 +237,7 @@ onvm_nf_start(struct onvm_nf_info *nf_info) {
 
 	//等待nf的分配
 	while (nf_info->status != NF_WAITING_FOR_HINT);
-	clients[instance_id].plan = get_sync_plan();
+	clients[instance_id].plan = plan[instance_id];
 	nf_info -> status = NF_GET_PLAN;
 
 	/* Wait for the NF to install GPU rules before manager initiation */
