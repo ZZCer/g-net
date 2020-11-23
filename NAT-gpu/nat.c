@@ -36,6 +36,7 @@ static char *PortSet;
 static uint32_t *InternalIp;
 static uint32_t *ExternalIp;
 static uint32_t *Mask;
+static uint8_t* IPSet; 
 
 static CUdeviceptr devPort2Port;
 static CUdeviceptr devPort2Ip;
@@ -44,6 +45,8 @@ static CUdeviceptr devPort2Port;
 static CUdeviceptr devInternalIp;
 static CUdeviceptr devExternalIp;
 static CUdeviceptr devMask;
+static CUdeviceptr devIPSet;
+
 
 typedef struct my_buf_s {
 	/* Stores real data */
@@ -99,7 +102,7 @@ static void user_gpu_set_arg(void *cur_buf, void *arg_buf, void *arg_info, int j
 	uint64_t *info = (uint64_t *)arg_info;
 	buf_t *buf = (buf_t *)cur_buf;
 
-	uint64_t arg_num = 9;
+	uint64_t arg_num = 10;
 	uint64_t offset = 0;
 
 	info[0] = arg_num;
@@ -139,6 +142,10 @@ static void user_gpu_set_arg(void *cur_buf, void *arg_buf, void *arg_info, int j
     info[9] = offset;
 	rte_memcpy((uint8_t *)arg_buf + offset, &(buf->device_out), sizeof(buf->device_out));
 	offset += sizeof(buf->device_out);
+
+	info[10] = offset;
+	rte_memcpy((uint8_t *)arg_buf + offset, &(devIPSet), sizeof(devIPSet));
+	offset += sizeof(devIPSet);
 }
 
 static void init_main(void)
@@ -149,7 +156,8 @@ static void init_main(void)
 			MAX_SIZE_PORTS * SIZE_PORT+                   //端口到端口映射  
             MAX_SIZE_PORTS * SIZE_IP+                     //端口到ip映射
             MAX_SIZE_PORTS * sizeof(char)+
-            3*sizeof(uint32_t),                       // 内外网端口加上子网掩码
+            3*sizeof(uint32_t)+							// 内外网端口加上子网掩码
+			UINT16_MAX,                       
 			0);                                       // first time
 
     //host全局变量
@@ -159,6 +167,8 @@ static void init_main(void)
 	gcudaHostAlloc((void **)&InternalIp, SIZE_IP);
 	gcudaHostAlloc((void **)&ExternalIp, SIZE_IP);
     gcudaHostAlloc((void **)&Mask,SIZE_IP);
+	gcudaHostAlloc((void **)&IPSet,UINT16_MAX);
+	
 
     //cuda内存分配
     gcudaMalloc(&devPort2Port,  MAX_SIZE_PORTS * SIZE_PORT);
@@ -167,12 +177,13 @@ static void init_main(void)
     gcudaMalloc(&devInternalIp,  SIZE_IP);
     gcudaMalloc(&devExternalIp,  SIZE_IP);
     gcudaMalloc(&devMask,  SIZE_IP);
+	gcudaMalloc(&devIPSet,UINT16_MAX);
 
     //host全局变量初始化
 	(*InternalIp)=InIp;
     (*ExternalIp)=OutIp;
     (*Mask)=IPv4(255,255,0,0);
-
+	memset(IPSet,0,UINT16_MAX);
 	for (int i = 0; i < MAX_SIZE_PORTS; i ++) {
 		Port2Port[i]=0;
         Port2Ip[i]=0;
@@ -186,6 +197,7 @@ static void init_main(void)
 	gcudaMemcpyHtoD(devInternalIp, InternalIp, SIZE_IP, SYNC, 0);
 	gcudaMemcpyHtoD(devExternalIp, ExternalIp, SIZE_IP, SYNC, 0);
 	gcudaMemcpyHtoD(devMask, Mask, SIZE_IP, SYNC, 0);
+	gcudaMemcpyHtoD(devIPSet, IPSet, SIZE_IP, SYNC, 0);
 }
 
 static void init_gpu_schedule(void)
@@ -209,14 +221,8 @@ int main(int argc, char *argv[])
 	InIp=IPv4(192,168,0,0);
 	OutIp=IPv4(10,176,64,36);
 
-	hints hint={
-		.CR=0,
-		.GR=0b11110000,
-		.CW=0,
-		.GW=0b11110000
-	};
 	/* Initialize nflib */
-	if ((arg_offset = onvm_nflib_init(argc, argv, hint, NF_TAG, NF_NAT,GPU_NF,(&init_gpu_schedule))) < 0)
+	if ((arg_offset = onvm_nflib_init(argc, argv, NF_TAG, NF_NAT,GPU_NF,(&init_gpu_schedule))) < 0)
 		return -1;
 	argc -= arg_offset;
 	argv += arg_offset;

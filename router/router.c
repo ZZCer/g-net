@@ -30,12 +30,6 @@
 uint16_t htod_index[SYNC_DATA_COUNT];
 uint16_t dtoh_index[SYNC_DATA_COUNT];
 
-//有那些位需要修改，这也应该要由用户自己提供
-static uint8_t CR=0b11000000;
-static uint8_t CW=0;
-static uint8_t GR=0b11000000;
-static uint8_t GW=0b11000000;
-
 static uint16_t *tbl24_h;
 static CUdeviceptr tbl24_d;
 
@@ -314,16 +308,10 @@ static void init_gpu_schedule(void)
 
 int main(int argc, char *argv[])
 {
-	hints hint;
-	hint.CR=CR;
-	hint.CW=CW;
-	hint.GR=GR;
-	hint.GW=GW;
-
 	int arg_offset;
 
 	/* Initialize nflib */
-	if ((arg_offset = onvm_nflib_init(argc, argv, hint ,NF_TAG, NF_ROUTER,GPU_NF,&(init_gpu_schedule))) < 0)
+	if ((arg_offset = onvm_nflib_init(argc, argv, NF_TAG, NF_ROUTER,GPU_NF,&(init_gpu_schedule))) < 0)
 		return -1;
 	argc -= arg_offset;
 	argv += arg_offset;

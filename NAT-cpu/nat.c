@@ -37,11 +37,6 @@ static uint16_t *Port2Port;
 static uint32_t *Port2Ip;
 static char *PortSet;
 
-//对于CPU来说，只要计算就完事了，不需要考虑同步的问题
-static uint8_t GR = 0;
-static uint8_t GW = 0;
-static uint8_t CR = 0b11110000;
-static uint8_t CW = 0b11110000;
 
 //记录了每个数据的偏移量
 uint16_t sync_offset[SYNC_DATA_COUNT]={4,4,2,2,1};
@@ -85,19 +80,19 @@ static inline void cpu_handle(struct rte_mbuf *data)
 	
 	int DropTag=0;
 
-	if((InIp & Mask)==( SrcIP & Mask))
+	if((InIp & Mask)==(SrcIP & Mask))
 	{
 		uint16_t src=SrcPort;
 		//内网
-		if(IPSet[(uint16_t)(SrcIP & 0xFFFF)]==1)
-			src=Port2Port[src];
+		if(IPSet[(uint16_t)(SrcIP & 0xFFFF)] != 0 && PortSet[src] == 1)
+			src=IPSet[(uint16_t)(SrcIP & 0xFFFF)];
 		else
 		{
 			while(PortSet[src]!=0)
 				src=(src+1)%65535;
 
 			PortSet[src]=1;
-			IPSet[(uint16_t)(SrcIP & 0xFFFF)]=1;
+			IPSet[(uint16_t)(SrcIP & 0xFFFF)]=src;
 			Port2Port[src]=SrcPort;
 			Port2Ip[src]=SrcIP;
 		}	
@@ -170,15 +165,8 @@ int main(int argc, char *argv[])
 {
 	int arg_offset;
 
-	hints hint={
-		.CR=CR,
-		.CW=CW,
-		.GR=GR,
-		.GW=GW
-	};
-
 	/* Initialize nflib */
-	if ((arg_offset = onvm_nflib_init(argc, argv, hint ,NF_TAG, NF_NAT,CPU_NF ,NULL)) < 0)
+	if ((arg_offset = onvm_nflib_init(argc, argv,NF_TAG, NF_NAT,CPU_NF ,NULL)) < 0)
 		return -1;
 	argc -= arg_offset;
 	argv += arg_offset;

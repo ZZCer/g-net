@@ -5,7 +5,7 @@
 
 extern "C" __global__ void nat(gpu_packet_t **input_buf,const int job_num,
     const uint32_t *InternalIp,const uint32_t *ExternalIp,
-    uint16_t* Port2Port,uint32_t* Port2Ip,char * PortSet, const uint32_t *Mask,uint8_t* result) {
+    uint16_t* Port2Port,uint32_t* Port2Ip,char * PortSet, const uint32_t *Mask,uint8_t* result,uint8_t* IPSet) {
 
         int id=threadIdx.x+blockIdx.x*blockDim.x;
         int step=blockDim.x*gridDim.x;
@@ -21,16 +21,23 @@ extern "C" __global__ void nat(gpu_packet_t **input_buf,const int job_num,
             //首先判断是否在同一个子网内部
             if(((*ExternalIp) & (*Mask))==( srcIP & (*Mask)))
             {
-                //内网
-                uint16_t src=srcPort;
-                while(PortSet[src]!=0)
-                    src=(src+1)%65535;
+                uint16_t src = 0;
+                if(IPSet[(uint16_t)(srcIP & 0xFFFF)]!=0 && PortSet[srcPort]!=0)
+                    src = IPSet[(uint16_t)(srcIP & 0xFFFF)];
+                else{
+                    while(PortSet[src]!=0)
+                        src=(src+1)%65535;
                 
-                //映射处理
-                PortSet[src]=1;
-                Port2Port[src]=srcPort;
-                Port2Ip[src]=srcIP;
-                
+                    //映射处理
+                    PortSet[src]=1;
+                    Port2Port[src]=srcPort;
+                    Port2Ip[src]=srcIP;
+                    IPSet[(uint16_t)(srcIP & 0xFFFF)]=src;
+                }
+                         
+                input_buf[tid]->dst_addr=*(uint32_t*)ExternalIp;
+                input_buf[tid]->dst_port=(uint16_t)0x00FF & src;
+
                 result[0]=*(uint32_t*)ExternalIp;
                 result[4]=0x00FF & src;
             }
@@ -44,13 +51,19 @@ extern "C" __global__ void nat(gpu_packet_t **input_buf,const int job_num,
                     result[4]=0;
                 else
                 {
-                    uint32_t dst=Port2Port[dstPort];
-                    uint16_t dstip0=Port2Ip[dstPort];
+                    uint16_t dst=Port2Port[dstPort];
+                    uint32_t dstip0=Port2Ip[dstPort];
 
                     Port2Ip[dstPort]=0;
                     Port2Port[dstPort]=0;
+                    PortSet[dstPort]=0;
+                    IPSet[(uint16_t)(dstip0 & 0xFFFF)]=0;
 
-                    result[0]=*(uint32_t*)dstip0;
+                            
+                    input_buf[tid]->src_addr=dstip0;
+                    input_buf[tid]->src_port=dst; 
+
+                    result[0]=*(uint32_t*)(&dstip0);
                     result[4]=0x00FFd & dst;
                 }
             }
