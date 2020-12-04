@@ -182,6 +182,7 @@ static int onvm_framework_cpu_only(int thread_id){
 		batch = &batch_set[thread_id];
 		cur_buf_size = batch->buf_size[buf_id];
 
+		//得到自系统启动后的时间，单位是微妙
 		clock_gettime(CLOCK_MONOTONIC, &start);
 
 		// handle dropped packets
@@ -254,6 +255,7 @@ static int onvm_framework_cpu_only(int thread_id){
 			if (num_packets == 0) {
 				starve_rx_counter++;
 				if (starve_rx_counter == STARVE_THRESHOLD) {
+					buf_id = (buf_id + 1) % NUM_BATCH_BUF;
 					RTE_LOG(INFO, APP, "Rx starving at thread %d\n", thread_id);
 				}
 			}
@@ -320,6 +322,8 @@ onvm_framework_cpu(int thread_id)
         if (batch->buf_state[buf_id] != BUF_STATE_CPU_READY) {
 			starve_gpu_counter++;
 			if (starve_gpu_counter == STARVE_THRESHOLD) {
+				//当前项没有处理完时，选择循环选择下一个缓冲区
+				buf_id = (buf_id + 1) % NUM_BATCH_BUF;
 				RTE_LOG(INFO, APP, "GPU starving\n");
 			}
 			continue;
@@ -367,6 +371,8 @@ onvm_framework_cpu(int thread_id)
 
 		// send_token = (send_token + 1) % (gpu_info->thread_num);
 		//相当于把发送位置后的值都丢弃，具体操作就是释放内存
+		
+		//为什么不开个循环多转发几次把数据包都转发掉
 		if (sent_packets < cur_buf_size) {
 			onvm_pkt_drop_batch(batch->pkt_ptr[buf_id] + sent_packets, cur_buf_size - sent_packets);
 		}
@@ -405,6 +411,7 @@ onvm_framework_cpu(int thread_id)
 			if (num_packets == 0) {
 				starve_rx_counter++;
 				if (starve_rx_counter == STARVE_THRESHOLD) {
+					buf_id = (buf_id + 1) % NUM_BATCH_BUF;
 					RTE_LOG(INFO, APP, "Rx starving at thread %d\n", thread_id);
 				}
 			}
@@ -689,10 +696,83 @@ onvm_framework_start_gpu(gpu_htod_t user_gpu_htod, gpu_dtoh_t user_gpu_dtoh, gpu
 }
 /* ======================================= */
 
-void onvm_framework_get_hint(uint8_t* h2d_hint,uint8_t* d2h_hint)
+void onvm_framework_get_hint(uint8_t* h2d_hint,uint8_t* d2h_hint , uint16_t* h2d_offset , uint16_t* d2h_offset ,uint16_t* h2d_sync_num , uint16_t* d2h_sync_num)
 {
 	*d2h_hint=(uint8_t)((sync_plan & 0xFF)>>3);
 	*h2d_hint=(uint8_t)(((sync_plan >> 8) & 0xFF)>>3);
+
+	int index = 0;
+	int sync_num = 0;
+	uint8_t tp_hint = (*h2d_hint);
+	while(tp_hint != 0)
+	{
+		index ++;
+		if((tp_hint & 1) == 1)
+		{
+			sync_num++;
+			switch (SYNC_DATA_COUNT - index)
+			{
+				case SYNC_SOURCE_IP:
+					h2d_offset[sync_num-1] = 0;
+					break;
+				case SYNC_DEST_IP:
+					h2d_offset[sync_num-1] = 4;
+					break;
+				case SYNC_SOURCE_PORT:
+					h2d_offset[sync_num-1] = 8;
+					break;
+				case SYNC_DEST_PORT:
+					h2d_offset[sync_num-1] = 10;		
+					break;
+				case SYNC_TCP_FLAGS:
+					h2d_offset[sync_num-1] = 12;
+					break;
+			}
+		}
+		tp_hint >>= 1;
+	}
+	(*h2d_sync_num) = sync_num;
+
+	sync_num = 0;
+	index = 0;
+	tp_hint = (*d2h_hint);
+	while(tp_hint != 0)
+	{
+		index ++;
+		if((tp_hint & 1) == 1)
+		{
+			sync_num++;
+			switch (SYNC_DATA_COUNT - index)
+			{
+				case SYNC_SOURCE_IP:
+					d2h_offset[sync_num-1] = 0;
+					break;
+				case SYNC_DEST_IP:
+					d2h_offset[sync_num-1] = 4;
+					break;
+				case SYNC_SOURCE_PORT:
+					d2h_offset[sync_num-1] = 8;
+					break;
+				case SYNC_DEST_PORT:
+					d2h_offset[sync_num-1] = 10;		
+					break;
+				case SYNC_TCP_FLAGS:
+					d2h_offset[sync_num-1] = 12;
+					break;
+			}
+		}
+		tp_hint >>= 1;
+	}
+	(*d2h_sync_num) = sync_num;
+
+	printf("EAL: h2d sync number:%d d2h sync number:%d\n",(*h2d_sync_num),(*d2h_sync_num));
+	printf("EAL: H2D offset:");
+	for(int i=0;i<(*h2d_sync_num);i++)
+		printf("%d ",h2d_offset[i]);
+	printf("\nEAL: D2H offset:");
+	for(int i=0;i<(*d2h_sync_num);i++)
+		printf("%d ",d2h_offset[i]);
+	printf("\n");
 }
 
 /* ======================================= */

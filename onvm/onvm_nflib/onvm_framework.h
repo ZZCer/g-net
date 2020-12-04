@@ -13,10 +13,6 @@
 #define SYNC 0
 #define ASYNC 1
 
-//表示网络功能的计算是在CPU计算还是在GPU计算
-#define CPU_NF 0
-#define GPU_NF 1
-
 /* Each CPU worker holds such a data structure */
 typedef struct nfv_batch_s
 {
@@ -58,7 +54,9 @@ typedef void (*gpu_dtoh_t)(void *, int, unsigned int);
 typedef void (*gpu_set_arg_t)(void *, void *, void *, int);
 
 //这里的hint指的是每个nf使用涉及到的h2d d2h 同步 hint
-void onvm_framework_get_hint(uint8_t* h2d_hint,uint8_t* d2h_hint);
+void onvm_framework_get_hint(uint8_t* h2d_hint,uint8_t* d2h_hint , 
+							uint16_t* h2d_offset , uint16_t* d2h_offset,
+							uint16_t* sync_h2d_num , uint16_t* sync_d2h_num);
 
 void onvm_framework_start_cpu(init_func_t, pre_func_t, post_func_t,cpu_batch_handle,int nf_handle_tag);
 void onvm_framework_start_gpu(gpu_htod_t, gpu_dtoh_t, gpu_set_arg_t);

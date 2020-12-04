@@ -8,7 +8,7 @@
 
 //Synchronization Global variable
 #define SYNC_DATA_COUNT 5
-#define SYNC_DATA_SIZE 13
+#define SYNC_DATA_SIZE 16
 
 //GPU同步数据类型
 #define SYNC_SOURCE_IP   0

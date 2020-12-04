@@ -64,7 +64,7 @@
 // define DROP_RX_PKTS
 // #define DISABLE_GPU_RX
 // #define DISABLE_TX
- #define ENABLE_PSTACK
+// #define ENABLE_PSTACK
 
 extern struct onvm_service_chain *default_chain;
 extern struct rx_perf rx_stats[ONVM_NUM_RX_THREADS]; 
@@ -78,8 +78,11 @@ extern CUcontext context;
 
 extern uint8_t last_plan;
 
-#define RX_BUF_SIZE (1024*64)
-#define RX_BUF_PKT_MAX_NUM (RX_BUF_SIZE / 32)
+//下面这两个数据最好从文件当中读取
+//RX_BUF_SIZE表示每个批缓冲区(用于存储gpu数据)的数据量大小 这个数据会影响rx队列的丢弃情况
+#define RX_BUF_SIZE (2048*1024)
+//RX_BUF_PKT_MAX_NUM表示缓冲区数据个数
+#define RX_BUF_PKT_MAX_NUM (RX_BUF_SIZE / 1024)
 #define RX_NUM_THREADS ONVM_NUM_RX_THREADS
 #define RX_NUM_BATCHES 4
 
@@ -268,18 +271,24 @@ rx_thread_main(void *arg) {
     RTE_LOG(INFO, APP, "Core %d: Running RX thread for RX queue %d\n", core_id, rx->queue_id);
 
     rx_batch_id = 0;
+    //当前批的head和当前批的pkt个数
     unsigned batch_head = 0;
     unsigned batch_cnt = 0;
+
+    //之所以这部分需要多批多线程处理，是因为一部分批中缓冲区在接受数据的时候，另一部分(rx_gpu)可以做其他处理
     for (;;) {
 		/* Read ports */
 		for (i = 0; i < ports->num_ports; i++) {
             rx_len = 0;
-            //读取端口号数据
+            //读取端口号数据,每次都读取64个数据
 			rx_count = rte_eth_rx_burst(ports->id[i], rx->queue_id, pkts, PACKET_READ_SIZE);
+
+            //这里假设的是固定长度
             if (rx_count > 0) {
                 rx_len += (*pkts[0]).pkt_len * rx_count;
             }
 
+            //这个地方会去判断接收到的数据是否超过了rx批大小，从而决定是否丢弃
             for (j = 0; j < rx_count; j++) {
                 struct onvm_pkt_meta *meta = onvm_get_pkt_meta(pkts[j]);
                 meta->action = ONVM_NF_ACTION_TONF;
@@ -290,7 +299,10 @@ rx_thread_main(void *arg) {
                     //rx_batch_id有何用？？？
                     //rx线程是按批来处理数据包的，一次最多处理四个，rx_batch可以理解为批处理数组？
                     unsigned next_id = (rx_batch_id + 1) % RX_NUM_BATCHES;
+                    //如果下一个批缓冲区满（针对gpu_pkt的字节缓冲区），那么就把多余数据丢弃掉，再遍历当前批
                     if (rx_batch[next_id].full[thread_id]) break;
+                    //如果没有满，那么就把数据轮转得放置到下一个批中对应的线程缓冲区里
+                    //每个线程轮转放置时，之前的缓冲区会被rx_gpu full=0，因此应该不会出现，覆盖还没转发数据的情况
                     rx_batch[rx_batch_id].pkt_cnt[thread_id] = batch_cnt;
                     batch_cnt = 0;
                     batch_head = 0;
@@ -303,6 +315,7 @@ rx_thread_main(void *arg) {
                 //首先是dpdk层数据得到
                 rx_batch[rx_batch_id].pkt_ptr[thread_id][batch_cnt++] = pkts[j];
                 //接着是用户层数据得到，并且转换成cuda能用的形式，pos表示用户层能用的数据
+                //rx_batch.buf是用来按字节存储拷贝到gpu中的数据
                 uint8_t *pos = rx_batch[rx_batch_id].buf[thread_id] + batch_head;
                 //这个buf_head本来就是指的gpu层的信息
                 onvm_pkt_gpu_ptr(pkts[j]) = rx_batch[rx_batch_id].buf_head + (pos - (uint8_t *)&rx_batch[rx_batch_id].buf);
@@ -315,6 +328,7 @@ rx_thread_main(void *arg) {
                 void* res = pstack_process((char *)onvm_pkt_ipv4_hdr(pkts[j]), pkts[j]->data_len - sizeof(struct ether_hdr), thread_id);
 #endif
             }
+            //在RX缓冲区接受能力不够的情况下，会丢弃接收到的数据包
 #ifndef DROP_RX_PKTS
             if (unlikely(j < rx_count)) {
                 onvm_pkt_drop_batch(&pkts[j], rx_count - j);
@@ -413,7 +427,7 @@ rx_gpu_thread_main(void *arg) {
 
                     //这一部操作就相当于把dpdk层获得的数据复制给了对应的nf层的缓冲区中rss helper
                     while (rx_count == 0)
-                         rx_count = rte_ring_enqueue_bulk(rx_q_new[i % ONVM_NUM_NF_QUEUES], (void **)batch->pkt_ptr[i], batch->pkt_cnt[i], NULL);
+                        rx_count = rte_ring_enqueue_bulk(rx_q_new[i % ONVM_NUM_NF_QUEUES], (void **)batch->pkt_ptr[i], batch->pkt_cnt[i], NULL);
                 }
                 if (rx_count < batch->pkt_cnt[i]) {
                     // it takes some time so performance is worse if all dropped

@@ -168,6 +168,7 @@
 // #define MAX_BATCH_SIZE 8192
 #define MAX_BATCH_SIZE 4096
 
+//每个NF的缓冲区只能是3，否则的话 NF大小不够
 #define NUM_BATCH_BUF 3
 
 /*****************************************************************************/
@@ -417,6 +418,7 @@ struct gpu_schedule_info {
 #define NF_FRAMEWORK	8
 #define NF_END			9
 #define NF_NAT 			10
+#define NF_GPU			11
 
 /* Scheduling strategies */
 #define NO_SCHED	0
@@ -440,7 +442,8 @@ static struct nf_str nf_id_to_name[] =
 	{ "Pktgen", 6, NO_SCHED },
 	{ "NF Raw", 7, NO_SCHED },
 	{ "NF Framework", 8, NO_SCHED },
-	{ "NF NAT", 10, NO_SCHED },
+	{ "NF NAT", 10, NF_PPS },
+	{ "NF GPU" , 11 ,NO_SCHED},
 	{ NULL, -1, NO_SCHED }
 };
 
@@ -595,5 +598,9 @@ get_port_tx_gpu_queue_name(uint16_t port_id) {
        return buffer;
 }
 #define RTE_LOGTYPE_APP RTE_LOGTYPE_USER1
+
+//表示网络功能的计算是在CPU计算还是在GPU计算
+#define CPU_NF 0
+#define GPU_NF 1
 
 #endif  // _COMMON_H_

@@ -266,6 +266,7 @@ onvm_nflib_init(int argc, char *argv[],const char *nf_tag, int service_id,int ha
 
 	//cl->hint=hint;
 	nf_info->status = NF_WAITING_FOR_HINT;
+
 	while (nf_info->status != NF_GET_PLAN);
 	sync_plan = cl->plan;
 	printf("EAL: %d nf 's sync_plan is %d\n",cl->instance_id,sync_plan);

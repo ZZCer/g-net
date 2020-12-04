@@ -4,11 +4,12 @@ cpu_num=$(expr $1 - 1)
 #cpu="12"
 #cpu_end=$(expr $cpu_num + 12)
 #for k in $( seq 13 $cpu_end)
-cpu="0"
-for k in $( seq 1 $cpu_num)
-do
-    cpu="$cpu","$((k * 2))"
-done
+#cpu="0"
+#for k in $( seq 1 $cpu_num)
+#do
+#    cpu="$cpu","$((k * 2))"
+#done
+cpu="20,22,24,26,28,30,32,34,36,38,40,42,44,46,48,50"
 ports=1
 
 SCRIPT=$(readlink -f "$0")

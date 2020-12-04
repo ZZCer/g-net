@@ -20,5 +20,5 @@ done
 
 shift 3
 
-#exec sudo $SCRIPTPATH/build/router -l $cpu_list -n 4 --proc-type=secondary --base-virtaddr=0x7fffdc200000 --log-level 7 -- -k $thread_num
-exec sudo $SCRIPTPATH/build/router -l 0,1 -n 4 --proc-type=secondary --log-level 7 -- -k 1
+#exec sudo $SCRIPTPATH/build/gpu-l $cpu_list -n 4 --proc-type=secondary --base-virtaddr=0x7fffdc200000 --log-level 7 -- -k $thread_num
+exec sudo $SCRIPTPATH/build/gpu -l 0,1 -n 4 --proc-type=secondary --log-level 7 -- -k 1

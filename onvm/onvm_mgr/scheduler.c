@@ -30,6 +30,7 @@ scheduler_nf_spawn_new_thread(struct client *cl) {
 	cl->gpu_info->launch_worker_thread = 1;
 }
 
+//这里使用的是包转发率，而不是吞吐量
 static void
 gpu_get_resource(int instance_id, double T0) {
 	struct client *cl = &(clients[instance_id]);
@@ -37,6 +38,7 @@ gpu_get_resource(int instance_id, double T0) {
 	uint16_t L = cl->gpu_info->latency_us;
 	unsigned int stream_num = cl->gpu_info->thread_num;
 
+	//默认参数 每个nf在scheduler下的出事block num = 1 batch_size = 512 threads = 1024 
 	printf("[%d] Current Resource Allocated: blk_num %d, batch_size %d, threads_per_blk %d\n",
 			instance_id, cl->blk_num, cl->batch_size, cl->threads_per_blk);
 
@@ -92,11 +94,15 @@ gpu_get_resource(int instance_id, double T0) {
 		printf(">>>>>>>>>>      Set latency is too low to meet the demand L <= b1 + b2 + cost_time      <<<<<<<<<<\n\n");
 	}
 
+	//从gpu d2h后数据的大小
+	//stats表示统计用数据
 	uint64_t batch_cnt = cl->stats.batch_cnt;
 	if (batch_cnt == 0) batch_cnt = 1;
 	/* Get the cost time */
 	B0 = cl->stats.batch_size / batch_cnt;
 	B0 = B0 / cl->blk_num;
+
+	//cl->blc_num=1 stream_num = 1
 	N = cl->blk_num * stream_num; /* all SMs allocated to the NF */
 	if (B0 <= 0) {
 		RTE_LOG(ERR, APP, "[%d] Batch size is 0, use the previous allocated resource in scheduling\n", instance_id);
@@ -126,6 +132,8 @@ gpu_get_resource(int instance_id, double T0) {
 	for (N = stream_num; N < (unsigned int)SM_TOTAL_NUM - allocated_sm_num; N += stream_num) {
 		/* First, calculate batch size with throughput */
 		// following B0 is derived by T0 = B0*N/(L0+cost) = B0*N/(k1*B0+b1+k2*N*B0+b2 + cost)
+
+		//T0就是需要满足的最小延迟L = Lk + Lm , 通过代换得到下面的式子
 		B0 = ceil(T0 * (b1 + b2 + cl->cost_time) / (N - T0 * (k1 + k2 * N)));
 		if (B0 < 0)
 			continue;
@@ -133,11 +141,13 @@ gpu_get_resource(int instance_id, double T0) {
 			continue;
 
 		B0 = ((B0 % 64 == 0)? B0 : (B0/64 + 1) * 64);
+		//最小大小是256 batch_size
 		B0 = B0 < minB? minB : B0;
 
 		/* Second, calculate the corresponding latency with the batch size, and check if it satisfy */
 		L0 = k1 * B0 + b1 + k2 * B0 * N + b2 + cl->cost_time;
 
+		//L是1ms
 		if (L0 < L) {
 			RTE_LOG(INFO, APP, "NF %d: Minimum SM number %d, Batch size is %d, Latency %.2lf us, T %.2lf Mpps\n", instance_id, N, B0, L0, T0);
 			success = 1;
@@ -358,11 +368,14 @@ schedule(void) {
 			minT = clients[i].throughput_mpps;
 	}
 
+	// 为什么local schedule，对每一个client分配完了后，又分配了一遍
+	// 这是为了确保，针对每一个client分配完后，如果流处理器又剩余的没用完，就继续分配
 	/* Local Schedule */
 	for (i = 0; i < MAX_CLIENTS; i ++) {
 		if (!onvm_nf_is_valid(&clients[i]))
 			continue;
 
+		//T*(1+0.5)
 		/* estimate resource allocation */
 		gpu_get_resource(i, minT * P_PERF);
 	}

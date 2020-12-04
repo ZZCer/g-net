@@ -44,6 +44,8 @@ static void get_service_chain(int* service_chain)
 			service_chain[i-1] = NF_ROUTER;
 		else if(strcmp(global_service_chain[i],"NF_NAT") == 0)
 			service_chain[i-1] = NF_NAT; 
+		else if(strcmp(global_service_chain[i],"NF_GPU") == 0)
+			service_chain[i-1] = NF_GPU;
 		else
 			service_chain[i-1] = NF_END;
 	}
@@ -168,6 +170,8 @@ uint16_t get_sync_plan(void)
 
 	curPlan = plan[instance0];
 	dirty = WV[instance0];
+	//对于第一个NF来说h2d标签可以为0，因为数据本来就被拷贝到了gpu当中，无需再拷贝一遍
+	plan[instance0] = plan[instance0] & 0b00000000;
 
 	//接下来，这里要从第2个NF开始
 	for(int i=2;i<= num_clients;i++)

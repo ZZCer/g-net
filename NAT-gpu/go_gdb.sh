@@ -14,11 +14,12 @@ thread_num=$2
 cpu_list=$cpu
 for k in $(seq 1 $thread_num)
 do
-	new=$(expr $cpu + $((k*2)))
-				cpu_list="$cpu_list","$new"
+new=$(expr $cpu + $((k*2)))
+	cpu_list="$cpu_list","$new"
 done
 
 shift 3
 
 #exec sudo $SCRIPTPATH/build/nat -l $cpu_list -n 4 --proc-type=secondary --base-virtaddr=0x7fffdc200000 --log-level 7 -- -k $thread_num
-exec sudo $SCRIPTPATH/build/nat -l 0,1 -n 4 --proc-type=secondary --log-level 7 -- -k 1
+exec sudo gdb --args $SCRIPTPATH/build/nat -l 65,67 -n 4 --proc-type=secondary --log-level 7 -- -k 1
+

@@ -128,6 +128,7 @@ init_manager(void)
 	if (nf_response_pool == NULL)
 		rte_exit(EXIT_FAILURE, "Fail to create nf_response_pool\n");
 
+	//实际上只用800MB的显存
 	checkCudaErrors( cuMemAlloc(&gpu_pkts_buf, GPU_BUF_SIZE * GPU_MAX_PKT_LEN + TX_GPU_BUF_SIZE) );
 	gpu_pkts_tail = gpu_pkts_head = gpu_pkts_buf;
 	rte_spinlock_init(&gpu_pkts_lock);
@@ -575,6 +576,7 @@ manager_thread_main(void *arg)
 				cl = &(clients[req->instance_id]);
 				tid = req->thread_id;
 
+				//这个thread_num是可以根据scheduler动态获取的
 				cl->worker_thread_num = cl->gpu_info->thread_num;
 				blk_num = cl->blk_num;
 #if !defined(SYNC_MODE)

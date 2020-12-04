@@ -11,6 +11,8 @@ do
 done
 ports=1
 
+cpu = "20,22,24,26,28,30,32,34,36,38,40,42,44,46,48,50"
+
 SCRIPT=$(readlink -f "$0")
 SCRIPTPATH=$(dirname "$SCRIPT")
 cd $SCRIPTPATH

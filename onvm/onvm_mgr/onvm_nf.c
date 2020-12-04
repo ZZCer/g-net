@@ -189,6 +189,7 @@ onvm_nf_start(struct onvm_nf_info *nf_info) {
 	// Record its scheduling type
 	clients[instance_id].nf_type = get_nf_type(nf_info->service_id);
 
+	//下面这些代码是将nf链接起来
 	// Register this NF running within its service
 	uint16_t service_count = nf_per_service_count[nf_info->service_id]++;
 	services[nf_info->service_id][service_count] = instance_id;

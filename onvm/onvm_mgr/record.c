@@ -32,7 +32,7 @@ void record_data(double rx_gbps,double tx_gbps)
     if(count == 0)
         open_record_file();
 
-    if(count < 300)
+    if(count < 100)
     {
         count++;
 

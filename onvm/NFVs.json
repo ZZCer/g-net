@@ -1,26 +1,27 @@
 {
-    "NFV_Number":"2",
+    "Comment":"所有NF的标签含含义都是向后项看齐的，比如NF_NAT，由它下一个NF_Router的数据读取情况来判断CR...",
+    "NFV_Number":"1",
     "NFVs":[
         {
             "Name":"NF_NAT",
-            "CR_Hint":"11110000",
-            "GR_Hint":"0",
-            "CW_Hint":"11110000",
-            "GW_Hint":"0"
-        },
-        {
-            "Name":"NF_ROUTER",
-            "CR_Hint":"11000000",
-            "GR_Hint":"11000000",
+            "CR_Hint":"0",
+            "GR_Hint":"11110000",
             "CW_Hint":"0",
-            "GW_Hint":"11000000"
+            "GW_Hint":"11110000"    
         },
         {
             "Name":"NF_END",
             "CR_Hint":"0",
             "GR_Hint":"0",
             "CW_Hint":"0",
-            "GW_Hint":"0"
+            "GW_Hint":"0"  
+        },  
+        {
+            "Name":"NF_ROUTER",
+            "CR_Hint":"0",
+            "GR_Hint":"11110000",
+            "CW_Hint":"0",
+            "GW_Hint":"11110000" 
         }
     ]
 }

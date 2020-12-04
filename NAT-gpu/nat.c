@@ -23,6 +23,16 @@
 #define SIZE_IP 4 //下述单位是字节
 #define SIZE_PORT 2
 
+//记录同步数据情况的全局变量
+static uint8_t h2d_hint;
+static uint8_t d2h_hint; 
+uint16_t* h2d_offset;
+uint16_t* d2h_offset;
+CUdeviceptr h2d_offset_d;
+CUdeviceptr d2h_offset_d;
+uint16_t h2d_sync_num;
+uint16_t d2h_sync_num;
+
 //nat需要的全局变量端口到端口的映射
 //端口到ip的映射
 //端口集合
@@ -52,8 +62,13 @@ typedef struct my_buf_s {
 	/* Stores real data */
 	CUdeviceptr *host_in;
 	uint8_t *host_out;
+	char* gpu_sync;
+	char* cpu_sync;
+
 	CUdeviceptr device_in;
 	CUdeviceptr device_out;
+	CUdeviceptr device_sync_in;
+	CUdeviceptr device_sync_out;
 } buf_t;
 
 static void *init_host_buf(void)
@@ -61,11 +76,15 @@ static void *init_host_buf(void)
 	buf_t *buf = malloc(sizeof(buf_t));
 
 	gcudaHostAlloc((void **)&(buf->host_in), MAX_BATCH_SIZE * sizeof(CUdeviceptr));
-	gcudaHostAlloc((void **)&(buf->host_out), MAX_BATCH_SIZE * 5 * sizeof(uint8_t));
-
+	gcudaHostAlloc((void **)&(buf->host_out), MAX_BATCH_SIZE * sizeof(uint8_t));
+	gcudaHostAlloc((void **)&(buf->gpu_sync), MAX_BATCH_SIZE * SYNC_DATA_SIZE * sizeof(uint8_t));
+	gcudaHostAlloc((void **)&(buf->cpu_sync), MAX_BATCH_SIZE * SYNC_DATA_SIZE * sizeof(uint8_t));
+	
 	gcudaMalloc(&(buf->device_in), MAX_BATCH_SIZE * sizeof(CUdeviceptr));
-	gcudaMalloc(&(buf->device_out), MAX_BATCH_SIZE * 5 * sizeof(uint8_t));
-
+	gcudaMalloc(&(buf->device_out), MAX_BATCH_SIZE * sizeof(uint8_t));
+	gcudaMalloc(&(buf->device_sync_in),MAX_BATCH_SIZE * SYNC_DATA_SIZE * sizeof(uint8_t));
+	gcudaMalloc(&(buf->device_sync_out),MAX_BATCH_SIZE * SYNC_DATA_SIZE * sizeof(uint8_t));
+	
 	return buf;
 }
 
@@ -74,27 +93,107 @@ static inline void user_batch_func(void *cur_buf, struct rte_mbuf *pkt, int pkt_
 	buf_t *buf = (buf_t *)cur_buf;
 
 	buf->host_in[pkt_idx] = onvm_pkt_gpu_ptr(pkt);
+
+	uint32_t offset = pkt_idx * SYNC_DATA_SIZE;
+	//printf("PKT_IDX:%d offset:%d\n",pkt_idx,offset);
+
+	struct ipv4_hdr* ip_h=onvm_pkt_ipv4_hdr(pkt);
+	struct tcp_hdr* tcp_h=onvm_pkt_tcp_hdr(pkt);
+	struct udp_hdr* udp_h=onvm_pkt_udp_hdr(pkt);
+
+	uint16_t srcPort = 0;
+	uint16_t dstPort = 0;
+
+	if(tcp_h != NULL)
+	{
+		srcPort = tcp_h->src_port;
+		dstPort = tcp_h->dst_port;
+	}	
+	else
+	{
+		srcPort = udp_h->src_port;
+		dstPort = udp_h->dst_port;
+	}
+	
+	for(size_t i=0 ; i < h2d_sync_num ; i++)
+	{
+		if(h2d_offset[i] <= 4)			
+			*((uint32_t*)(buf->gpu_sync + offset + h2d_offset[i])) = ( (h2d_offset[i] == 4) ? ip_h->dst_addr : ip_h->src_addr );
+		else if(h2d_offset[i] <= 10)			
+			*((uint16_t*)(buf->gpu_sync + offset + h2d_offset[i])) = (uint16_t)( (h2d_offset[i] == 10) ? dstPort : srcPort );
+	}
 }
 
 static inline void user_post_func(void *cur_buf, struct rte_mbuf *pkt, int pkt_idx)
 {
 	buf_t *buf = (buf_t *)cur_buf;
 
-	/* Write the port */
-	pkt->port = buf->host_out[pkt_idx];
+	//这里面套个switch就结束了
+	//在d2h后，数据就已经从device获取到了
+	uint32_t offset=pkt_idx*SYNC_DATA_SIZE;
+
+	struct ipv4_hdr* ip_h=onvm_pkt_ipv4_hdr(pkt);
+	struct tcp_hdr* tcp_h=onvm_pkt_tcp_hdr(pkt);
+	struct udp_hdr* udp_h=onvm_pkt_udp_hdr(pkt);
+
+	uint16_t* srcPort = NULL;
+	uint16_t* dstPort = NULL;
+
+	if(tcp_h != NULL)
+	{
+		srcPort = &tcp_h->src_port;
+		dstPort = &tcp_h->dst_port;
+	}
+	else
+	{
+		srcPort = &udp_h->src_port;
+		dstPort = &udp_h->dst_port;
+	}
+	
+
+	//根据d2h_hint，进行遍历，将其中每个位的数据解析出来
+	//下面这个代码是有点问题的 会seg fault
+	for(size_t i = 0 ; i < d2h_sync_num ; i++)
+	{
+		if(d2h_offset[i] <= 4)
+		{
+			
+			if(d2h_offset[i] == 4)
+				ip_h->dst_addr = *((uint32_t*)(buf->cpu_sync + offset + d2h_offset[i]));
+			else
+				ip_h->src_addr = *((uint32_t*)(buf->cpu_sync + offset + d2h_offset[i]));
+		}
+		else if(d2h_offset[i] <= 10)
+		{
+			if(d2h_offset[i] == 10)
+				*dstPort = *((uint16_t*)(buf->cpu_sync + offset + d2h_offset[i]));
+			else
+				*srcPort = *((uint16_t*)(buf->cpu_sync + offset + d2h_offset[i]));
+		}	
+	}
+
+	if(buf->host_out[pkt_idx] == 0)
+	{
+		struct onvm_pkt_meta *meta;
+		meta = onvm_get_pkt_meta((struct rte_mbuf *)pkt);
+		meta->action = ONVM_NF_ACTION_DROP;
+	}
 }
 
 static void user_gpu_htod(void *cur_buf, int job_num, unsigned int thread_id)
 {
 	buf_t *buf = (buf_t *)cur_buf;
 	gcudaMemcpyHtoD(buf->device_in, buf->host_in, job_num * sizeof(CUdeviceptr), ASYNC, thread_id);
-
+	if(h2d_sync_num != 0)
+		gcudaMemcpyHtoD(buf->device_sync_in, buf->gpu_sync , job_num * SYNC_DATA_SIZE * sizeof(uint8_t) , ASYNC , thread_id);
 }
 
 static void user_gpu_dtoh(void *cur_buf, int job_num, unsigned int thread_id)
 {
 	buf_t *buf = (buf_t *)cur_buf;
-	gcudaMemcpyDtoH(buf->host_out, buf->device_out, job_num * 5 * sizeof(uint8_t), ASYNC, thread_id);
+	gcudaMemcpyDtoH(buf->host_out, buf->device_out, job_num * sizeof(uint8_t), ASYNC, thread_id);
+	if(d2h_sync_num!=0)
+		gcudaMemcpyDtoH(buf->cpu_sync, buf->device_sync_out, job_num * SYNC_DATA_SIZE * sizeof(uint8_t), ASYNC, thread_id);
 }
 
 static void user_gpu_set_arg(void *cur_buf, void *arg_buf, void *arg_info, int job_num)
@@ -102,7 +201,7 @@ static void user_gpu_set_arg(void *cur_buf, void *arg_buf, void *arg_info, int j
 	uint64_t *info = (uint64_t *)arg_info;
 	buf_t *buf = (buf_t *)cur_buf;
 
-	uint64_t arg_num = 10;
+	uint64_t arg_num = 16;
 	uint64_t offset = 0;
 
 	info[0] = arg_num;
@@ -146,18 +245,44 @@ static void user_gpu_set_arg(void *cur_buf, void *arg_buf, void *arg_info, int j
 	info[10] = offset;
 	rte_memcpy((uint8_t *)arg_buf + offset, &(devIPSet), sizeof(devIPSet));
 	offset += sizeof(devIPSet);
+
+	//同步相关参数
+	info[11] = offset;
+	rte_memcpy((uint8_t *)arg_buf + offset, &h2d_sync_num, sizeof(h2d_sync_num));
+	offset += sizeof(h2d_sync_num);
+
+	info[12] = offset;
+	rte_memcpy((uint8_t *)arg_buf + offset, &d2h_sync_num, sizeof(d2h_sync_num));
+	offset += sizeof(d2h_sync_num);
+
+	info[13] = offset;
+	rte_memcpy((uint8_t*)arg_buf + offset, &(buf->device_sync_in) , sizeof(buf->device_sync_in)) ;
+	offset += sizeof(buf->device_sync_in);
+
+	info[14] = offset;
+	rte_memcpy((uint8_t*)arg_buf + offset, &(buf->device_sync_out) , sizeof(buf->device_sync_out)) ;
+	offset += sizeof(buf->device_sync_out);
+
+	info[15] = offset;
+	rte_memcpy((uint8_t*)arg_buf + offset, &(h2d_offset_d) , sizeof(h2d_offset_d));
+	offset += sizeof(h2d_offset_d);
+
+	info[16] = offset;
+	rte_memcpy((uint8_t*)arg_buf + offset, &(d2h_offset_d) , sizeof(d2h_offset_d));
+	offset += sizeof(d2h_offset_d);
 }
 
 static void init_main(void)
 {
 	/* allocate the host memory */
 	gcudaAllocSize(MAX_BATCH_SIZE * sizeof(CUdeviceptr)  // host_in
-			+ MAX_BATCH_SIZE * 5 * sizeof(uint8_t),       // host_out ，每个数据包输出40数据，前32位ip地址，后8位中的后4位是端口
+			+ MAX_BATCH_SIZE * sizeof(uint8_t) 
+			+ sizeof(uint8_t) * MAX_BATCH_SIZE * SYNC_DATA_SIZE * 2,                              // host_out ，每个数据包输出40数据，前32位ip地址，后8位中的后4位是端口
 			MAX_SIZE_PORTS * SIZE_PORT+                   //端口到端口映射  
             MAX_SIZE_PORTS * SIZE_IP+                     //端口到ip映射
             MAX_SIZE_PORTS * sizeof(char)+
             3*sizeof(uint32_t)+							// 内外网端口加上子网掩码
-			UINT16_MAX,                       
+			UINT16_MAX,	
 			0);                                       // first time
 
     //host全局变量
@@ -168,7 +293,8 @@ static void init_main(void)
 	gcudaHostAlloc((void **)&ExternalIp, SIZE_IP);
     gcudaHostAlloc((void **)&Mask,SIZE_IP);
 	gcudaHostAlloc((void **)&IPSet,UINT16_MAX);
-	
+	gcudaHostAlloc((void **)&h2d_offset,sizeof(uint16_t) * SYNC_DATA_COUNT);
+	gcudaHostAlloc((void **)&d2h_offset,sizeof(uint16_t) * SYNC_DATA_COUNT);
 
     //cuda内存分配
     gcudaMalloc(&devPort2Port,  MAX_SIZE_PORTS * SIZE_PORT);
@@ -178,12 +304,16 @@ static void init_main(void)
     gcudaMalloc(&devExternalIp,  SIZE_IP);
     gcudaMalloc(&devMask,  SIZE_IP);
 	gcudaMalloc(&devIPSet,UINT16_MAX);
+	gcudaMalloc(&h2d_offset_d , sizeof(uint16_t) * SYNC_DATA_COUNT);
+	gcudaMalloc(&d2h_offset_d , sizeof(uint16_t) * SYNC_DATA_COUNT);
 
     //host全局变量初始化
 	(*InternalIp)=InIp;
     (*ExternalIp)=OutIp;
     (*Mask)=IPv4(255,255,0,0);
 	memset(IPSet,0,UINT16_MAX);
+	memset(h2d_offset,0,SYNC_DATA_COUNT);
+	memset(d2h_offset,0,SYNC_DATA_COUNT);
 	for (int i = 0; i < MAX_SIZE_PORTS; i ++) {
 		Port2Port[i]=0;
         Port2Ip[i]=0;
@@ -198,6 +328,9 @@ static void init_main(void)
 	gcudaMemcpyHtoD(devExternalIp, ExternalIp, SIZE_IP, SYNC, 0);
 	gcudaMemcpyHtoD(devMask, Mask, SIZE_IP, SYNC, 0);
 	gcudaMemcpyHtoD(devIPSet, IPSet, SIZE_IP, SYNC, 0);
+
+	gcudaMemcpyHtoD(h2d_offset_d, h2d_offset, SYNC_DATA_COUNT * sizeof(uint16_t), SYNC, 0);
+	gcudaMemcpyHtoD(d2h_offset_d, d2h_offset, SYNC_DATA_COUNT * sizeof(uint16_t), SYNC, 0);
 }
 
 static void init_gpu_schedule(void)
@@ -231,6 +364,12 @@ int main(int argc, char *argv[])
 	/* Initialize the app specific stuff */
 	// 此时这里应该只需要分配host数据就可以了
 	init_main();
+
+	//获取hint信息
+	onvm_framework_get_hint(&h2d_hint , &d2h_hint , 
+							h2d_offset, d2h_offset , 
+							&h2d_sync_num , 
+							&d2h_sync_num);
 	
 	/* Initialization is done, start threads */
 	onvm_framework_start_cpu(&(init_host_buf), &(user_batch_func), &(user_post_func),NULL,GPU_NF);
