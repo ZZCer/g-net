@@ -74,9 +74,12 @@
 
 #define MZ_CLIENTS "MProc_clients"
 
+//MTU最大长度
 #define MAX_PKT_LEN 1514
+#define MIN_PKT_LEN 64
 
 #include "gpu_packet.h"
+#include "gpu_packet_sync.h"
 
 #define PORT_TX_QUEUE "port_tx_q_%u"
 #define PORT_TX_QUEUES "port_tx_qs_%u_%u"
@@ -191,8 +194,8 @@
 #define MAX_CLIENTS_PER_SERVICE 1 // max number of NFs per service.
 
 #define MAX_CPU_THREAD_NUM	8     // max number of worker threads per NF
-#define MAX_ARG_SIZE		128
-#define MAX_ARG_NUM			16
+#define MAX_ARG_SIZE		256
+#define MAX_ARG_NUM			32
 #define MAX_MODULE_FILE_LEN	100
 #define MAX_KERNEL_NAME_LEN	50
 

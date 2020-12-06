@@ -696,10 +696,14 @@ onvm_framework_start_gpu(gpu_htod_t user_gpu_htod, gpu_dtoh_t user_gpu_dtoh, gpu
 }
 /* ======================================= */
 
-void onvm_framework_get_hint(uint8_t* h2d_hint,uint8_t* d2h_hint , uint16_t* h2d_offset , uint16_t* d2h_offset ,uint16_t* h2d_sync_num , uint16_t* d2h_sync_num)
+void onvm_framework_get_hint(uint8_t* h2d_hint,uint8_t* d2h_hint , uint16_t* h2d_offset , uint16_t* d2h_offset,packet_sync_global_t* sync_data)
 {
+	sync_data->payload_size = -1;
+	
 	*d2h_hint=(uint8_t)((sync_plan & 0xFF)>>3);
+	sync_data->d2h_payload_flag=((*d2h_hint & 1) == 1); 
 	*h2d_hint=(uint8_t)(((sync_plan >> 8) & 0xFF)>>3);
+	sync_data->h2d_payload_flag=((*h2d_hint & 1) == 1); 
 
 	int index = 0;
 	int sync_num = 0;
@@ -731,7 +735,7 @@ void onvm_framework_get_hint(uint8_t* h2d_hint,uint8_t* d2h_hint , uint16_t* h2d
 		}
 		tp_hint >>= 1;
 	}
-	(*h2d_sync_num) = sync_num;
+	sync_data->h2d_sync_num = sync_num;
 
 	sync_num = 0;
 	index = 0;
@@ -763,14 +767,14 @@ void onvm_framework_get_hint(uint8_t* h2d_hint,uint8_t* d2h_hint , uint16_t* h2d
 		}
 		tp_hint >>= 1;
 	}
-	(*d2h_sync_num) = sync_num;
+	sync_data->d2h_sync_num = sync_num;
 
-	printf("EAL: h2d sync number:%d d2h sync number:%d\n",(*h2d_sync_num),(*d2h_sync_num));
+	printf("EAL: h2d sync number:%d d2h sync number:%d\n",sync_data->h2d_sync_num,sync_data->d2h_sync_num);
 	printf("EAL: H2D offset:");
-	for(int i=0;i<(*h2d_sync_num);i++)
+	for(int i=0;i<(sync_data->h2d_sync_num);i++)
 		printf("%d ",h2d_offset[i]);
 	printf("\nEAL: D2H offset:");
-	for(int i=0;i<(*d2h_sync_num);i++)
+	for(int i=0;i<(sync_data->d2h_sync_num);i++)
 		printf("%d ",d2h_offset[i]);
 	printf("\n");
 }

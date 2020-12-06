@@ -49,7 +49,7 @@
  ******************************************************************************/
 
 // CLEAR: 1
-
+#include "onvm_common.h"
 #include "onvm_mgr.h"
 #include "onvm_nf.h"
 #include "onvm_stats.h"
@@ -80,9 +80,10 @@ extern uint8_t last_plan;
 
 //下面这两个数据最好从文件当中读取
 //RX_BUF_SIZE表示每个批缓冲区(用于存储gpu数据)的数据量大小 这个数据会影响rx队列的丢弃情况
-#define RX_BUF_SIZE (2048*1024)
+#define RX_BUF_SIZE (2048 * MAX_PKT_LEN)
 //RX_BUF_PKT_MAX_NUM表示缓冲区数据个数
-#define RX_BUF_PKT_MAX_NUM (RX_BUF_SIZE / 1024)
+//#define RX_BUF_PKT_MAX_NUM (RX_BUF_SIZE / 1024)
+#define RX_BUF_PKT_MAX_NUM (RX_BUF_SIZE / MAX_PKT_LEN)
 #define RX_NUM_THREADS ONVM_NUM_RX_THREADS
 #define RX_NUM_BATCHES 4
 
@@ -237,6 +238,7 @@ static size_t unload_packet(uint8_t *buffer, struct rte_mbuf *pkt) {
         datastart = (uint8_t *)udp + 8;
         udp->dgram_len = rte_cpu_to_be_16(gpkt->payload_size + 8);
     }
+    //同步payload
     if (datastart && gpkt->payload_size) {
         rte_memcpy(datastart, gpkt->payload, gpkt->payload_size);
     }

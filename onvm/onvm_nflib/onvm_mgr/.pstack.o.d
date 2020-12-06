@@ -226,5 +226,22 @@ pstack.o: /home/hjh/Raven/g-net/onvm/onvm_nflib/../onvm_mgr/pstack.c \
  /home/hjh/Raven/g-net/dpdk/x86_64-native-linuxapp-gcc/include/rte_udp.h \
  /usr/include/assert.h /usr/local/cuda/include/cuda.h \
  /home/hjh/Raven/g-net/onvm/onvm_nflib/gpu_packet.h \
+ /usr/local/cuda/include/cuda_runtime.h \
+ /usr/local/cuda/include/crt/host_config.h \
+ /usr/local/cuda/include/builtin_types.h \
+ /usr/local/cuda/include/device_types.h \
+ /usr/local/cuda/include/crt/host_defines.h \
+ /usr/local/cuda/include/driver_types.h \
+ /usr/local/cuda/include/vector_types.h \
+ /usr/local/cuda/include/surface_types.h \
+ /usr/local/cuda/include/texture_types.h \
+ /usr/local/cuda/include/library_types.h \
+ /usr/local/cuda/include/channel_descriptor.h \
+ /usr/local/cuda/include/cuda_runtime_api.h \
+ /usr/local/cuda/include/cuda_device_runtime_api.h \
+ /usr/local/cuda/include/driver_functions.h \
+ /usr/local/cuda/include/vector_functions.h \
+ /usr/local/cuda/include/vector_functions.hpp \
+ /home/hjh/Raven/g-net/onvm/onvm_nflib/gpu_packet_sync.h \
  /home/hjh/Raven/g-net/onvm/onvm_nflib/../onvm_mgr/pstack.h \
  /home/hjh/Raven/g-net/onvm/onvm_nflib/../pstack/src/parallel.h

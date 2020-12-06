@@ -7,6 +7,7 @@
 #include <rte_udp.h>
 #include <rte_config.h>
 #include "onvm_common.h"
+#include "gpu_packet_sync.h"
 
 #define MAX_PKT_LEN 1514
 
@@ -56,7 +57,7 @@ typedef void (*gpu_set_arg_t)(void *, void *, void *, int);
 //这里的hint指的是每个nf使用涉及到的h2d d2h 同步 hint
 void onvm_framework_get_hint(uint8_t* h2d_hint,uint8_t* d2h_hint , 
 							uint16_t* h2d_offset , uint16_t* d2h_offset,
-							uint16_t* sync_h2d_num , uint16_t* sync_d2h_num);
+							packet_sync_global_t* sync_data);
 
 void onvm_framework_start_cpu(init_func_t, pre_func_t, post_func_t,cpu_batch_handle,int nf_handle_tag);
 void onvm_framework_start_gpu(gpu_htod_t, gpu_dtoh_t, gpu_set_arg_t);
