@@ -56,16 +56,16 @@ static void *init_host_buf(void)
 	gcudaHostAlloc((void **)&(buf->host_out), MAX_BATCH_SIZE * sizeof(uint8_t));
 	gcudaHostAlloc((void **)&(buf->pkt_sync.hdr_sync_h2d), MAX_BATCH_SIZE * SYNC_DATA_SIZE * sizeof(uint8_t));
 	gcudaHostAlloc((void **)&(buf->pkt_sync.hdr_sync_d2h), MAX_BATCH_SIZE * SYNC_DATA_SIZE * sizeof(uint8_t));
-	gcudaHostAlloc((void **)&(buf->pkt_sync.pld_sync_h2d), MAX_BATCH_SIZE * MAX_PKT_LEN * sizeof(char));
-	gcudaHostAlloc((void **)&(buf->pkt_sync.pld_sync_d2h), MAX_BATCH_SIZE * MAX_PKT_LEN * sizeof(char));
+	gcudaHostAlloc((void **)&(buf->pkt_sync.pld_sync_h2d), MAX_BATCH_SIZE * MAX_PAYLOAD_SIZE * sizeof(char));
+	gcudaHostAlloc((void **)&(buf->pkt_sync.pld_sync_d2h), MAX_BATCH_SIZE * MAX_PAYLOAD_SIZE * sizeof(char));
 
 
 	gcudaMalloc(&(buf->device_in), MAX_BATCH_SIZE * sizeof(CUdeviceptr));
 	gcudaMalloc(&(buf->device_out), MAX_BATCH_SIZE * sizeof(uint8_t));
 	gcudaMalloc(&(buf->pkt_sync.d_hdr_sync_h2d), MAX_BATCH_SIZE * SYNC_DATA_SIZE * sizeof(uint8_t));
 	gcudaMalloc(&(buf->pkt_sync.d_hdr_sync_d2h), MAX_BATCH_SIZE * SYNC_DATA_SIZE * sizeof(uint8_t));
-	gcudaMalloc(&(buf->pkt_sync.d_pld_sync_h2d), MAX_BATCH_SIZE * MAX_PKT_LEN * sizeof(uint8_t));
-	gcudaMalloc(&(buf->pkt_sync.d_pld_sync_d2h), MAX_BATCH_SIZE * MAX_PKT_LEN * sizeof(uint8_t));
+	gcudaMalloc(&(buf->pkt_sync.d_pld_sync_h2d), MAX_BATCH_SIZE * MAX_PAYLOAD_SIZE * sizeof(uint8_t));
+	gcudaMalloc(&(buf->pkt_sync.d_pld_sync_d2h), MAX_BATCH_SIZE * MAX_PAYLOAD_SIZE * sizeof(uint8_t));
 	
 	return buf;
 }
@@ -112,8 +112,8 @@ static inline void user_batch_func(void *cur_buf, struct rte_mbuf *pkt, int pkt_
 	}
 	
 	//数据包同步
-	offset = pkt_idx * MAX_PKT_LEN;
-	for(size_t i = 0 ; i < pld_size && pkt_sync_global.h2d_payload_flag ; i++)
+	offset = pkt_idx * MAX_PAYLOAD_SIZE;
+	for(size_t i = 0 ; i < pld_size && pkt_sync_global.h2d_payload_flag != 0 ; i++)
 		*((char*)(buf->pkt_sync.pld_sync_h2d + offset + i)) = *((char*)(pld_start + i));
 	/*
 	struct ipv4_hdr* hdr=onvm_pkt_ipv4_hdr(pkt);
@@ -175,8 +175,8 @@ static inline void user_post_func(void *cur_buf, struct rte_mbuf *pkt, int pkt_i
 		}	
 	}
 		
-	offset = pkt_idx * MAX_PKT_LEN;
-	for(size_t i = 0;i < pld_size && pkt_sync_global.d2h_payload_flag ;i++)
+	offset = pkt_idx * MAX_PAYLOAD_SIZE;
+	for(size_t i = 0;i < pld_size && pkt_sync_global.d2h_payload_flag != 0 ;i++)
 		*((char*)(pld_start + i)) = *((char*)(buf->pkt_sync.pld_sync_d2h + offset + i));
 	/*
 	struct ipv4_hdr* hdr = onvm_pkt_ipv4_hdr(pkt);
@@ -192,7 +192,7 @@ static void user_gpu_htod(void *cur_buf, int job_num, unsigned int thread_id)
 	if(pkt_sync_global.h2d_sync_num!=0)
 		gcudaMemcpyHtoD(buf->pkt_sync.d_hdr_sync_h2d, buf->pkt_sync.hdr_sync_h2d, job_num  * SYNC_DATA_SIZE * sizeof(uint8_t), ASYNC, thread_id);
 	if(pkt_sync_global.h2d_payload_flag)
-		gcudaMemcpyHtoD(buf->pkt_sync.d_pld_sync_h2d, buf->pkt_sync.pld_sync_h2d, job_num  * MAX_PKT_LEN * sizeof(uint8_t), ASYNC, thread_id);
+		gcudaMemcpyHtoD(buf->pkt_sync.d_pld_sync_h2d, buf->pkt_sync.pld_sync_h2d, job_num  * MAX_PAYLOAD_SIZE * sizeof(uint8_t), ASYNC, thread_id);
 }
 
 static void user_gpu_dtoh(void *cur_buf, int job_num, unsigned int thread_id)
@@ -202,7 +202,7 @@ static void user_gpu_dtoh(void *cur_buf, int job_num, unsigned int thread_id)
 	if(pkt_sync_global.d2h_sync_num!=0)
 		gcudaMemcpyDtoH(buf->pkt_sync.hdr_sync_d2h, buf->pkt_sync.d_hdr_sync_d2h, job_num  * SYNC_DATA_SIZE * sizeof(uint8_t), ASYNC, thread_id);
 	if(pkt_sync_global.d2h_payload_flag)
-		gcudaMemcpyDtoH(buf->pkt_sync.pld_sync_d2h, buf->pkt_sync.d_pld_sync_d2h, job_num  * MAX_PKT_LEN * sizeof(uint8_t), ASYNC, thread_id);
+		gcudaMemcpyDtoH(buf->pkt_sync.pld_sync_d2h, buf->pkt_sync.d_pld_sync_d2h, job_num  * MAX_PAYLOAD_SIZE * sizeof(uint8_t), ASYNC, thread_id);
 }
 
 static void user_gpu_set_arg(void *cur_buf, void *arg_buf, void *arg_info, int job_num)
@@ -290,7 +290,7 @@ static void init_main(void)
 			+ MAX_BATCH_SIZE * sizeof(uint8_t) 			 // host_out
 			+ MAX_BATCH_SIZE * SYNC_DATA_SIZE * sizeof(char) // h2d sync data
 			+ MAX_BATCH_SIZE * SYNC_DATA_SIZE * sizeof(char) // d2h sync data
-			+ MAX_BATCH_SIZE * MAX_PKT_LEN * sizeof(char) * 2 //用于同步数据包负载	 	
+			+ MAX_BATCH_SIZE * MAX_PAYLOAD_SIZE * sizeof(char) * 2 //用于同步数据包负载	 	
 			,
 			table_item_num * sizeof(uint16_t)			//全局用于同步的两个偏移量数组
 			+ sizeof(uint16_t) * SYNC_DATA_COUNT * 2,
