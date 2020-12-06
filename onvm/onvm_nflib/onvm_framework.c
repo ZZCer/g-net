@@ -392,6 +392,7 @@ onvm_framework_cpu(int thread_id)
 
 		// rx 尽最大能力接受数据到接受不到数据了为止
 		// while (keep_running && recv_token != thread_id);
+		// 每个nf最多两个接收队列
 		assert(cl->worker_scale_finished <= ONVM_NUM_NF_QUEUES);
 		do {
 			current_rx_qid = current_rx_qid + cl->worker_scale_finished;
@@ -619,16 +620,18 @@ onvm_framework_start_gpu(gpu_htod_t user_gpu_htod, gpu_dtoh_t user_gpu_dtoh, gpu
 	RTE_LOG(INFO, APP, "GPU thread is running on lcore %u\n", cur_lcore);
 	printf("[Press Ctrl-C to quit ...]\n\n");
 
-	for (; keep_running;) {
+	for (; keep_running ;) {
 		/* 1. Wait until the batch size is reached for the first thread.
 		 * We have load balance among all threads, so their batch size are the same. */
 		RTE_LOG(DEBUG, APP, "GPU thread is launching kernel\n");
 
 		//处理d2h
+		//在单rx线程的情况下 gpu_info->thread_num 也等于1
 		for (i = 0; i < gpu_info->thread_num; i++) {
 			batch = &batch_set[i];
 			//试图获得该gpu线程对应的数据包
 			//如果获得不到响应，并且之前已经处理过数据包的话就退出循环
+			//在流回调函数执行后，才会调用下面的模块
 			if (batch->gpu_buf_id != -1 && gcudaPollForStreamSyncResponse(i)) {
 				//gpu_state指得应该是gpu_ready
 				if (batch->gpu_state == 1) {
@@ -652,6 +655,7 @@ onvm_framework_start_gpu(gpu_htod_t user_gpu_htod, gpu_dtoh_t user_gpu_dtoh, gpu
 		}
 
 		//处理h2d
+		//具体的执行细节不了解
 		gpu_buf_id = -1;
 		for (i = 0; gpu_buf_id == -1 && i < gpu_info->thread_num; i++) {
 			batch = &batch_set[i];
@@ -776,6 +780,9 @@ void onvm_framework_get_hint(uint8_t* h2d_hint,uint8_t* d2h_hint , uint16_t* h2d
 	printf("\nEAL: D2H offset:");
 	for(int i=0;i<(sync_data->d2h_sync_num);i++)
 		printf("%d ",d2h_offset[i]);
+
+	printf("\nEAL: H2D pld flag : %d  D2H pld flag : %d\n",sync_data->h2d_payload_flag,sync_data->d2h_payload_flag);
+
 	printf("\n");
 }
 

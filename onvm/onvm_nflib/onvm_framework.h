@@ -9,6 +9,7 @@
 #include "onvm_common.h"
 #include "gpu_packet_sync.h"
 
+#define MAX_PAYLOAD_SIZE 1024
 #define MAX_PKT_LEN 1514
 
 #define SYNC 0

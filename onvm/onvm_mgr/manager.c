@@ -223,6 +223,7 @@ sync_callback(CUstream cuda_stream, CUresult status, void *user_data)
 	}
 }
 
+//这个函数啥时候跑？？？
 static void
 stream_sync_callback(CUstream cuda_stream, CUresult status, void *user_data)
 {
@@ -452,6 +453,7 @@ manager_thread_main(void *arg)
 			case REQ_HOST_MALLOC:
 				/* allocate from shared memory, each thread has one chance to malloc
 				 * a large area of memory */
+				printf("Host Alloc Size:%d\n",req->size);
 				mz = rte_memzone_reserve(
 						get_buf_name(req->instance_id, req->thread_id), 
 						req->size,
@@ -766,7 +768,7 @@ manager_thread_main(void *arg)
 			case REQ_GPU_RECORD_START:
 				cl = &(clients[req->instance_id]);
 				tid = req->thread_id;
-
+				//可能出现0004错误 CUDA_ERROR_DEINITIALIZE 这是什么问题？？？
 				checkCudaErrors( cuEventRecord(cl->gpu_start[tid], cl->stream[tid]) );
 				rte_mempool_put(nf_request_pool, req);
 				break;

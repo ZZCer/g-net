@@ -80,10 +80,10 @@ extern uint8_t last_plan;
 
 //下面这两个数据最好从文件当中读取
 //RX_BUF_SIZE表示每个批缓冲区(用于存储gpu数据)的数据量大小 这个数据会影响rx队列的丢弃情况
-#define RX_BUF_SIZE (2048 * MAX_PKT_LEN)
+#define RX_BUF_SIZE (1024 * 64)
 //RX_BUF_PKT_MAX_NUM表示缓冲区数据个数
 //#define RX_BUF_PKT_MAX_NUM (RX_BUF_SIZE / 1024)
-#define RX_BUF_PKT_MAX_NUM (RX_BUF_SIZE / MAX_PKT_LEN)
+#define RX_BUF_PKT_MAX_NUM (RX_BUF_SIZE / 64)
 #define RX_NUM_THREADS ONVM_NUM_RX_THREADS
 #define RX_NUM_BATCHES 4
 
@@ -387,10 +387,12 @@ rx_gpu_thread_main(void *arg) {
         //从0开始处理rx批，每次都会
         batch = &rx_batch[tonf_id];
         if (batch->gpu_sync) {
+            //这里有个细节 GPU_BUF_SIZE * GPU_MAX_PKT_LEN只是gpu缓冲数据的内存大小，并不是说只能用这点gpu内存了
+            //我每个nf其全局变量，用来同步的变量还会使用额外的gpu内存用来存储数据
             if (gpu_pkts_head + sizeof(batch->buf) > gpu_pkts_buf + GPU_BUF_SIZE * GPU_MAX_PKT_LEN) {
                 gpu_pkts_head = gpu_pkts_buf;
             }
-            //gpu_pkts_head更像是指向头部的指针信息
+            //gpu_pkts_head是指向当前gpu内存位置的指针信息
             batch->buf_head = gpu_pkts_head;
             gpu_pkts_head += sizeof(batch->buf);
             batch->gpu_sync = 0;
@@ -404,6 +406,8 @@ rx_gpu_thread_main(void *arg) {
             }
 
             //遍历当前批中所有线程缓冲区的数据
+            //有没有rx_q_new只会决定要不要拷贝到第一个nf的rx_q队列中
+            //该拷贝给gpu还是会拷贝给gpu的
             for (i = 0; i < RX_NUM_THREADS; i++) {
                 rx_count = 0;
                 if (rx_q_new != NULL) {
@@ -427,14 +431,18 @@ rx_gpu_thread_main(void *arg) {
                     // while (rx_count == 0)
                     //     rx_count = rte_ring_enqueue_bulk(rx_q_new, (void **)batch->pkt_ptr[i], batch->pkt_cnt[i], NULL);
 
-                    //这一部操作就相当于把dpdk层获得的数据复制给了对应的nf层的缓冲区中rss helper
+                    //这一部操作就相当于把dpdk层获得的数据复制给了对应的nf层的缓冲区中rss helper\
+                    //每个nf最多有两个接收队列，因此这里需要用i % ONVM_NUM_NF_QUEUES作个取余
                     while (rx_count == 0)
                         rx_count = rte_ring_enqueue_bulk(rx_q_new[i % ONVM_NUM_NF_QUEUES], (void **)batch->pkt_ptr[i], batch->pkt_cnt[i], NULL);
                 }
+
+                //对于一个rx_batch的每个线程来说，如果该线程有数据包没有转发给第一个nf就需要丢弃的
                 if (rx_count < batch->pkt_cnt[i]) {
                     // it takes some time so performance is worse if all dropped
                     onvm_pkt_drop_batch(batch->pkt_ptr[i] + rx_count, batch->pkt_cnt[i] - rx_count);
                 }
+                //这个包里的数据转发完后，full标记重置
                 batch->full[i] = 0;
                 rx_count_total += batch->pkt_cnt[i];
                 rx_len_total += batch->pkt_cnt[i] == 0 ? 0 : batch->pkt_cnt[i] * batch->pkt_ptr[i][0]->pkt_len;
@@ -450,7 +458,10 @@ rx_gpu_thread_main(void *arg) {
         rte_atomic64_add((rte_atomic64_t *)(uintptr_t)&ports->rx_stats.rx_gpucopy, rx_count_total);
         rte_atomic64_add((rte_atomic64_t *)(uintptr_t)&ports->rx_stats.rx_len_gpucopy, rx_len_total);
 
+        //将数据转发给第一个nf和将其拷贝到gpu中是错开的，不是一个batch数据给了nf后就立马给gpu的，
+        //会等下一组数据给了nf后，再将上一组数据拷贝给gpu
         if (batch_id + 1 == tonf_id || batch_id + 1 - RX_NUM_BATCHES == tonf_id) continue;
+
         batch = &rx_batch[batch_id];
         int full = 1;
         for (i = 0; i < RX_NUM_THREADS; i++) {
