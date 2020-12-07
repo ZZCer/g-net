@@ -354,6 +354,8 @@ int main(int argc, char *argv[])
 			pkt_sync_global.h2d_sync_num,h2d_hint,
 			pkt_sync_global.d2h_sync_num,d2h_hint);
 
+	printf("\nEAL: H2D pld flag : %d  D2H pld flag : %d\n",pkt_sync_global.h2d_payload_flag,pkt_sync_global.d2h_payload_flag);
+
 	/* Initialization is done, start threads */
 	onvm_framework_start_cpu(&(init_host_buf), &(user_batch_func), &(user_post_func),NULL,GPU_NF);
 

@@ -412,7 +412,7 @@ onvm_framework_cpu(int thread_id)
 			if (num_packets == 0) {
 				starve_rx_counter++;
 				if (starve_rx_counter == STARVE_THRESHOLD) {
-					buf_id = (buf_id + 1) % NUM_BATCH_BUF;
+					//buf_id = (buf_id + 1) % NUM_BATCH_BUF;
 					RTE_LOG(INFO, APP, "Rx starving at thread %d\n", thread_id);
 				}
 			}
@@ -780,9 +780,6 @@ void onvm_framework_get_hint(uint8_t* h2d_hint,uint8_t* d2h_hint , uint16_t* h2d
 	printf("\nEAL: D2H offset:");
 	for(int i=0;i<(sync_data->d2h_sync_num);i++)
 		printf("%d ",d2h_offset[i]);
-
-	printf("\nEAL: H2D pld flag : %d  D2H pld flag : %d\n",sync_data->h2d_payload_flag,sync_data->d2h_payload_flag);
-
 	printf("\n");
 }
 

@@ -80,10 +80,10 @@ extern uint8_t last_plan;
 
 //下面这两个数据最好从文件当中读取
 //RX_BUF_SIZE表示每个批缓冲区(用于存储gpu数据)的数据量大小 这个数据会影响rx队列的丢弃情况
-#define RX_BUF_SIZE (1024 * 64)
+#define RX_BUF_SIZE 1024 * 1024
 //RX_BUF_PKT_MAX_NUM表示缓冲区数据个数
-//#define RX_BUF_PKT_MAX_NUM (RX_BUF_SIZE / 1024)
-#define RX_BUF_PKT_MAX_NUM (RX_BUF_SIZE / 64)
+//#define RX_BUF_PKT_MAX_NUM (RX_BUF_SIZE / 64)
+#define RX_BUF_PKT_MAX_NUM 1024
 #define RX_NUM_THREADS ONVM_NUM_RX_THREADS
 #define RX_NUM_BATCHES 4
 
@@ -267,6 +267,9 @@ rx_thread_main(void *arg) {
     struct thread_info *rx = (struct thread_info*)arg;
     unsigned int core_id = rte_lcore_id();
     int thread_id = rx->queue_id;
+    
+    int rx_pkt_cur_size = 0 ;
+    int rx_pkt_former_size = 0;
 
     unsigned rx_batch_id;
 
@@ -296,8 +299,11 @@ rx_thread_main(void *arg) {
                 meta->action = ONVM_NF_ACTION_TONF;
                 //得到每一个接受到的数据包的大小，这个函数最终返回的数据包大小是应用层数据大小加上gpu头部信息
                 unsigned pkt_sz = size_packet(pkts[j]);
-                
-                if (batch_head + pkt_sz > RX_BUF_SIZE) {
+
+                //需要有一套机制去在不同rx数据包的情况下，可以遍历得到同一个rx_size    
+                rx_pkt_cur_size = (*pkts[j]).pkt_len;
+
+                if (batch_head + pkt_sz > (rx_pkt_former_size + (RX_BUF_PKT_MAX_NUM - batch_cnt) * rx_pkt_cur_size) ) {
                     //rx_batch_id有何用？？？
                     //rx线程是按批来处理数据包的，一次最多处理四个，rx_batch可以理解为批处理数组？
                     unsigned next_id = (rx_batch_id + 1) % RX_NUM_BATCHES;
@@ -308,6 +314,10 @@ rx_thread_main(void *arg) {
                     rx_batch[rx_batch_id].pkt_cnt[thread_id] = batch_cnt;
                     batch_cnt = 0;
                     batch_head = 0;
+
+                    rx_pkt_former_size = 0;
+                    rx_pkt_cur_size = 0;
+
 #ifndef DROP_RX_PKTS
                     rx_batch[rx_batch_id].full[thread_id] = 1;
 #endif
@@ -322,6 +332,8 @@ rx_thread_main(void *arg) {
                 //这个buf_head本来就是指的gpu层的信息
                 onvm_pkt_gpu_ptr(pkts[j]) = rx_batch[rx_batch_id].buf_head + (pos - (uint8_t *)&rx_batch[rx_batch_id].buf);
                 
+                rx_pkt_former_size += (*pkts[j]).pkt_len;
+
                 //将已经转换成cuda模式的pkts数据包传递给用户空间，最终得到下一个数据包的头部位置 
                 batch_head += load_packet(pos, pkts[j]);
 
