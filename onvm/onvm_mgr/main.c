@@ -524,8 +524,12 @@ tx_thread_main(void *arg) {
     uint8_t multi_consumers = ONVM_NUM_NF_QUEUES < ONVM_NUM_TX_THREADS_PER_PORT;
     current_tx_qid = iterate_queue ? thread_id : (thread_id % ONVM_NUM_NF_QUEUES);
 
+    //实际上tx_thread一共要做两个事情:
+    //1. 将数据从device拷贝给host tx_batch
+    //2. 将数据转发给tx_q 也就是port
     for (;;) {
         if (sync) {
+            //gpu_packet表示有多少数据是从device中得到的
             if (gpu_packet > 0) {
                 //这个unloadable是用来干什么的
                 unsigned unloadable = 0;
