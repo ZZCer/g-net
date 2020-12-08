@@ -19,6 +19,7 @@
 #include "onvm_nflib.h"
 #include "onvm_pkt_helper.h"
 #include "onvm_framework.h"
+#include "gpu_packet_sync.h"
 
 #define NF_TAG "NAT"
 #define MAX_SIZE_PORTS 65535
@@ -36,10 +37,6 @@ static uint32_t Mask;
 static uint16_t *Port2Port;
 static uint32_t *Port2Ip;
 static char *PortSet;
-
-
-//记录了每个数据的偏移量
-uint16_t sync_offset[SYNC_DATA_COUNT]={4,4,2,2,1};
 
 //一些常用的数据量
 #define Ether_Hdr_Len 14

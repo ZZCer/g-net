@@ -12,24 +12,31 @@ extern "C" __global__ void nat(gpu_packet_t **input_buf,const int job_num,
         const uint32_t *Mask,
         uint8_t* result,
         uint8_t* IPSet,
-        
         //同步相关的参数
         uint16_t h2d_num,
         uint16_t d2h_num,
         char* sync_in,
         char* sync_out,
         uint16_t* h2d_offset,
-        uint16_t* d2h_offset
+        uint16_t* d2h_offset,
+        //同步数据包相关的参数
+        uint8_t h2d_pld_flag,
+        uint8_t d2h_pld_flag,
+        char* h2d_pld,
+        char* d2h_pld,
+        int payload_size
     ) 
 {
-    int id=threadIdx.x+blockIdx.x*blockDim.x;
+    int idx=threadIdx.x+blockIdx.x*blockDim.x;
     int step=blockDim.x*gridDim.x;
         
     //数据包首部的同步
-    sync_h2d_header(h2d_num,h2d_offset,input_buf,sync_in,id,step,job_num);
-        
+    sync_h2d_header(h2d_num,h2d_offset,input_buf,sync_in,idx,step,job_num);
+	sync_h2d_payload(h2d_pld_flag,input_buf,h2d_pld,idx,step,job_num,payload_size);
+	
     //这里采用的并行化思路是类似扫描的并行化思路
-    for(int tid=id;tid<job_num;tid+=step)
+    
+    for(int tid=idx;tid<job_num;tid+=step)
     {
         uint32_t dstIP=input_buf[tid]->dst_addr;
         uint32_t srcIP=input_buf[tid]->src_addr;
@@ -90,6 +97,7 @@ extern "C" __global__ void nat(gpu_packet_t **input_buf,const int job_num,
             }
         }
     }
-        
-    sync_d2h_header(d2h_num,d2h_offset,input_buf,sync_out,id,step,job_num);
+    
+    sync_d2h_header(d2h_num,d2h_offset,input_buf,sync_out,idx,step,job_num);
+	sync_d2h_payload(d2h_pld_flag,input_buf,d2h_pld,idx,step,job_num,payload_size);
 }   

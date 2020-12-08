@@ -115,11 +115,6 @@ static inline void user_batch_func(void *cur_buf, struct rte_mbuf *pkt, int pkt_
 	offset = pkt_idx * MAX_PAYLOAD_SIZE;
 	for(size_t i = 0 ; i < pld_size && pkt_sync_global.h2d_payload_flag != 0 ; i++)
 		*((char*)(buf->pkt_sync.pld_sync_h2d + offset + i)) = *((char*)(pld_start + i));
-	/*
-	struct ipv4_hdr* hdr=onvm_pkt_ipv4_hdr(pkt);
-	*((uint32_t*)(buf->gpu_sync + offset)) = hdr->src_addr;
-	*((uint32_t*)(buf->gpu_sync + offset +4)) = hdr->dst_addr;
-	*/
 }
 
 static inline void user_post_func(void *cur_buf, struct rte_mbuf *pkt, int pkt_idx)
@@ -269,12 +264,12 @@ static void user_gpu_set_arg(void *cur_buf, void *arg_buf, void *arg_info, int j
 	offset += sizeof(pkt_sync_global.d2h_payload_flag);
 
 	info[13] = offset;
-	rte_memcpy((uint8_t*)arg_buf + offset, &(buf->pkt_sync.pld_sync_h2d) , sizeof(buf->pkt_sync.pld_sync_h2d));
-	offset += sizeof(buf->pkt_sync.pld_sync_h2d);
+	rte_memcpy((uint8_t*)arg_buf + offset, &(buf->pkt_sync.d_pld_sync_h2d) , sizeof(buf->pkt_sync.d_pld_sync_h2d));
+	offset += sizeof(buf->pkt_sync.d_pld_sync_h2d);
 
 	info[14] = offset;
-	rte_memcpy((uint8_t*)arg_buf + offset, &(buf->pkt_sync.pld_sync_d2h) , sizeof(buf->pkt_sync.pld_sync_d2h));
-	offset += sizeof(buf->pkt_sync.pld_sync_d2h);
+	rte_memcpy((uint8_t*)arg_buf + offset, &(buf->pkt_sync.d_pld_sync_d2h) , sizeof(buf->pkt_sync.d_pld_sync_d2h));
+	offset += sizeof(buf->pkt_sync.d_pld_sync_d2h);
 
 	info[15] = offset;
 	rte_memcpy((uint8_t*)arg_buf + offset, &(pkt_sync_global.payload_size) , sizeof(pkt_sync_global.payload_size));

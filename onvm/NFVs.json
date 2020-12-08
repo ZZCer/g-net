@@ -3,7 +3,7 @@
     "NFV_Number":"1",
     "NFVs":[
         {
-            "Name":"NF_ROUTER",
+            "Name":"NF_NAT",
             "CR_Hint":"0",
             "GR_Hint":"11110000",
             "CW_Hint":"0",

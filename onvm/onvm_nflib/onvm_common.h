@@ -370,6 +370,7 @@ struct gpu_schedule_info {
 	unsigned int line_start_batch[MAX_PARA_NUM];
 	unsigned int para_num;
 
+	//cuda kernel的参数最大限制就是256
 	char args[MAX_CPU_THREAD_NUM][MAX_ARG_SIZE];
 	void *arg_info[MAX_CPU_THREAD_NUM][MAX_ARG_NUM + 1];
 
