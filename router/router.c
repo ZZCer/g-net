@@ -54,19 +54,22 @@ static void *init_host_buf(void)
 
 	gcudaHostAlloc((void **)&(buf->host_in), MAX_BATCH_SIZE * sizeof(CUdeviceptr));
 	gcudaHostAlloc((void **)&(buf->host_out), MAX_BATCH_SIZE * sizeof(uint8_t));
-	gcudaHostAlloc((void **)&(buf->pkt_sync.hdr_sync_h2d), MAX_BATCH_SIZE * SYNC_DATA_SIZE * sizeof(uint8_t));
-	gcudaHostAlloc((void **)&(buf->pkt_sync.hdr_sync_d2h), MAX_BATCH_SIZE * SYNC_DATA_SIZE * sizeof(uint8_t));
-	gcudaHostAlloc((void **)&(buf->pkt_sync.pld_sync_h2d), MAX_BATCH_SIZE * MAX_PAYLOAD_SIZE * sizeof(char));
-	gcudaHostAlloc((void **)&(buf->pkt_sync.pld_sync_d2h), MAX_BATCH_SIZE * MAX_PAYLOAD_SIZE * sizeof(char));
-
 
 	gcudaMalloc(&(buf->device_in), MAX_BATCH_SIZE * sizeof(CUdeviceptr));
 	gcudaMalloc(&(buf->device_out), MAX_BATCH_SIZE * sizeof(uint8_t));
-	gcudaMalloc(&(buf->pkt_sync.d_hdr_sync_h2d), MAX_BATCH_SIZE * SYNC_DATA_SIZE * sizeof(uint8_t));
-	gcudaMalloc(&(buf->pkt_sync.d_hdr_sync_d2h), MAX_BATCH_SIZE * SYNC_DATA_SIZE * sizeof(uint8_t));
-	gcudaMalloc(&(buf->pkt_sync.d_pld_sync_h2d), MAX_BATCH_SIZE * MAX_PAYLOAD_SIZE * sizeof(uint8_t));
-	gcudaMalloc(&(buf->pkt_sync.d_pld_sync_d2h), MAX_BATCH_SIZE * MAX_PAYLOAD_SIZE * sizeof(uint8_t));
-	
+
+	if(pkt_sync_global.h2d_sync_size != 0)
+	{
+		gcudaHostAlloc((void **)&(buf->pkt_sync.hdr_sync_h2d), MAX_BATCH_SIZE * pkt_sync_global.h2d_sync_size * sizeof(uint8_t));
+		gcudaMalloc(&(buf->pkt_sync.d_hdr_sync_h2d), MAX_BATCH_SIZE * pkt_sync_global.h2d_sync_size * sizeof(uint8_t));
+	}
+
+	if(pkt_sync_global.d2h_sync_size != 0)
+	{
+		gcudaHostAlloc((void **)&(buf->pkt_sync.hdr_sync_d2h), MAX_BATCH_SIZE * pkt_sync_global.d2h_sync_size * sizeof(uint8_t));	
+		gcudaMalloc(&(buf->pkt_sync.d_hdr_sync_d2h), MAX_BATCH_SIZE * pkt_sync_global.d2h_sync_size * sizeof(uint8_t));
+	}
+
 	return buf;
 }
 
@@ -76,14 +79,11 @@ static inline void user_batch_func(void *cur_buf, struct rte_mbuf *pkt, int pkt_
 {
 	buf_t *buf = (buf_t *)cur_buf;
 
-	//获取payload_size，目前系统中的数据包大小都是固定数据
-	char* pld_start = onvm_pkt_payload(pkt,&pkt_sync_global.payload_size);
-	uint32_t pld_size = pkt_sync_global.payload_size;
-
 	buf->host_in[pkt_idx] = onvm_pkt_gpu_ptr(pkt);
 
 	//首部同步
-	int offset = pkt_idx * SYNC_DATA_SIZE;
+	int offset = pkt_idx * pkt_sync_global.h2d_sync_size;
+	int offset_tp = 0;
 
 	struct ipv4_hdr* ip_h=onvm_pkt_ipv4_hdr(pkt);
 	struct tcp_hdr* tcp_h=onvm_pkt_tcp_hdr(pkt);
@@ -103,18 +103,24 @@ static inline void user_batch_func(void *cur_buf, struct rte_mbuf *pkt, int pkt_
 		dstPort = udp_h->dst_port;
 	}
 	
+	//hdr_sync_h2d/d2h存入与解析的形式需要修改
+	//把hdr同步数据变紧凑后会出现问一个问题 我原本是通过位置来判断当前偏移量值是要用于同步的哪个模块的
+	//变紧凑后位置就失效了，但是依旧可以通过全局的偏移量数组来判断他的位置
+	//这也就意味着，偏移量数组(FIFL的)的每一项需要和hdr同步字节数组严格对应
 	for(size_t i=0 ; i < pkt_sync_global.h2d_sync_num ; i++)
 	{
+		//哪怕不按位置对应，也需要一个偏移量数组用来确定我到底要同步啥
 		if(h2d_offset[i] <= 4)			
-			*((uint32_t*)(buf->pkt_sync.hdr_sync_h2d + offset + h2d_offset[i])) = ( (h2d_offset[i] == 4) ? ip_h->dst_addr : ip_h->src_addr );
-		else if(h2d_offset[i] <= 10)			
-			*((uint16_t*)(buf->pkt_sync.hdr_sync_h2d  + offset + h2d_offset[i])) = (uint16_t)( (h2d_offset[i] == 10) ? dstPort : srcPort );
+		{
+			*((uint32_t*)(buf->pkt_sync.hdr_sync_h2d + offset + offset_tp)) = ( (h2d_offset[i] == 4) ? ip_h->dst_addr : ip_h->src_addr );
+			offset_tp += 4;
+		}
+		else if(h2d_offset[i] <= 10)	
+		{
+			*((uint16_t*)(buf->pkt_sync.hdr_sync_h2d + offset + offset_tp)) = (uint16_t)( (h2d_offset[i] == 10) ? dstPort : srcPort );
+			offset_tp += 2;
+		}		
 	}
-	
-	//数据包同步
-	offset = pkt_idx * MAX_PAYLOAD_SIZE;
-	for(size_t i = 0 ; i < pld_size && pkt_sync_global.h2d_payload_flag != 0 ; i++)
-		*((char*)(buf->pkt_sync.pld_sync_h2d + offset + i)) = *((char*)(pld_start + i));
 }
 
 static inline void user_post_func(void *cur_buf, struct rte_mbuf *pkt, int pkt_idx)
@@ -123,12 +129,11 @@ static inline void user_post_func(void *cur_buf, struct rte_mbuf *pkt, int pkt_i
 
 	/* Write the port */
 	pkt->port = buf->host_out[pkt_idx];
-	int pld_size = 0;
-	char* pld_start = onvm_pkt_payload(pkt , &pld_size);
 
 	//这里面套个switch就结束了
 	//在d2h后，数据就已经从device获取到了
-	uint32_t offset=pkt_idx*SYNC_DATA_SIZE;
+	int offset=pkt_idx*pkt_sync_global.d2h_sync_size;
+	int offset_tp=0;
 
 	struct ipv4_hdr* ip_h=onvm_pkt_ipv4_hdr(pkt);
 	struct tcp_hdr* tcp_h=onvm_pkt_tcp_hdr(pkt);
@@ -148,7 +153,6 @@ static inline void user_post_func(void *cur_buf, struct rte_mbuf *pkt, int pkt_i
 		dstPort = &udp_h->dst_port;
 	}
 	
-
 	//根据d2h_hint，进行遍历，将其中每个位的数据解析出来
 	//下面这个代码是有点问题的 会seg fault
 	for(size_t i = 0 ; i < pkt_sync_global.d2h_sync_num ; i++)
@@ -157,27 +161,20 @@ static inline void user_post_func(void *cur_buf, struct rte_mbuf *pkt, int pkt_i
 		{
 			
 			if(d2h_offset[i] == 4)
-				ip_h->dst_addr = *((uint32_t*)(buf->pkt_sync.hdr_sync_d2h + offset + d2h_offset[i]));
+				ip_h->dst_addr = *((uint32_t*)(buf->pkt_sync.hdr_sync_d2h + offset + offset_tp));
 			else
-				ip_h->src_addr = *((uint32_t*)(buf->pkt_sync.hdr_sync_d2h + offset + d2h_offset[i]));
+				ip_h->src_addr = *((uint32_t*)(buf->pkt_sync.hdr_sync_d2h + offset + offset_tp));
+			offset_tp += 4;
 		}
 		else if(d2h_offset[i] <= 10)
 		{
 			if(d2h_offset[i] == 10)
-				*dstPort = *((uint16_t*)(buf->pkt_sync.hdr_sync_d2h + offset + d2h_offset[i]));
+				*dstPort = *((uint16_t*)(buf->pkt_sync.hdr_sync_d2h + offset + offset_tp));
 			else
-				*srcPort = *((uint16_t*)(buf->pkt_sync.hdr_sync_d2h + offset + d2h_offset[i]));
+				*srcPort = *((uint16_t*)(buf->pkt_sync.hdr_sync_d2h + offset + offset_tp));
+			offset_tp += 2;
 		}	
 	}
-		
-	offset = pkt_idx * MAX_PAYLOAD_SIZE;
-	for(size_t i = 0;i < pld_size && pkt_sync_global.d2h_payload_flag != 0 ;i++)
-		*((char*)(pld_start + i)) = *((char*)(buf->pkt_sync.pld_sync_d2h + offset + i));
-	/*
-	struct ipv4_hdr* hdr = onvm_pkt_ipv4_hdr(pkt);
-	hdr->src_addr = *((uint32_t*)buf->cpu_sync);
-	hdr->dst_addr = *((uint32_t*)buf->cpu_sync + 4);
-	*/
 }
 
 static void user_gpu_htod(void *cur_buf, int job_num, unsigned int thread_id)
@@ -185,9 +182,7 @@ static void user_gpu_htod(void *cur_buf, int job_num, unsigned int thread_id)
 	buf_t *buf = (buf_t *)cur_buf;
 	gcudaMemcpyHtoD(buf->device_in, buf->host_in, job_num * sizeof(CUdeviceptr), ASYNC, thread_id);
 	if(pkt_sync_global.h2d_sync_num!=0)
-		gcudaMemcpyHtoD(buf->pkt_sync.d_hdr_sync_h2d, buf->pkt_sync.hdr_sync_h2d, job_num  * SYNC_DATA_SIZE * sizeof(uint8_t), ASYNC, thread_id);
-	if(pkt_sync_global.h2d_payload_flag)
-		gcudaMemcpyHtoD(buf->pkt_sync.d_pld_sync_h2d, buf->pkt_sync.pld_sync_h2d, job_num  * MAX_PAYLOAD_SIZE * sizeof(uint8_t), ASYNC, thread_id);
+		gcudaMemcpyHtoD(buf->pkt_sync.d_hdr_sync_h2d, buf->pkt_sync.hdr_sync_h2d, job_num  * pkt_sync_global.h2d_sync_size * sizeof(uint8_t), ASYNC, thread_id);
 }
 
 static void user_gpu_dtoh(void *cur_buf, int job_num, unsigned int thread_id)
@@ -195,9 +190,7 @@ static void user_gpu_dtoh(void *cur_buf, int job_num, unsigned int thread_id)
 	buf_t *buf = (buf_t *)cur_buf;
 	gcudaMemcpyDtoH(buf->host_out, buf->device_out, job_num * sizeof(uint8_t), ASYNC, thread_id);
 	if(pkt_sync_global.d2h_sync_num!=0)
-		gcudaMemcpyDtoH(buf->pkt_sync.hdr_sync_d2h, buf->pkt_sync.d_hdr_sync_d2h, job_num  * SYNC_DATA_SIZE * sizeof(uint8_t), ASYNC, thread_id);
-	if(pkt_sync_global.d2h_payload_flag)
-		gcudaMemcpyDtoH(buf->pkt_sync.pld_sync_d2h, buf->pkt_sync.d_pld_sync_d2h, job_num  * MAX_PAYLOAD_SIZE * sizeof(uint8_t), ASYNC, thread_id);
+		gcudaMemcpyDtoH(buf->pkt_sync.hdr_sync_d2h, buf->pkt_sync.d_hdr_sync_d2h, job_num  * pkt_sync_global.d2h_sync_size * sizeof(uint8_t), ASYNC, thread_id);
 }
 
 static void user_gpu_set_arg(void *cur_buf, void *arg_buf, void *arg_info, int job_num)
@@ -206,7 +199,7 @@ static void user_gpu_set_arg(void *cur_buf, void *arg_buf, void *arg_info, int j
 	buf_t *buf = (buf_t *)cur_buf;
 
 	//tmd 这个参数忘记改 花了我一晚上时间debug
-	uint64_t arg_num = 15;
+	uint64_t arg_num = 12;
 	uint64_t offset = 0;
 
 	info[0] = arg_num;
@@ -254,26 +247,13 @@ static void user_gpu_set_arg(void *cur_buf, void *arg_buf, void *arg_info, int j
 	rte_memcpy((uint8_t*)arg_buf + offset, &(pkt_sync_global.d2h_offset_d) , sizeof(pkt_sync_global.d2h_offset_d));
 	offset += sizeof(pkt_sync_global.d2h_offset_d);
 
-	//针对数据包来说的同步参数
 	info[11] = offset;
-	rte_memcpy((uint8_t*)arg_buf + offset, &(pkt_sync_global.h2d_payload_flag) , sizeof(pkt_sync_global.h2d_payload_flag));
-	offset += sizeof(pkt_sync_global.h2d_payload_flag);
+	rte_memcpy((uint8_t*)arg_buf + offset, &(pkt_sync_global.h2d_sync_size) , sizeof(pkt_sync_global.h2d_sync_size));
+	offset += sizeof(pkt_sync_global.h2d_sync_size);
 
 	info[12] = offset;
-	rte_memcpy((uint8_t*)arg_buf + offset, &(pkt_sync_global.d2h_payload_flag) , sizeof(pkt_sync_global.h2d_payload_flag));
-	offset += sizeof(pkt_sync_global.d2h_payload_flag);
-
-	info[13] = offset;
-	rte_memcpy((uint8_t*)arg_buf + offset, &(buf->pkt_sync.d_pld_sync_h2d) , sizeof(buf->pkt_sync.d_pld_sync_h2d));
-	offset += sizeof(buf->pkt_sync.d_pld_sync_h2d);
-
-	info[14] = offset;
-	rte_memcpy((uint8_t*)arg_buf + offset, &(buf->pkt_sync.d_pld_sync_d2h) , sizeof(buf->pkt_sync.d_pld_sync_d2h));
-	offset += sizeof(buf->pkt_sync.d_pld_sync_d2h);
-
-	info[15] = offset;
-	rte_memcpy((uint8_t*)arg_buf + offset, &(pkt_sync_global.payload_size) , sizeof(pkt_sync_global.payload_size));
-	offset += sizeof(pkt_sync_global.payload_size);
+	rte_memcpy((uint8_t*)arg_buf + offset, &(pkt_sync_global.d2h_sync_size) , sizeof(pkt_sync_global.d2h_sync_size));
+	offset += sizeof(pkt_sync_global.d2h_sync_size);
 }
 
 static void init_main(void)
@@ -284,16 +264,11 @@ static void init_main(void)
 	gcudaAllocSize(MAX_BATCH_SIZE * sizeof(CUdeviceptr)  // host_in
 			+ MAX_BATCH_SIZE * sizeof(uint8_t) 			 // host_out
 			+ MAX_BATCH_SIZE * SYNC_DATA_SIZE * sizeof(char) // h2d sync data
-			+ MAX_BATCH_SIZE * SYNC_DATA_SIZE * sizeof(char) // d2h sync data
-			+ MAX_BATCH_SIZE * MAX_PAYLOAD_SIZE * sizeof(char) * 2 //用于同步数据包负载	 	
+			+ MAX_BATCH_SIZE * SYNC_DATA_SIZE * sizeof(char) // d2h sync data 	
 			,
 			table_item_num * sizeof(uint16_t)			//全局用于同步的两个偏移量数组
 			+ sizeof(uint16_t) * SYNC_DATA_COUNT * 2,
 			0);                                       // first time
-
-	gcudaMalloc(&tbl24_d, table_item_num * sizeof(uint16_t));
-	gcudaMalloc(&pkt_sync_global.h2d_offset_d , sizeof(uint16_t) * SYNC_DATA_COUNT);
-	gcudaMalloc(&pkt_sync_global.d2h_offset_d , sizeof(uint16_t) * SYNC_DATA_COUNT);
 
 	gcudaHostAlloc((void **)&tbl24_h, table_item_num * sizeof(uint16_t));
 	gcudaHostAlloc((void **)&h2d_offset , sizeof(uint16_t) * SYNC_DATA_COUNT);
@@ -303,8 +278,18 @@ static void init_main(void)
 	for (i = 0; i < table_item_num; i ++) {
 		tbl24_h[i] = i & (0xffff);
 	}
+
 	memset(h2d_offset,0,SYNC_DATA_COUNT);
 	memset(d2h_offset,0,SYNC_DATA_COUNT);
+
+	//因为需要先等两个offset分配完后，才能通过get_hint去获取数据
+	onvm_framework_get_hint(&h2d_hint , &d2h_hint , 
+						h2d_offset, d2h_offset , 
+						&pkt_sync_global);
+
+	gcudaMalloc(&tbl24_d, table_item_num * sizeof(uint16_t));
+	gcudaMalloc(&pkt_sync_global.h2d_offset_d , sizeof(uint16_t) * SYNC_DATA_COUNT);
+	gcudaMalloc(&pkt_sync_global.d2h_offset_d , sizeof(uint16_t) * SYNC_DATA_COUNT);
 
 	gcudaMemcpyHtoD(tbl24_d, tbl24_h, table_item_num * sizeof(uint16_t), SYNC, 0);
 	gcudaMemcpyHtoD(pkt_sync_global.h2d_offset_d, h2d_offset, SYNC_DATA_COUNT * sizeof(uint16_t), SYNC, 0);
@@ -339,10 +324,6 @@ int main(int argc, char *argv[])
 	/* ================================= */
 	/* Initialize the app specific stuff */
 	//获取hint信息
-	onvm_framework_get_hint(&h2d_hint , &d2h_hint , 
-							h2d_offset, d2h_offset , 
-							&pkt_sync_global);
-
 	init_main();
 
 	printf("EAL: h2d_sync_num:%d h2d_hint:%d \nEAL: d2h_sync_num:%d d2h_hint:%d\n",

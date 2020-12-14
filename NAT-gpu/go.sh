@@ -21,5 +21,5 @@ done
 shift 3
 
 #exec sudo $SCRIPTPATH/build/nat -l $cpu_list -n 4 --proc-type=secondary --base-virtaddr=0x7fffdc200000 --log-level 7 -- -k $thread_num
-exec sudo $SCRIPTPATH/build/nat -l 2,3 -n 4 --proc-type=secondary --log-level 7 -- -k 1
+exec sudo $SCRIPTPATH/build/nat -l 0,2 -n 4 --proc-type=secondary --log-level 7 -- -k 1
 
