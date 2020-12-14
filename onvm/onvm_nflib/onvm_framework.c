@@ -206,12 +206,18 @@ static int onvm_framework_cpu_only(int thread_id){
 			tx_q = NULL;
 		else
 			tx_q = *(struct rte_ring * const volatile*)&cl->tx_qs[batch->queue_id];
-		int sent_packets = 0;
 
+		int sent_packets = 0;
 		
 		if (likely(tx_q != NULL && num_packets != 0)) {
 			//rte_ring_enqueue生产者函数，用这个函数来转发？
 			// sent_packets = rte_ring_enqueue_burst(tx_q, (void **)batch->pkt_ptr[buf_id], num_packets, NULL);
+			/*
+			do{
+				sent_packets += rte_ring_enqueue_bulk(tx_q, (void **)batch->pkt_ptr[buf_id], num_packets - sent_packets, NULL);
+
+			}while(sent_packets < num_packets);
+			*/
 			sent_packets = rte_ring_enqueue_bulk(tx_q, (void **)batch->pkt_ptr[buf_id], num_packets, NULL);
 		}
 
@@ -255,7 +261,6 @@ static int onvm_framework_cpu_only(int thread_id){
 			if (num_packets == 0) {
 				starve_rx_counter++;
 				if (starve_rx_counter == STARVE_THRESHOLD) {
-					buf_id = (buf_id + 1) % NUM_BATCH_BUF;
 					RTE_LOG(INFO, APP, "Rx starving at thread %d\n", thread_id);
 				}
 			}
@@ -412,7 +417,6 @@ onvm_framework_cpu(int thread_id)
 			if (num_packets == 0) {
 				starve_rx_counter++;
 				if (starve_rx_counter == STARVE_THRESHOLD) {
-					//buf_id = (buf_id + 1) % NUM_BATCH_BUF;
 					RTE_LOG(INFO, APP, "Rx starving at thread %d\n", thread_id);
 				}
 			}
@@ -703,11 +707,11 @@ onvm_framework_start_gpu(gpu_htod_t user_gpu_htod, gpu_dtoh_t user_gpu_dtoh, gpu
 void onvm_framework_get_hint(uint8_t* h2d_hint,uint8_t* d2h_hint , uint16_t* h2d_offset , uint16_t* d2h_offset,packet_sync_global_t* sync_data)
 {
 	sync_data->payload_size = -1;
-	
+	sync_data->h2d_sync_size = 0;
+	sync_data->d2h_sync_size = 0;
+
 	*d2h_hint=(uint8_t)((sync_plan & 0xFF)>>3);
-	sync_data->d2h_payload_flag=((*d2h_hint & 1) == 1); 
 	*h2d_hint=(uint8_t)(((sync_plan >> 8) & 0xFF)>>3);
-	sync_data->h2d_payload_flag=((*h2d_hint & 1) == 1); 
 
 	int index = 0;
 	int sync_num = 0;
@@ -722,18 +726,22 @@ void onvm_framework_get_hint(uint8_t* h2d_hint,uint8_t* d2h_hint , uint16_t* h2d
 			{
 				case SYNC_SOURCE_IP:
 					h2d_offset[sync_num-1] = 0;
+					sync_data->h2d_sync_size += 4;
 					break;
 				case SYNC_DEST_IP:
 					h2d_offset[sync_num-1] = 4;
+					sync_data->h2d_sync_size += 4;
 					break;
 				case SYNC_SOURCE_PORT:
 					h2d_offset[sync_num-1] = 8;
+					sync_data->h2d_sync_size += 2;
 					break;
 				case SYNC_DEST_PORT:
-					h2d_offset[sync_num-1] = 10;		
+					h2d_offset[sync_num-1] = 10;
+					sync_data->h2d_sync_size += 2;		
 					break;
-				case SYNC_TCP_FLAGS:
-					h2d_offset[sync_num-1] = 12;
+				case SYNC_PAYLOAD:
+					sync_data->d2h_payload_flag=((*h2d_hint & 1) == 1); 
 					break;
 			}
 		}
@@ -754,18 +762,22 @@ void onvm_framework_get_hint(uint8_t* h2d_hint,uint8_t* d2h_hint , uint16_t* h2d
 			{
 				case SYNC_SOURCE_IP:
 					d2h_offset[sync_num-1] = 0;
+					sync_data->d2h_sync_size += 4;
 					break;
 				case SYNC_DEST_IP:
 					d2h_offset[sync_num-1] = 4;
+					sync_data->d2h_sync_size += 4;
 					break;
 				case SYNC_SOURCE_PORT:
 					d2h_offset[sync_num-1] = 8;
+					sync_data->d2h_sync_size += 2;
 					break;
 				case SYNC_DEST_PORT:
-					d2h_offset[sync_num-1] = 10;		
+					d2h_offset[sync_num-1] = 10;	
+					sync_data->d2h_sync_size += 2;	
 					break;
-				case SYNC_TCP_FLAGS:
-					d2h_offset[sync_num-1] = 12;
+				case SYNC_PAYLOAD:
+					sync_data->d2h_payload_flag=((*d2h_hint & 1) == 1); 
 					break;
 			}
 		}

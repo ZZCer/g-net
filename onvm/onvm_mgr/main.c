@@ -82,7 +82,7 @@ extern uint8_t last_plan;
 //RX_BUF_SIZE表示每个批缓冲区(用于存储gpu数据)的数据量大小 这个数据会影响rx队列的丢弃情况
 #define RX_BUF_SIZE 1024 * 1024
 //RX_BUF_PKT_MAX_NUM表示缓冲区数据个数
-//#define RX_BUF_PKT_MAX_NUM (RX_BUF_SIZE / 64)
+//#define RX_BUF_PKT_MAX_NUM (RX_BUF_SIZE / 32)
 #define RX_BUF_PKT_MAX_NUM 1024
 #define RX_NUM_THREADS ONVM_NUM_RX_THREADS
 #define RX_NUM_BATCHES 4
@@ -303,7 +303,9 @@ rx_thread_main(void *arg) {
                 //需要有一套机制去在不同rx数据包的情况下，可以遍历得到同一个rx_size    
                 rx_pkt_cur_size = (*pkts[j]).pkt_len;
 
-                if (batch_head + pkt_sz > (rx_pkt_former_size + (RX_BUF_PKT_MAX_NUM - batch_cnt) * rx_pkt_cur_size) ) {
+                //if (batch_head + pkt_sz > RX_BUF_SIZE )  
+                if (batch_head + pkt_sz >  (rx_pkt_former_size + (RX_BUF_PKT_MAX_NUM - batch_cnt) * rx_pkt_cur_size) )
+                {
                     //rx_batch_id有何用？？？
                     //rx线程是按批来处理数据包的，一次最多处理四个，rx_batch可以理解为批处理数组？
                     unsigned next_id = (rx_batch_id + 1) % RX_NUM_BATCHES;
