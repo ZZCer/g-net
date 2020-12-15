@@ -200,6 +200,7 @@ static inline void user_post_func(void *cur_buf, struct rte_mbuf *pkt, int pkt_i
 static void user_gpu_htod(void *cur_buf, int job_num, unsigned int thread_id)
 {
 	buf_t *buf = (buf_t *)cur_buf;
+	//2048 * 8
 	gcudaMemcpyHtoD(buf->device_in, buf->host_in, job_num * sizeof(CUdeviceptr), ASYNC, thread_id);
 	if(pkt_sync_global.h2d_sync_num!=0)
 		gcudaMemcpyHtoD(buf->pkt_sync.d_hdr_sync_h2d, buf->pkt_sync.hdr_sync_h2d, job_num  * pkt_sync_global.h2d_sync_size * sizeof(uint8_t), ASYNC, thread_id);

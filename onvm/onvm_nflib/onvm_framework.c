@@ -236,6 +236,7 @@ static int onvm_framework_cpu_only(int thread_id){
 		cl->stats.tx_drop += num_packets - sent_packets;
 		cl->stats.act_drop += cur_buf_size - num_packets;
 		cl->stats.cpu_time += diff;
+		cl->stats.batch_cnt++;
 		rte_spinlock_unlock(&cl->stats.update_lock);
 
 		clock_gettime(CLOCK_MONOTONIC, &start);
@@ -328,7 +329,7 @@ onvm_framework_cpu(int thread_id)
 			starve_gpu_counter++;
 			if (starve_gpu_counter == STARVE_THRESHOLD) {
 				//当前项没有处理完时，选择循环选择下一个缓冲区
-				buf_id = (buf_id + 1) % NUM_BATCH_BUF;
+				//buf_id = (buf_id + 1) % NUM_BATCH_BUF;
 				RTE_LOG(INFO, APP, "GPU starving\n");
 			}
 			continue;
@@ -391,6 +392,7 @@ onvm_framework_cpu(int thread_id)
 		cl->stats.tx_drop += num_packets - sent_packets;
 		cl->stats.act_drop += cur_buf_size - num_packets;
 		cl->stats.cpu_time += diff;
+		cl->stats.postprocess_time += diff;
 		rte_spinlock_unlock(&cl->stats.update_lock);
 
 		clock_gettime(CLOCK_MONOTONIC, &start);
@@ -474,6 +476,7 @@ onvm_framework_cpu(int thread_id)
 		cl->stats.rx += cur_buf_size;		
 		cl->stats.rx_datalen += rx_datalen_sample;
 		cl->stats.cpu_time += diff;
+		cl->stats.preprocess_time += diff;
 		rte_spinlock_unlock(&cl->stats.update_lock);
 
 		// launch kernel
@@ -610,6 +613,9 @@ onvm_framework_start_gpu(gpu_htod_t user_gpu_htod, gpu_dtoh_t user_gpu_dtoh, gpu
 	unsigned int i;
 	nfv_batch_t *batch;
 
+	struct timespec start, end;
+	double diff;
+
 	/* Listen for ^C and docker stop so we can exit gracefully */
 	signal(SIGINT, onvm_nflib_handle_signal);
 
@@ -647,6 +653,7 @@ onvm_framework_start_gpu(gpu_htod_t user_gpu_htod, gpu_dtoh_t user_gpu_dtoh, gpu
 					//自旋锁更新缓冲区数据
 					rte_spinlock_lock(&cl->stats.update_lock);
 					cl->stats.batch_size += batch->buf_size[batch->gpu_buf_id];
+					//batch cnt表示批数量
 					cl->stats.batch_cnt++;
 					rte_spinlock_unlock(&cl->stats.update_lock);
 					batch->gpu_state = 0;

@@ -130,6 +130,10 @@ onvm_stats_clear_client(uint16_t i) {
 	clients[i].stats.gpu_time = 0;
 	clients[i].stats.kernel_time = 0;
 	clients[i].stats.kernel_cnt = 0;
+	clients[i].stats.htod_time = 0;
+	clients[i].stats.dtoh_time = 0;
+	clients[i].stats.preprocess_time = 0;
+	clients[i].stats.postprocess_time = 0;
 	rte_spinlock_unlock(&clients[i].stats.update_lock);
 }
 
@@ -198,7 +202,7 @@ onvm_stats_display_ports(unsigned difftime) {
 				tx_gbps);
 
 		if(tx_gbps != 0)
-			record_data(rx_gbps,tx_gbps);
+			record_tput_data(rx_gbps,tx_gbps);
 
 		printf("Tx GPU Batch: cnt %9"PRIu64", pkt %9"PRIu64", avg pkt %f\n",
 				ports->tx_stats.gpu_batch_cnt[ports->id[i]],
@@ -284,14 +288,31 @@ onvm_stats_display_clients(void) {
 					clients[i].stats.batch_cnt);
 		}
 
+		double gpu_overhead = clients[i].stats.gpu_time/clients[i].stats.batch_cnt - clients[i].stats.kernel_time/clients[i].stats.batch_cnt;
+		double cpu_overhead = clients[i].stats.cpu_time/clients[i].stats.batch_cnt;
+
 		printf("Average GPU execution time in NF: %.2lf us (kernel:  %.2lf us, overhead: %.2lf us), CPU: %.2lf us, batch count is %ld\n",
 				clients[i].stats.gpu_time/clients[i].stats.batch_cnt,
 				clients[i].stats.kernel_time/clients[i].stats.batch_cnt,
-				clients[i].stats.gpu_time/clients[i].stats.batch_cnt - clients[i].stats.kernel_time/clients[i].stats.batch_cnt,
-				clients[i].stats.cpu_time/clients[i].stats.batch_cnt,
+				gpu_overhead,
+				cpu_overhead,
 				clients[i].stats.batch_cnt);
-	}
 
+		double preprocess_lcy = clients[i].stats.preprocess_time/clients[i].stats.batch_cnt;
+		double h2d_lcy = clients[i].stats.htod_time/clients[i].stats.batch_cnt;
+		double kernel_lcy = clients[i].stats.kernel_time/clients[i].stats.batch_cnt;
+		double d2h_lcy = clients[i].stats.dtoh_time/clients[i].stats.batch_cnt;
+		double postprocess_lcy = clients[i].stats.postprocess_time/clients[i].stats.batch_cnt;
+
+		printf("Average execution time in each part of NF pipline: PreProcess: %.2lf us, HtoD: %.2lf us, Kernel: %.2lf us, DtoH: %.2lf us, PostProcess: %.2lf us\n",
+				preprocess_lcy,h2d_lcy,kernel_lcy,d2h_lcy,postprocess_lcy
+		);
+
+		//因为对于cpu_only来说，只能递增tx，所以统一用tx判断
+		if(tx > 0)
+			record_latency_data(clients[i].instance_id, get_nf_name(clients[i].info->service_id),preprocess_lcy,h2d_lcy,kernel_lcy,d2h_lcy,postprocess_lcy,gpu_overhead,cpu_overhead);
+
+	}
 	printf("\n");
 }
 

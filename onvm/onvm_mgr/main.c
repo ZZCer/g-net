@@ -270,6 +270,7 @@ rx_thread_main(void *arg) {
     
     int rx_pkt_cur_size = 0 ;
     int rx_pkt_former_size = 0;
+    int buffer_size = 0;
 
     unsigned rx_batch_id;
 
@@ -301,10 +302,10 @@ rx_thread_main(void *arg) {
                 unsigned pkt_sz = size_packet(pkts[j]);
 
                 //需要有一套机制去在不同rx数据包的情况下，可以遍历得到同一个rx_size    
-                rx_pkt_cur_size = (*pkts[j]).pkt_len;
-
-                //if (batch_head + pkt_sz > RX_BUF_SIZE )  
-                if (batch_head + pkt_sz >  (rx_pkt_former_size + (RX_BUF_PKT_MAX_NUM - batch_cnt) * rx_pkt_cur_size) )
+                rx_pkt_cur_size = (*pkts[j]).pkt_len;  
+                buffer_size = rx_pkt_former_size + (RX_BUF_PKT_MAX_NUM - batch_cnt) * rx_pkt_cur_size;
+                //if (batch_head + pkt_sz > RX_BUF_SIZE )
+                if (batch_head + pkt_sz >  buffer_size)             
                 {
                     //rx_batch_id有何用？？？
                     //rx线程是按批来处理数据包的，一次最多处理四个，rx_batch可以理解为批处理数组？

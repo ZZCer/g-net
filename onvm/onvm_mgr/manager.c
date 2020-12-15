@@ -97,6 +97,10 @@ init_manager(void)
 			checkCudaErrors( cuEventCreate(&(clients[i].kern_end[j]), CU_EVENT_DEFAULT) );
 			checkCudaErrors( cuEventCreate(&(clients[i].gpu_start[j]), CU_EVENT_DEFAULT) );
 			checkCudaErrors( cuEventCreate(&(clients[i].gpu_end[j]), CU_EVENT_DEFAULT) );
+			checkCudaErrors( cuEventCreate(&(clients[i].h2d_start[j]), CU_EVENT_DEFAULT) );
+			checkCudaErrors( cuEventCreate(&(clients[i].h2d_end[j]), CU_EVENT_DEFAULT) );
+			checkCudaErrors( cuEventCreate(&(clients[i].d2h_start[j]), CU_EVENT_DEFAULT) );
+			checkCudaErrors( cuEventCreate(&(clients[i].d2h_end[j]), CU_EVENT_DEFAULT) );
 		}
 
 		clients[i].global_response_q = rte_ring_create(
@@ -237,6 +241,10 @@ stream_sync_callback(CUstream cuda_stream, CUresult status, void *user_data)
 	checkCudaErrors( cuEventQuery(cl->kern_end[tid]) );
 	checkCudaErrors( cuEventQuery(cl->gpu_start[tid]) );
 	checkCudaErrors( cuEventQuery(cl->gpu_end[tid]) );
+	checkCudaErrors( cuEventQuery(cl->h2d_start[tid]) );
+	checkCudaErrors( cuEventQuery(cl->h2d_end[tid]) );
+	checkCudaErrors( cuEventQuery(cl->d2h_start[tid]) );
+	checkCudaErrors( cuEventQuery(cl->d2h_end[tid]) );
 
 	float diff_ms;
 	checkCudaErrors( cuEventElapsedTime(&diff_ms, cl->kern_start[tid], cl->kern_end[tid]) );
@@ -244,6 +252,11 @@ stream_sync_callback(CUstream cuda_stream, CUresult status, void *user_data)
 	checkCudaErrors( cuEventElapsedTime(&diff_ms, cl->gpu_start[tid], cl->gpu_end[tid]) );
 	cl->stats.gpu_time += diff_ms * 1000.0;
 	cl->stats.kernel_cnt ++;
+
+	checkCudaErrors( cuEventElapsedTime(&diff_ms, cl->h2d_start[tid], cl->h2d_end[tid]) );
+	cl->stats.htod_time += diff_ms * 1000.0;
+	checkCudaErrors( cuEventElapsedTime(&diff_ms, cl->d2h_start[tid], cl->d2h_end[tid]) );
+	cl->stats.dtoh_time += diff_ms * 1000.0;
 
 	struct nf_rsp *rsp;
 	if (rte_mempool_get(nf_response_pool, (void **)&rsp) < 0)
@@ -519,10 +532,12 @@ manager_thread_main(void *arg)
 
 				// checkCudaErrors( cuMemcpyHtoDAsync(req->device_ptr, host_ptr, req->size, cl->stream[req->thread_id]) );
 				int error;
+				checkCudaErrors( cuEventRecord(cl->h2d_start[req->thread_id],cl->stream[req->thread_id]) );
 				if ((error = cuMemcpyHtoDAsync(req->device_ptr, host_ptr, req->size, cl->stream[req->thread_id])) != CUDA_SUCCESS) {
 					RTE_LOG(INFO, APP, "CUDA_ERROR: cuMemcpyHtoDAsync: %lx <- %p (%d), thread_id = %d\n", (uint64_t)req->device_ptr, host_ptr, req->size, req->thread_id);
 					checkCudaErrors( error );
 				}
+				checkCudaErrors( cuEventRecord(cl->h2d_end[req->thread_id],cl->stream[req->thread_id]) );
 
 				rte_mempool_put(nf_request_pool, req);
 
@@ -552,7 +567,9 @@ manager_thread_main(void *arg)
 				cl->stats.dtoh_mem += req->size;
 				rte_spinlock_unlock(&cl->stats.update_lock);
 
+				checkCudaErrors( cuEventRecord(cl->d2h_start[req->thread_id],cl->stream[req->thread_id]) );
 				checkCudaErrors( cuMemcpyDtoHAsync(host_ptr, req->device_ptr, req->size, cl->stream[req->thread_id]) );
+				checkCudaErrors( cuEventRecord(cl->d2h_end[req->thread_id],cl->stream[req->thread_id]) );
 
 				rte_mempool_put(nf_request_pool, req);
 
@@ -768,7 +785,6 @@ manager_thread_main(void *arg)
 			case REQ_GPU_RECORD_START:
 				cl = &(clients[req->instance_id]);
 				tid = req->thread_id;
-				//可能出现0004错误 CUDA_ERROR_DEINITIALIZE 这是什么问题？？？
 				checkCudaErrors( cuEventRecord(cl->gpu_start[tid], cl->stream[tid]) );
 				rte_mempool_put(nf_request_pool, req);
 				break;

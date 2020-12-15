@@ -1,0 +1,1 @@
+preprocess_latency(us),HtoD_latency(us),kernel_latency(us),DtoH_latency(us),postprocess_latency(us),gpu_overhead(us),cpu_overhead

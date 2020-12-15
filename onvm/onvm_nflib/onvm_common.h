@@ -247,6 +247,11 @@ struct client {
 	CUevent kern_end[MAX_CPU_THREAD_NUM];
 	CUevent gpu_start[MAX_CPU_THREAD_NUM];
 	CUevent gpu_end[MAX_CPU_THREAD_NUM];
+	
+	CUevent h2d_start[MAX_CPU_THREAD_NUM];
+	CUevent h2d_end[MAX_CPU_THREAD_NUM];
+	CUevent d2h_start[MAX_CPU_THREAD_NUM];
+	CUevent d2h_end[MAX_CPU_THREAD_NUM];
 
 	double cost_time; /* Record the cost of GPU execution */
 
@@ -290,6 +295,12 @@ struct client {
 		double kernel_time;
 		double	 gpu_time;
 		uint64_t kernel_cnt;
+
+		double htod_time;
+		double dtoh_time;
+		double preprocess_time;
+		double postprocess_time;
+
 	} __attribute__ ((aligned (64))) stats;
 };
 
